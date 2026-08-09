@@ -9,9 +9,19 @@ AI-powered family app for SMAC 2026.
 - NFC planned
 
 ## Team
-- Your name
-- Teammate 1
-- Teammate 2
+- Rahma Reda
+- Yasmine Yousof
+- Hala Mohammed
 
 ## Current Status
 Project setup and design system foundation.
+Architecture finalized.
+Flutter foundation in progress.
+
+## Documentation
+- docs/product_specification.md
+- docs/navigation.md
+- docs/app_flow.md
+- docs/data_model.md
+- docs/github_workflow.md
+- docs/ai_usage_log.md
