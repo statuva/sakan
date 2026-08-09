@@ -52,14 +52,15 @@ Represents one authenticated account.
 Authentication information belongs here.
 
 ## Fields
-| Field : Description |
-| userId : Unique account identifier |
-| email : Login email |
-| displayName : User display name |
-| profileImage : Profile picture |
-| createdAt : Account creation date |
-| lastLogin : Last login |
-| notificationSettings : User notification preferences |
+| Field | Description |
+|--------|-------------|
+| userId | Unique account identifier |
+| email | Login email |
+| displayName | User display name |
+| profileImage | Profile picture |
+| createdAt | Account creation date |
+| lastLogin | Last login |
+| notificationSettings | User notification preferences |
 
 ## Relationships
 - One User belongs to one Family.
@@ -74,14 +75,15 @@ Represents one family inside Sakan.
 Everything else belongs to a Family.
 
 ## Fields
-| Field : Description |
-| familyId : Unique family identifier |
-| familyName : Family name |
-| country : Country |
-| city : City |
-| language : Preferred language |
-| adminId : Family owner |
-| createdAt : Creation date |
+| Field | Description |
+|--------|-------------|
+| familyId | Unique family identifier |
+| familyName | Family name |
+| country | Country |
+| city | City |
+| language | Preferred language |
+| adminId | Family owner |
+| createdAt | Creation date |
 
 
 ## Relationships
@@ -102,15 +104,17 @@ A Family contains:
 Represents one member inside a family.
 
 ## Fields
-| Field : Description |
-| memberId : Unique member ID |
-| userId : Linked User |
-| familyId : Parent family |
-| name : Display name |
-| role : Parent / Child / Grandparent |
-| avatar : Profile image |
-| preferredTimes : Preferred family activity times |
-| interests : Selected interests |
+
+| Field | Description |
+|--------|-------------|
+| memberId | Unique member ID |
+| userId | Linked User |
+| familyId | Parent family |
+| name | Display name |
+| role | Parent / Child / Grandparent |
+| avatar | Profile image |
+| preferredTimes | Preferred family activity times |
+| interests | Selected interests |
 
 ## Relationships
 A Family Member:
@@ -132,18 +136,19 @@ A Family Moment can be:
 - One-time
 
 ## Fields
-| Field : Description |
-| momentId : Unique identifier |
-| familyId : Parent family |
-| title : Moment title |
-| type : Recurring / Singular |
-| category : Tradition / Milestone / Care / Responsibility |
-| importance : Low / Medium / High |
-| expectedParticipants : Expected family members |
-| recurrencePattern : Weekly / Monthly / None |
-| scheduledDate : Planned date |
-| location : Optional |
-| notes : Optional |
+| Field | Description |
+|--------|-------------|
+| momentId | Unique identifier |
+| familyId | Parent family |
+| title | Moment title |
+| type | Recurring / Singular |
+| category | Tradition / Milestone / Care / Responsibility |
+| importance | Low / Medium / High |
+| expectedParticipants | Expected family members |
+| recurrencePattern | Weekly / Monthly / None |
+| scheduledDate | Planned date |
+| location | Optional |
+| notes | Optional |
 
 ## Relationships
 A Family Moment:
@@ -167,16 +172,18 @@ Friday Lunch is recurring.
 Each Friday Lunch is one Moment Instance.
 
 ## Fields
-| Field : Description |
-| instanceId : Unique identifier |
-| momentId : Parent moment |
-| scheduledAt : Planned time |
-| startedAt : Actual start |
-| endedAt : Actual end |
-| duration : Total duration |
-| participants : Actual participants |
-| evidenceType : NFC / User Confirmation / Photo |
-| status : Completed / Missed |
+
+| Field | Description |
+|--------|-------------|
+| instanceId | Unique identifier |
+| momentId | Parent moment |
+| scheduledAt | Planned time |
+| startedAt | Actual start |
+| endedAt | Actual end |
+| duration | Total duration |
+| participants | Actual participants |
+| evidenceType | NFC / User Confirmation / Photo |
+| status | Completed / Missed |
 
 ## Relationships
 Belongs to one Family Moment.
@@ -194,15 +201,17 @@ Usually started using the Sakan Hub.
 
 ## Fields
 | Field : Description |
-| sessionId : Unique identifier |
-| familyId : Parent family |
-| momentId : Related Family Moment |
-| startedAt : Session start |
-| endedAt : Session end |
-| duration : Total time |
-| participantIds : Members present |
-| checkInEvidence : NFC records |
-| checkOutEvidence : NFC records |
+| Field | Description |
+|--------|-------------|
+| sessionId | Unique identifier |
+| familyId | Parent family |
+| momentId | Related Family Moment |
+| startedAt | Session start |
+| endedAt | Session end |
+| duration | Total time |
+| participantIds | Members present |
+| checkInEvidence | NFC records |
+| checkOutEvidence | NFC records |
 
 ## Relationships
 Creates a Moment Instance.
@@ -225,14 +234,15 @@ Leave work early
 Bring camera
 
 ## Fields
-| Field : Description |
-| actionId : Unique identifier |
-| momentId : Related moment |
-| assignedTo : Family member |
-| title : Action title |
-| dueDate : Deadline |
-| status : Pending / Completed |
-| evidence : Optional proof |
+| Field | Description |
+|--------|-------------|
+| actionId | Unique identifier |
+| momentId | Related moment |
+| assignedTo | Family member |
+| title | Action title |
+| dueDate | Deadline |
+| status | Pending / Completed |
+| evidence | Optional proof |
 
 ## Relationships
 Belongs to one Family Moment.
@@ -246,14 +256,15 @@ Displayed inside Calendar and Digital Twin.
 Tracks recurring family traditions.
 
 ## Fields
-| Field : Description |
-| rhythmId : Unique identifier |
-| momentId : Related recurring moment |
-| expectedInterval : Expected frequency |
-| currentGap : Days since last occurrence |
-| confidence : Low / Medium / High |
-| status : Stable / Drifting / Recovering / Strengthening / Still Learning |
-| history : Previous occurrences |
+| Field | Description |
+|--------|-------------|
+| rhythmId | Unique identifier |
+| momentId | Related recurring moment |
+| expectedInterval | Expected frequency |
+| currentGap | Days since last occurrence |
+| confidence | Low / Medium / High |
+| status | Stable / Drifting / Recovering / Strengthening / Still Learning |
+| history | Previous occurrences |
 
 ## Relationships
 Generated from Moment Instances.
@@ -269,12 +280,13 @@ Represents the shared NFC Hub.
 The Hub records intentional participation in home-based family activities.
 
 ## Fields
-| Field : Description |
-| hubId : Unique hub ID |
-| familyId : Linked family |
-| location : Dining room / Majlis / Living room |
-| registeredAt : Registration date |
-| status : Active / Inactive |
+| Field | Description |
+|--------|-------------|
+| hubId | Unique hub ID |
+| familyId | Linked family |
+| location | Dining room / Majlis / Living room |
+| registeredAt | Registration date |
+| status | Active / Inactive |
 
 ## Relationships
 Verifies:
@@ -296,14 +308,15 @@ Recommendations are generated only from:
 3. Family Priority
 
 ## Fields
-| Field : Description |
-| recommendationId : Unique identifier |
-| familyId : Parent family |
-| title : Recommendation |
-| reason : Explanation |
-| trigger : Rhythm / Care / Priority |
-| createdAt : Generation time |
-| completed : Yes / No |
+| Field | Description |
+|--------|-------------|
+| recommendationId | Unique identifier |
+| familyId | Parent family |
+| title | Recommendation |
+| reason | Explanation |
+| trigger | Rhythm / Care / Priority |
+| createdAt | Generation time |
+| completed | Yes / No |
 
 ---
 
@@ -312,15 +325,17 @@ Recommendations are generated only from:
 Summarizes one week of family activity.
 
 ## Fields
-| Field : Description |
-| reportId : Unique identifier |
-| familyId : Parent family |
-| weekStart : Start date |
-| weekEnd : End date |
-| stableRhythms : List |
-| driftingRhythms : List |
-| careCompleted : List |
-| nextBestAction : Recommendation |
+| Field | Description |
+|--------|-------------|
+| reportId | Unique identifier |
+| familyId | Parent family |
+| weekStart | Start date |
+| weekEnd | End date |
+| stableRhythms | List |
+| driftingRhythms | List |
+| careCompleted | List |
+| nextBestAction | Recommendation |
+
 
 ---
 
@@ -361,13 +376,3 @@ This allows the Digital Twin to distinguish between verified and self-reported p
 6. One-time moments are handled by the Care Engine.
 7. The Family Digital Twin combines all entities into one behavioral model.
 
-
-| Field | Description |
-|--------|-------------|
-| recommendationId | Unique identifier |
-| familyId | Parent family |
-| title | Recommendation |
-| reason | Explanation |
-| trigger | Rhythm / Care / Priority |
-| createdAt | Generation time |
-| completed | Yes / No |
