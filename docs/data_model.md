@@ -360,3 +360,14 @@ This allows the Digital Twin to distinguish between verified and self-reported p
 5. Recurring moments are handled by the Rhythm Engine.
 6. One-time moments are handled by the Care Engine.
 7. The Family Digital Twin combines all entities into one behavioral model.
+
+
+| Field | Description |
+|--------|-------------|
+| recommendationId | Unique identifier |
+| familyId | Parent family |
+| title | Recommendation |
+| reason | Explanation |
+| trigger | Rhythm / Care / Priority |
+| createdAt | Generation time |
+| completed | Yes / No |

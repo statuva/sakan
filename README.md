@@ -1,12 +1,17 @@
 # Sakan
 
-AI-powered family app for SMAC 2026.
+**AI-powered Family Digital Twin**
+
+Sakan helps families preserve recurring traditions and prepare for meaningful one-time moments through an AI-powered Family Digital Twin.
+
+---
 
 ## Tech Stack
 - Flutter
 - Firebase planned
 - AI integration planned
 - NFC planned
+- openAI
 
 ## Team
 - Rahma Reda
