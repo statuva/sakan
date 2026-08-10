@@ -70,7 +70,30 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
-    - assets/illustrations/
+    - assets/animations/
+    - assets/fonts/
+  fonts:
+    - family: Satoshi
+      fonts:
+        - asset: assets/fonts/Satoshi-Regular.otf
+          weight: 400
+        - asset: assets/fonts/Satoshi-Medium.otf
+          weight: 500
+        - asset: assets/fonts/Satoshi-Bold.otf
+          weight: 700
+
+    - family: FiraCode
+      fonts:
+        - asset: assets/fonts/FiraCode-VariableFont_wght.ttf
+          weight: 400
+
+    - family: GeneralSans
+      fonts:
+        - asset: assets/fonts/GeneralSans-Regular.otf
+          weight: 400
+        - asset: assets/fonts/GeneralSans-Medium.otf
+          weight: 500
+
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
