@@ -5,10 +5,9 @@ import 'package:sakan/features/profile/presentation/profile_screen.dart';
 import 'package:sakan/features/digital_twin/presentation/digital_twin_screen.dart';
 import 'package:sakan/features/calendar/presentation/calendar_screen.dart';
 
-
 final GoRouter appRouter = GoRouter(
   initialLocation: '/home',
-  routes: [ 
+  routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
         return AppShell(navigationShell: navigationShell);

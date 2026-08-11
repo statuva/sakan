@@ -26,10 +26,11 @@ class AppPrimaryButton extends StatelessWidget {
               color: Colors.white,
             ),
           )
-        : Row( 
-           mainAxisSize: MainAxisSize.min,
-           mainAxisAlignment: MainAxisAlignment.center,
-           children: [if (icon != null) ...[
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (icon != null) ...[
                 Icon(icon, size: 22),
                 const SizedBox(width: 12),
               ],
@@ -39,10 +40,10 @@ class AppPrimaryButton extends StatelessWidget {
     return SizedBox(
       width: expand ? double.infinity : null,
       height: 56,
-      child : FilledButton(
+      child: FilledButton(
         onPressed: isLoading ? null : onPressed,
-        child:child
-       ),
+        child: child,
+      ),
     );
-  }  
+  }
 }

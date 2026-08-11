@@ -3,10 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:sakan/core/theme/app_radius.dart';
 
 class AppShell extends StatelessWidget {
-  const AppShell({
-    required this.navigationShell,
-    super.key,
-  });
+  const AppShell({required this.navigationShell, super.key});
 
   final StatefulNavigationShell navigationShell;
 
@@ -26,7 +23,7 @@ class AppShell extends StatelessWidget {
         minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppRadius.navigation),
-          child : NavigationBar(
+          child: NavigationBar(
             selectedIndex: navigationShell.currentIndex,
             onDestinationSelected: _openBranch,
             destinations: const [

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sakan/core/theme/app_spacing.dart';
-import 'package:sakan/core/theme/app_radius.dart'; 
+import 'package:sakan/core/theme/app_radius.dart';
 
 class AppStatusChip extends StatelessWidget {
   const AppStatusChip({
@@ -35,13 +35,12 @@ class AppStatusChip extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w500,
-                ),
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
     );
   }
-
 }

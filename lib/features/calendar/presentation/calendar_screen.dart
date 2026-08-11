@@ -8,7 +8,8 @@ class CalendarScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const FeaturePlaceholder(
       title: 'Calendar',
-      description: 'Recurring traditions and meaningful one-time moments will appear here.',
+      description:
+          'Recurring traditions and meaningful one-time moments will appear here.',
       icon: Icons.calendar_month_outlined,
     );
   }
