@@ -2,8 +2,140 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isFamilyMember(familyId) {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid)
+        );
+    }
+
+    function memberRole(familyId) {
+      return get(
+        /databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid)
+      ).data.role;
+    }
+
+    function isFamilyAdmin(familyId) {
+      return isFamilyMember(familyId)
+        && memberRole(familyId) == 'admin';
+    }
+
+    function isAdultOrAdmin(familyId) {
+      return isFamilyMember(familyId)
+        && (
+          memberRole(familyId) == 'admin'
+          || memberRole(familyId) == 'adult'
+        );
+    }
+
+    match /users/{userId} {
+      allow create: if signedIn()
+        && request.auth.uid == userId;
+
+      allow read, update, delete: if signedIn()
+        && request.auth.uid == userId;
+    }
+
+    match /families/{familyId} {
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid;
+
+      allow read: if isFamilyMember(familyId)
+        || (
+          signedIn()
+          && resource.data.createdBy == request.auth.uid
+        );
+
+        allow update, delete: if isFamilyAdmin(familyId);
+
+        match /members/{memberId} {
+        allow read: if isFamilyMember(familyId);
+
+        allow create: if signedIn()
+          && (
+            isFamilyAdmin(familyId)
+            || (
+              memberId == request.auth.uid
+              && get(
+                /databases/$(database)/documents/families/$(familyId)
+              ).data.createdBy == request.auth.uid
+              && request.resource.data.role == 'admin'
+            )
+          );
+
+
+          allow update: if isFamilyAdmin(familyId)
+          || (
+            signedIn()
+            && memberId == request.auth.uid
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.familyId == resource.data.familyId
+          );
+
+        allow delete: if isFamilyAdmin(familyId);
+      }
+
+
+      match /moments/{momentId} {
+        allow read: if isFamilyMember(familyId);
+
+        allow create: if isAdultOrAdmin(familyId)
+          && request.resource.data.familyId == familyId
+          && request.resource.data.createdBy == request.auth.uid;
+
+        allow update, delete: if isAdultOrAdmin(familyId);
+      }
+
+
+      match /momentInstances/{instanceId} {
+        allow read: if isFamilyMember(familyId);
+        allow create, update: if isAdultOrAdmin(familyId);
+        allow delete: if isFamilyAdmin(familyId);
+
+        match /participants/{memberId} {
+          allow read: if isFamilyMember(familyId);
+
+          allow create, update: if isFamilyMember(familyId)
+            && memberId == request.auth.uid
+            && request.resource.data.memberId == request.auth.uid;
+
+          allow delete: if isFamilyAdmin(familyId);
+        }
+      }
+
+
+      match /careActions/{actionId} {
+        allow read: if isFamilyMember(familyId);
+        allow create, delete: if isAdultOrAdmin(familyId);
+
+        allow update: if isAdultOrAdmin(familyId)
+          || (
+            isFamilyMember(familyId)
+            && resource.data.assignedMemberId == request.auth.uid
+          );
+      }
+
+      match /rhythms/{rhythmId} {
+        allow read: if isFamilyMember(familyId);
+        allow create, update: if isAdultOrAdmin(familyId);
+        allow delete: if isFamilyAdmin(familyId);
+      }
+
+
+      match /hubs/{hubId} {
+        allow read: if isFamilyMember(familyId);
+        allow create, update, delete: if isFamilyAdmin(familyId);
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
+   
