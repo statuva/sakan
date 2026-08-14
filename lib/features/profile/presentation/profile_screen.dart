@@ -8,7 +8,8 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const FeaturePlaceholder(
       title: 'Profile',
-      description: 'Personal preferences, schedules, privacy, and Hub settings will appear here.',
+      description:
+          'Personal preferences, schedules, privacy, and Hub settings will appear here.',
       icon: Icons.person_outline_rounded,
     );
   }

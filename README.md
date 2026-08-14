@@ -30,3 +30,28 @@ Flutter foundation in progress.
 - docs/data_model.md
 - docs/github_workflow.md
 - docs/ai_usage_log.md
+
+
+## Backend
+Sakan currently uses:
+
+- Firebase Core
+- Firebase Authentication
+- Cloud Firestore
+- FlutterFire
+- Local demo-data mode
+
+## Current Development Status
+
+Firebase and data architecture foundation completed.
+
+Current domain models:
+
+- AppUser
+- Family
+- Member
+- FamilyMoment
+- MomentInstance
+- CareAction
+- RhythmRecord
+- Hub

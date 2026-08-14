@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sakan/core/theme/app_spacing.dart';
 import 'package:sakan/core/theme/app_radius.dart';
 
-class AppCard extends StatelessWidget { 
+class AppCard extends StatelessWidget {
   const AppCard({
     required this.child,
     this.onTap,
@@ -19,19 +19,12 @@ class AppCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color : color,
-      child : InkWell(
+      color: color,
+      child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        child: Padding(
-          padding: padding,
-          child: child,
-        ),
+        child: Padding(padding: padding, child: child),
       ),
     );
-  } 
+  }
 }
-
-
-
-

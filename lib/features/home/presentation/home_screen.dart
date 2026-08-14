@@ -8,7 +8,8 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const FeaturePlaceholder(
       title: 'Home',
-      description: "Today’s family insight and next best action will appear here.",
+      description:
+          "Today’s family insight and next best action will appear here.",
       icon: Icons.home_outlined,
     );
   }

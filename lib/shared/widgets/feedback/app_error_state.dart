@@ -5,7 +5,7 @@ class AppErrorState extends StatelessWidget {
   const AppErrorState({
     this.title = 'Something went wrong',
     required this.message,
-    this.onRetry,    
+    this.onRetry,
     super.key,
   });
 
@@ -31,23 +31,20 @@ class AppErrorState extends StatelessWidget {
               title,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            style: Theme.of(context).textTheme.bodyMedium,
-            textAlign: TextAlign.center,
-          ),
-          if (onRetry != null) ...[
-            const SizedBox(height: 24),
-            AppPrimaryButton(
-              label: 'try again',
-              onPressed: onRetry,
             ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 24),
+              AppPrimaryButton(label: 'try again', onPressed: onRetry),
+            ],
           ],
-        ],
+        ),
       ),
-    ),
-    );  
+    );
   }
 }

@@ -1,0 +1,28 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "sakan-smac-2026",
+          "appId": "1:509869311142:android:67afc1dc8858633d36e067",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "sakan-smac-2026",
+          "configurations": {
+            "android": "1:509869311142:android:67afc1dc8858633d36e067",
+            "web": "1:509869311142:web:282fc898fdc90cca36e067"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "database": "(default)",
+    "location": "me-central1",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indesxes.json"
+  }
+}
