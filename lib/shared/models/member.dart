@@ -16,6 +16,7 @@ class Member {
     this.photoUrl,
     this.preferredStartMinutes,
     this.preferredEndMinutes,
+    this.relationship = FamilyRelationship.other,
   });
 
   final String id;
@@ -31,6 +32,7 @@ class Member {
   final bool isActive;
   final DateTime joinedAt;
   final DateTime updatedAt;
+  final FamilyRelationship relationship;
 
   factory Member.fromMap(String id, Map<String, dynamic> map) {
     return Member(
@@ -47,6 +49,9 @@ class Member {
       isActive: map['isActive'] as bool,
       joinedAt: (map['joinedAt'] as Timestamp).toDate(),
       updatedAt: (map['updatedAt'] as Timestamp).toDate(),
+      relationship: FamilyRelationship.values.byName(
+        map['relationship'] as String? ?? 'other',
+      ),
     );
   }
 
@@ -64,6 +69,7 @@ class Member {
       'isActive': isActive,
       'joinedAt': Timestamp.fromDate(joinedAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'relationship': relationship.name,
     };
   }
 }

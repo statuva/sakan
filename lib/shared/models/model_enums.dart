@@ -1,5 +1,15 @@
 enum FamilyRole { admin, adult, child }
 
+enum FamilyRelationship {
+  parent,
+  child,
+  granparent,
+  sibling,
+  guardian,
+  relative,
+  other,
+}
+
 enum AgeGroup { adult, child, teen, senior }
 
 enum MomentType { recurring, singular }
