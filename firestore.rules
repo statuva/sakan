@@ -33,6 +33,23 @@ service cloud.firestore {
         );
     }
 
+    function invitationPath(code) {
+  return /databases/$(database)/documents/invitations/$(code);
+}
+
+function familyAfter(familyId) {
+  return getAfter(
+    /databases/$(database)/documents/families/$(familyId)
+  );
+}
+
+function validInvitation(code, familyId) {
+  return exists(invitationPath(code))
+    && get(invitationPath(code)).data.familyId == familyId
+    && get(invitationPath(code)).data.isActive == true
+    && get(invitationPath(code)).data.expiresAt > request.time;
+}
+
     match /users/{userId} {
       allow create: if signedIn()
         && request.auth.uid == userId;
@@ -40,6 +57,20 @@ service cloud.firestore {
       allow read, update, delete: if signedIn()
         && request.auth.uid == userId;
     }
+
+    match /invitations/{code} {
+  allow get: if signedIn();
+  allow list: if false;
+
+  allow create: if signedIn()
+    && request.resource.data.code == code
+    && request.resource.data.createdBy == request.auth.uid
+    && familyAfter(request.resource.data.familyId).data.createdBy
+      == request.auth.uid;
+
+  allow update, delete: if signedIn()
+    && resource.data.createdBy == request.auth.uid;
+}
 
     match /families/{familyId} {
       allow create: if signedIn()
@@ -57,16 +88,25 @@ service cloud.firestore {
         allow read: if isFamilyMember(familyId);
 
         allow create: if signedIn()
-          && (
-            isFamilyAdmin(familyId)
-            || (
-              memberId == request.auth.uid
-              && get(
-                /databases/$(database)/documents/families/$(familyId)
-              ).data.createdBy == request.auth.uid
-              && request.resource.data.role == 'admin'
-            )
-          );
+  && memberId == request.auth.uid
+  && (
+    (
+      request.resource.data.role == 'admin'
+      && familyAfter(familyId).data.createdBy == request.auth.uid
+    )
+    ||
+    (
+      (
+        request.resource.data.role == 'adult'
+        || request.resource.data.role == 'child'
+      )
+      && request.resource.data.joinedViaInviteCode is string
+      && validInvitation(
+        request.resource.data.joinedViaInviteCode,
+        familyId
+      )
+    )
+  );
 
 
           allow update: if isFamilyAdmin(familyId)

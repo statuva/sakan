@@ -4,9 +4,6 @@ import 'package:sakan/shared/models/member.dart';
 import 'package:sakan/shared/models/model_enums.dart';
 import 'package:sakan/shared/models/family_moment.dart';
 
-
-
-
 class DemoDataService {
   DemoDataService({DateTime? now}) : now = now ?? DateTime.now();
   final DateTime now;
@@ -22,7 +19,6 @@ class DemoDataService {
   );
 
   late final Family family = Family(
-
     id: 'demo_family',
     name: 'Al Mansoori Family',
     createdBy: 'demo_user_mom',
@@ -33,7 +29,7 @@ class DemoDataService {
     createdAt: now,
     updatedAt: now,
   );
-  
+
   late final List<Member> members = [
     Member(
       id: 'demo_user_mom',

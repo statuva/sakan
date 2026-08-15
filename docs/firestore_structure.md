@@ -196,3 +196,26 @@ Example:
 - locationLabel: Dining Room
 
 
+
+## invitations/{code}
+
+Stores a temporary invitation that allows an authenticated user to join a family.
+
+The invitation code is used as the document ID so the app can perform a direct document lookup without listing all invitations.
+
+Fields:
+
+- code
+- familyId
+- familyName
+- createdBy
+- isActive
+- expiresAt
+- createdAt
+
+Security requirements:
+
+- A user must be authenticated to retrieve an invitation.
+- Invitation collections cannot be listed.
+- An invitation must be active and unexpired.
+- A joining user may create only their own family-member record.
