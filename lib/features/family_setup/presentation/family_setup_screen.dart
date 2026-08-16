@@ -1,100 +1,178 @@
 import 'package:flutter/material.dart';
-import 'package:sakan/core/theme/app_spacing.dart';
-import 'package:sakan/shared/widgets/cards/app_card.dart';
+import 'package:sakan/shared/models/rhythm_setup_draft.dart';
+import 'package:sakan/shared/services/uae_rhythm_templates.dart';
+import 'widgets/members_setup_step.dart';
+import 'widgets/rhythm_configuration_step.dart';
+import 'widgets/rhythm_library_step.dart';
+import 'widgets/setup_review_step.dart';
 
-class FamilySetupScreen extends StatelessWidget {
+class FamilySetupScreen extends StatefulWidget {
   const FamilySetupScreen({super.key});
+
+  @override
+  State<FamilySetupScreen> createState() => _FamilySetupScreenState();
+}
+
+class _FamilySetupScreenState extends State<FamilySetupScreen> {
+  int currentStep = 0;
+
+  final Set<String> selectedTemplateIds = {};
+
+  List<RhythmSetupDraft> rhythmDrafts = [];
+
+  void nextStep() {
+    if (currentStep < 3) {
+      setState(() {
+        currentStep++;
+      });
+    }
+  }
+
+  void previousStep() {
+    if (currentStep > 0) {
+      setState(() {
+        currentStep--;
+      });
+    }
+  }
+
+  void updateSelectedTemplates(Set<String> templateIds) {
+    setState(() {
+      selectedTemplateIds
+        ..clear()
+        ..addAll(templateIds);
+
+      _rebuildRhythmDrafts();
+    });
+  }
+
+  void _rebuildRhythmDrafts() {
+    final existingDrafts = {
+      for (final draft in rhythmDrafts) draft.templateId: draft,
+    };
+
+    final now = DateTime.now();
+
+    rhythmDrafts = selectedTemplateIds.map((templateId) {
+      if (existingDrafts.containsKey(templateId)) {
+        return existingDrafts[templateId]!;
+      }
+
+      final template = UaeRhythmTemplates.all.firstWhere(
+        (item) => item.id == templateId,
+      );
+
+      return RhythmSetupDraft(
+        templateId: template.id,
+        title: template.title,
+        description: template.description,
+        category: template.category,
+        expectedIntervalDays: template.defaultIntervalDays,
+        importanceLevel: template.defaultImportanceLevel,
+        expectedParticipantIds: const [],
+        nextOccurrenceAt: now.add(Duration(days: template.defaultIntervalDays)),
+      );
+    }).toList();
+  }
+
+  void updateRhythmDraft(int index, RhythmSetupDraft draft) {
+    setState(() {
+      rhythmDrafts[index] = draft;
+    });
+  }
+
+  void addCustomRhythm(RhythmSetupDraft draft) {
+    setState(() {
+      rhythmDrafts.add(draft);
+      selectedTemplateIds.add(draft.templateId);
+    });
+  }
+
+  Future<void> completeSetup() async {
+    // Firebase save will be connected next.
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Setup data is ready to be saved.')),
+    );
+  }
+
+  Widget _buildCurrentStep() {
+    switch (currentStep) {
+      case 0:
+        return MembersSetupStep(onContinue: nextStep);
+
+      case 1:
+        return RhythmLibraryStep(
+          selectedTemplateIds: selectedTemplateIds,
+          onSelectionChanged: updateSelectedTemplates,
+          onCustomRhythmCreated: addCustomRhythm,
+          onContinue: nextStep,
+          onBack: previousStep,
+        );
+
+      case 2:
+        return RhythmConfigurationStep(
+          drafts: rhythmDrafts,
+          onDraftChanged: updateRhythmDraft,
+          onContinue: nextStep,
+          onBack: previousStep,
+        );
+
+      case 3:
+        return SetupReviewStep(
+          rhythmDrafts: rhythmDrafts,
+          onBack: previousStep,
+          onComplete: completeSetup,
+        );
+
+      default:
+        return MembersSetupStep(onContinue: nextStep);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('family setup')),
-
+      appBar: AppBar(title: const Text('Family Setup')),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 16),
-
-              Icon(
-                Icons.home_outlined,
-                size: 64,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-
-              const SizedBox(height: 24),
-
-              Text(
-                'your family is connected',
-                style: Theme.of(context).textTheme.headlineLarge,
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                "next, we'll help sakan understands the rhytms and prefernces that matter to your family",
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-
-              const SizedBox(height: 32),
-
-              const AppCard(
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.group_outlined),
-                  title: Text('Add family details'),
-                  subtitle: Text('Set up your members and their roles.'),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              const AppCard(
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.favorite_border_rounded),
-                  title: Text('Choose family traditions'),
-                  subtitle: Text(
-                    'Tell Sakan which recurring moments matter to your family.',
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              const AppCard(
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.schedule_outlined),
-                  title: Text('Add schedules'),
-                  subtitle: Text(
-                    'Help Sakan find times when your family is available.',
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              const AppCard(
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.tune_rounded),
-                  title: Text('Set preferences'),
-                  subtitle: Text(
-                    'Choose preferred times, activities, and reminders.',
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              Text(
-                'The full family setup flow will be added next.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ],
-          ),
+        child: Column(
+          children: [
+            _SetupProgress(currentStep: currentStep),
+            Expanded(child: _buildCurrentStep()),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _SetupProgress extends StatelessWidget {
+  const _SetupProgress({required this.currentStep});
+
+  final int currentStep;
+
+  @override
+  Widget build(BuildContext context) {
+    const labels = ['Members', 'Traditions', 'Configure', 'Review'];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Step ${currentStep + 1} of 4',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(value: (currentStep + 1) / 4),
+          const SizedBox(height: 8),
+          Text(
+            labels[currentStep],
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+        ],
       ),
     );
   }

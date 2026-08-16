@@ -3,7 +3,7 @@ enum FamilyRole { admin, adult, child }
 enum FamilyRelationship {
   parent,
   child,
-  granparent,
+  grandparent,
   sibling,
   guardian,
   relative,
