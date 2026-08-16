@@ -11,6 +11,7 @@ class Family {
     required this.setupComplete,
     required this.createdAt,
     required this.updatedAt,
+    this.activeInvitationCode,
   });
 
   final String id;
@@ -22,6 +23,7 @@ class Family {
   final bool setupComplete;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String? activeInvitationCode;
 
   factory Family.fromMap(String id, Map<String, dynamic> map) {
     return Family(
@@ -34,6 +36,7 @@ class Family {
       setupComplete: map['setupComplete'] as bool,
       createdAt: (map['createdAt'] as Timestamp).toDate(),
       updatedAt: (map['updatedAt'] as Timestamp).toDate(),
+      activeInvitationCode: map['activeInvitationCode'] as String?,
     );
   }
 
@@ -47,6 +50,7 @@ class Family {
       'setupComplete': setupComplete,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'activeInvitationCode': activeInvitationCode,
     };
   }
 }

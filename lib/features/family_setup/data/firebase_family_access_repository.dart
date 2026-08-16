@@ -56,6 +56,7 @@ class FirebaseFamilyAccessRepository implements FamilyAccessRepository {
       setupComplete: false,
       createdAt: now,
       updatedAt: now,
+      activeInvitationCode: invitationCode,
     );
 
     final adminMember = Member(
