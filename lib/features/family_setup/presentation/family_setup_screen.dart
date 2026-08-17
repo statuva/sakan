@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:sakan/shared/models/rhythm_setup_draft.dart';
 import 'package:sakan/shared/services/uae_rhythm_templates.dart';

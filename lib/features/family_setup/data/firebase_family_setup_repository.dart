@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:sakan/shared/models/family.dart';
 import 'package:sakan/shared/models/family_moment.dart';
 import 'package:sakan/shared/models/member.dart';
@@ -20,11 +21,9 @@ class FirebaseFamilySetupRepository implements FamilySetupRepository {
 
   String get _currentUserId {
     final user = _auth.currentUser;
-
     if (user == null) {
       throw StateError('A signed-in user is required.');
     }
-
     return user.uid;
   }
 
@@ -34,11 +33,7 @@ class FirebaseFamilySetupRepository implements FamilySetupRepository {
       snapshot,
     ) {
       final data = snapshot.data();
-
-      if (!snapshot.exists || data == null) {
-        return null;
-      }
-
+      if (!snapshot.exists || data == null) return null;
       return Family.fromMap(snapshot.id, data);
     });
   }
@@ -52,14 +47,10 @@ class FirebaseFamilySetupRepository implements FamilySetupRepository {
         .where('isActive', isEqualTo: true)
         .snapshots()
         .map((snapshot) {
-          final members = snapshot.docs.map((document) {
-            return Member.fromMap(document.id, document.data());
-          }).toList();
-
-          members.sort(
-            (first, second) => first.displayName.compareTo(second.displayName),
-          );
-
+          final members = snapshot.docs
+              .map((document) => Member.fromMap(document.id, document.data()))
+              .toList();
+          members.sort((a, b) => a.displayName.compareTo(b.displayName));
           return members;
         });
   }
@@ -92,9 +83,7 @@ class FirebaseFamilySetupRepository implements FamilySetupRepository {
 
     final currentUserId = _currentUserId;
     final now = DateTime.now().toUtc();
-
     final familyReference = _firestore.collection('families').doc(familyId);
-
     final batch = _firestore.batch();
 
     for (final draft in rhythms) {
@@ -105,7 +94,6 @@ class FirebaseFamilySetupRepository implements FamilySetupRepository {
       }
 
       final momentReference = familyReference.collection('moments').doc();
-
       final currentGapDays = draft.lastOccurrenceAt == null
           ? 0
           : now.difference(draft.lastOccurrenceAt!.toUtc()).inDays;
@@ -144,7 +132,6 @@ class FirebaseFamilySetupRepository implements FamilySetupRepository {
       );
 
       batch.set(momentReference, moment.toMap());
-
       batch.set(
         familyReference.collection('rhythms').doc(momentReference.id),
         rhythm.toMap(),

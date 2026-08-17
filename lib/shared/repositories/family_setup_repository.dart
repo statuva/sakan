@@ -1,12 +1,13 @@
-import 'package:sakan/shared/models/family.dart';
-import 'package:sakan/shared/models/member.dart';
-import 'package:sakan/shared/models/model_enums.dart';
-import 'package:sakan/shared/models/rhythm_setup_draft.dart';
+import '../models/family.dart';
+import '../models/member.dart';
+import '../models/model_enums.dart';
+import '../models/rhythm_setup_draft.dart';
 
 abstract interface class FamilySetupRepository {
   Stream<Family?> watchFamily(String familyId);
 
   Stream<List<Member>> watchMembers(String familyId);
+
   Future<void> updateMemberRelationship({
     required String familyId,
     required String memberId,

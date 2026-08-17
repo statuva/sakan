@@ -2,21 +2,33 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     function signedIn() {
       return request.auth != null;
+    }
+
+    function familyPath(familyId) {
+      return /databases/$(database)/documents/families/$(familyId);
+    }
+
+    function memberPath(familyId, memberId) {
+      return /databases/$(database)/documents/families/$(familyId)/members/$(memberId);
+    }
+
+    function invitationPath(code) {
+      return /databases/$(database)/documents/invitations/$(code);
     }
 
     function isFamilyMember(familyId) {
       return signedIn()
         && exists(
-          /databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid)
+          memberPath(familyId, request.auth.uid)
         );
     }
 
     function memberRole(familyId) {
       return get(
-        /databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid)
+        memberPath(familyId, request.auth.uid)
       ).data.role;
     }
 
@@ -33,22 +45,19 @@ service cloud.firestore {
         );
     }
 
-    function invitationPath(code) {
-  return /databases/$(database)/documents/invitations/$(code);
-}
+    function familyAfter(familyId) {
+      return getAfter(
+        familyPath(familyId)
+      );
+    }
 
-function familyAfter(familyId) {
-  return getAfter(
-    /databases/$(database)/documents/families/$(familyId)
-  );
-}
-
-function validInvitation(code, familyId) {
-  return exists(invitationPath(code))
-    && get(invitationPath(code)).data.familyId == familyId
-    && get(invitationPath(code)).data.isActive == true
-    && get(invitationPath(code)).data.expiresAt > request.time;
-}
+    function validInvitation(code, familyId) {
+      return exists(invitationPath(code))
+        && exists(familyPath(familyId))
+        && get(invitationPath(code)).data.familyId == familyId
+        && get(invitationPath(code)).data.isActive == true
+        && get(invitationPath(code)).data.expiresAt > request.time;
+    }
 
     match /users/{userId} {
       allow create: if signedIn()
@@ -59,117 +68,167 @@ function validInvitation(code, familyId) {
     }
 
     match /invitations/{code} {
-  allow get: if signedIn();
-  allow list: if false;
+      allow get: if signedIn();
+      allow list: if false;
 
-  allow create: if signedIn()
-    && request.resource.data.code == code
-    && request.resource.data.createdBy == request.auth.uid
-    && familyAfter(request.resource.data.familyId).data.createdBy
-      == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.code == code
+        && request.resource.data.createdBy == request.auth.uid
+        && familyAfter(
+          request.resource.data.familyId
+        ).data.createdBy == request.auth.uid;
 
-  allow update, delete: if signedIn()
-    && resource.data.createdBy == request.auth.uid;
-}
+      allow update, delete: if signedIn()
+        && resource.data.createdBy == request.auth.uid;
+    }
 
     match /families/{familyId} {
       allow create: if signedIn()
-        && request.resource.data.createdBy == request.auth.uid;
+        && request.resource.data.createdBy
+          == request.auth.uid;
 
       allow read: if isFamilyMember(familyId)
         || (
           signedIn()
-          && resource.data.createdBy == request.auth.uid
+          && resource.data.createdBy
+            == request.auth.uid
         );
 
-        allow update, delete: if isFamilyAdmin(familyId);
+      allow update, delete:
+        if isFamilyAdmin(familyId);
 
-        match /members/{memberId} {
-        allow read: if isFamilyMember(familyId);
+      match /members/{memberId} {
+        // A joining user may check only whether their own
+        // membership document already exists.
+        allow get: if signedIn()
+          && (
+            memberId == request.auth.uid
+            || isFamilyMember(familyId)
+          );
+
+        // Only existing family members may query/list all members.
+        allow list: if isFamilyMember(familyId);
 
         allow create: if signedIn()
-  && memberId == request.auth.uid
-  && (
-    (
-      request.resource.data.role == 'admin'
-      && familyAfter(familyId).data.createdBy == request.auth.uid
-    )
-    ||
-    (
-      (
-        request.resource.data.role == 'adult'
-        || request.resource.data.role == 'child'
-      )
-      && request.resource.data.joinedViaInviteCode is string
-      && validInvitation(
-        request.resource.data.joinedViaInviteCode,
-        familyId
-      )
-    )
-  );
+          && memberId == request.auth.uid
+          && request.resource.data.familyId
+            == familyId
+          && (
+            (
+              request.resource.data.role == 'admin'
+              && familyAfter(familyId).data.createdBy
+                == request.auth.uid
+            )
+            ||
+            (
+              (
+                request.resource.data.role == 'adult'
+                || request.resource.data.role == 'child'
+              )
+              && request.resource.data.joinedViaInviteCode
+                is string
+              && validInvitation(
+                request.resource.data.joinedViaInviteCode,
+                familyId
+              )
+            )
+          );
 
-
-          allow update: if isFamilyAdmin(familyId)
+        allow update: if isFamilyAdmin(familyId)
           || (
             signedIn()
             && memberId == request.auth.uid
-            && request.resource.data.role == resource.data.role
-            && request.resource.data.familyId == resource.data.familyId
+            && request.resource.data.familyId
+              == resource.data.familyId
+            && request.resource.data.role
+              == resource.data.role
           );
 
-        allow delete: if isFamilyAdmin(familyId);
+        allow delete:
+          if isFamilyAdmin(familyId);
       }
-
 
       match /moments/{momentId} {
-        allow read: if isFamilyMember(familyId);
+        allow read:
+          if isFamilyMember(familyId);
 
         allow create: if isAdultOrAdmin(familyId)
-          && request.resource.data.familyId == familyId
-          && request.resource.data.createdBy == request.auth.uid;
+          && request.resource.data.familyId
+            == familyId
+          && request.resource.data.createdBy
+            == request.auth.uid;
 
-        allow update, delete: if isAdultOrAdmin(familyId);
+        allow update, delete:
+          if isAdultOrAdmin(familyId);
       }
 
-
       match /momentInstances/{instanceId} {
-        allow read: if isFamilyMember(familyId);
-        allow create, update: if isAdultOrAdmin(familyId);
-        allow delete: if isFamilyAdmin(familyId);
+        allow read:
+          if isFamilyMember(familyId);
+
+        allow create, update:
+          if isAdultOrAdmin(familyId);
+
+        allow delete:
+          if isFamilyAdmin(familyId);
 
         match /participants/{memberId} {
-          allow read: if isFamilyMember(familyId);
+          allow read:
+            if isFamilyMember(familyId);
 
           allow create, update: if isFamilyMember(familyId)
             && memberId == request.auth.uid
-            && request.resource.data.memberId == request.auth.uid;
+            && request.resource.data.memberId
+              == request.auth.uid;
 
-          allow delete: if isFamilyAdmin(familyId);
+          allow delete:
+            if isFamilyAdmin(familyId);
         }
       }
 
-
       match /careActions/{actionId} {
-        allow read: if isFamilyMember(familyId);
-        allow create, delete: if isAdultOrAdmin(familyId);
+        allow read:
+          if isFamilyMember(familyId);
+
+        allow create, delete:
+          if isAdultOrAdmin(familyId);
 
         allow update: if isAdultOrAdmin(familyId)
           || (
             isFamilyMember(familyId)
-            && resource.data.assignedMemberId == request.auth.uid
+            && resource.data.assignedMemberId
+              == request.auth.uid
+            && request.resource.data.assignedMemberId
+              == resource.data.assignedMemberId
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'status',
+                'evidenceType',
+                'completedAt',
+                'updatedAt'
+              ])
           );
       }
 
       match /rhythms/{rhythmId} {
-        allow read: if isFamilyMember(familyId);
-        allow create, update: if isAdultOrAdmin(familyId);
-        allow delete: if isFamilyAdmin(familyId);
+        allow read:
+          if isFamilyMember(familyId);
+
+        allow create, update:
+          if isAdultOrAdmin(familyId);
+
+        allow delete:
+          if isFamilyAdmin(familyId);
       }
 
-
       match /hubs/{hubId} {
-        allow read: if isFamilyMember(familyId);
-        allow create, update, delete: if isFamilyAdmin(familyId);
+        allow read:
+          if isFamilyMember(familyId);
+
+        allow create, update, delete:
+          if isFamilyAdmin(familyId);
       }
     }
 
@@ -178,4 +237,3 @@ function validInvitation(code, familyId) {
     }
   }
 }
-   
