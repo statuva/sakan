@@ -7,20 +7,13 @@ class HubSettingsScreen extends StatefulWidget {
   const HubSettingsScreen({super.key});
 
   @override
-  State<HubSettingsScreen> createState() =>
-      _HubSettingsScreenState();
+  State<HubSettingsScreen> createState() => _HubSettingsScreenState();
 }
 
-class _HubSettingsScreenState
-    extends State<HubSettingsScreen> {
-  final _hubNameController = TextEditingController(
-    text: 'Sakan Hub',
-  );
+class _HubSettingsScreenState extends State<HubSettingsScreen> {
+  final _hubNameController = TextEditingController(text: 'Sakan Hub');
 
-  final _locationController =
-      TextEditingController(
-    text: 'Dining Room',
-  );
+  final _locationController = TextEditingController(text: 'Dining Room');
 
   bool _registered = false;
   bool _manualCheckIn = true;
@@ -38,9 +31,7 @@ class _HubSettingsScreenState
       _saving = true;
     });
 
-    await Future.delayed(
-      const Duration(milliseconds: 600),
-    );
+    await Future.delayed(const Duration(milliseconds: 600));
 
     if (!mounted) return;
 
@@ -48,13 +39,9 @@ class _HubSettingsScreenState
       _saving = false;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Hub settings saved.',
-        ),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Hub settings saved.')));
   }
 
   void _registerHub() {
@@ -62,13 +49,9 @@ class _HubSettingsScreenState
       _registered = true;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Hub registered (demo).',
-        ),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Hub registered (demo).')));
   }
 
   void _removeHub() {
@@ -76,100 +59,63 @@ class _HubSettingsScreenState
       _registered = false;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Hub removed.',
-        ),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Hub removed.')));
   }
 
   void _testHub() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'NFC integration will be connected later.',
-        ),
-      ),
+      const SnackBar(content: Text('NFC integration will be connected later.')),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Hub Settings'),
-      ),
+      appBar: AppBar(title: const Text('Hub Settings')),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding:
-              const EdgeInsets.all(AppSpacing.xl),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               AppCard(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Hub Information',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge,
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
 
-                    const SizedBox(
-                      height: AppSpacing.lg,
-                    ),
+                    const SizedBox(height: AppSpacing.lg),
 
                     TextField(
-                      controller:
-                          _hubNameController,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Hub Name',
-                      ),
+                      controller: _hubNameController,
+                      decoration: const InputDecoration(labelText: 'Hub Name'),
                     ),
 
-                    const SizedBox(
-                      height: AppSpacing.md,
-                    ),
+                    const SizedBox(height: AppSpacing.md),
 
                     TextField(
-                      controller:
-                          _locationController,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Location',
-                      ),
+                      controller: _locationController,
+                      decoration: const InputDecoration(labelText: 'Location'),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(
-                height: AppSpacing.lg,
-              ),
+              const SizedBox(height: AppSpacing.lg),
 
               AppCard(
                 child: ListTile(
                   leading: Icon(
-                    _registered
-                        ? Icons.check_circle
-                        : Icons.cancel,
-                    color: _registered
-                        ? Colors.green
-                        : Colors.red,
+                    _registered ? Icons.check_circle : Icons.cancel,
+                    color: _registered ? Colors.green : Colors.red,
                   ),
                   title: Text(
-                    _registered
-                        ? 'Hub Registered'
-                        : 'No Hub Registered',
+                    _registered ? 'Hub Registered' : 'No Hub Registered',
                   ),
                   subtitle: Text(
                     _registered
@@ -179,14 +125,10 @@ class _HubSettingsScreenState
                 ),
               ),
 
-              const SizedBox(
-                height: AppSpacing.lg,
-              ),
+              const SizedBox(height: AppSpacing.lg),
 
               SwitchListTile(
-                title: const Text(
-                  'Manual Check-in',
-                ),
+                title: const Text('Manual Check-in'),
                 subtitle: const Text(
                   'Allow manual family check-ins if the Hub is unavailable.',
                 ),
@@ -198,9 +140,7 @@ class _HubSettingsScreenState
                 },
               ),
 
-              const SizedBox(
-                height: AppSpacing.xl,
-              ),
+              const SizedBox(height: AppSpacing.xl),
 
               if (!_registered)
                 AppPrimaryButton(
@@ -209,28 +149,18 @@ class _HubSettingsScreenState
                 ),
 
               if (_registered) ...[
-                AppPrimaryButton(
-                  label: 'Test Hub',
-                  onPressed: _testHub,
-                ),
+                AppPrimaryButton(label: 'Test Hub', onPressed: _testHub),
 
-                const SizedBox(
-                  height: AppSpacing.md,
-                ),
+                const SizedBox(height: AppSpacing.md),
 
                 OutlinedButton.icon(
                   onPressed: _removeHub,
-                  icon: const Icon(
-                    Icons.delete_outline,
-                  ),
-                  label:
-                      const Text('Remove Hub'),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Remove Hub'),
                 ),
               ],
 
-              const SizedBox(
-                height: AppSpacing.xxl,
-              ),
+              const SizedBox(height: AppSpacing.xxl),
 
               AppPrimaryButton(
                 label: 'Save Settings',

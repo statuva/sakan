@@ -1,6 +1,11 @@
 import 'package:sakan/core/theme/app_spacing.dart';
 import 'package:sakan/shared/widgets/buttons/app_primary_button.dart';
 import 'package:flutter/material.dart';
+import 'package:sakan/app/app_dependencies.dart';
+import 'package:sakan/shared/models/current_family_context.dart';
+import 'package:sakan/shared/models/notification_preferences.dart';
+import 'package:sakan/shared/widgets/feedback/app_error_state.dart';
+import 'package:sakan/shared/widgets/feedback/app_loading_state.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
@@ -12,23 +17,56 @@ class NotificationSettingsScreen extends StatefulWidget {
 
 class _NotificationSettingsScreenState
     extends State<NotificationSettingsScreen> {
-  bool _rhythmAlerts = true;
-  bool _careReminders = true;
-  bool _familyInvitations = true;
-  bool _weeklyReports = true;
-  bool _importantMoments = true;
+  CurrentFamilyContext? _familyContext;
 
-  bool _quietHours = false;
+  NotificationPreferences _preferences = const NotificationPreferences();
 
-  int _quietStartMinutes = 22 * 60;
-  int _quietEndMinutes = 7 * 60;
+  bool _isLoading = true;
+  bool _isSaving = false;
+  String? _errorMessage;
 
-  Future<void> _pickTime({
-    required bool isStart,
-  }) async {
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final familyContext = await AppDependencies.currentFamilyService.load();
+
+      final preferences = await AppDependencies.profileRepository
+          .getNotificationPreferences(
+            familyId: familyContext.familyId,
+            memberId: familyContext.userId,
+          );
+
+      if (!mounted) return;
+
+      setState(() {
+        _familyContext = familyContext;
+        _preferences = preferences;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'We could not load your notification settings.';
+      });
+    }
+  }
+
+  Future<void> _pickTime({required bool isStart}) async {
     final currentMinutes = isStart
-        ? _quietStartMinutes
-        : _quietEndMinutes;
+        ? _preferences.quietStartMinutes
+        : _preferences.quietEndMinutes;
 
     final picked = await showTimePicker(
       context: context,
@@ -40,198 +78,225 @@ class _NotificationSettingsScreenState
 
     if (picked == null) return;
 
-    setState(() {
-      final minutes =
-          picked.hour * 60 + picked.minute;
+    final minutes = picked.hour * 60 + picked.minute;
 
-      if (isStart) {
-        _quietStartMinutes = minutes;
-      } else {
-        _quietEndMinutes = minutes;
-      }
+    setState(() {
+      _preferences = isStart
+          ? _preferences.copyWith(quietStartMinutes: minutes)
+          : _preferences.copyWith(quietEndMinutes: minutes);
     });
   }
 
-  String _formatMinutes(int minutes) {
-    final hour24 = minutes ~/ 60;
-    final minute = minutes % 60;
+  Future<void> _saveSettings() async {
+    final familyContext = _familyContext;
 
-    final time = TimeOfDay(
-      hour: hour24,
-      minute: minute,
-    );
+    if (familyContext == null || _isSaving) {
+      return;
+    }
 
-    return MaterialLocalizations.of(
-      context,
-    ).formatTimeOfDay(time);
+    setState(() {
+      _isSaving = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await AppDependencies.profileRepository.updateNotificationPreferences(
+        familyId: familyContext.familyId,
+        memberId: familyContext.userId,
+        preferences: _preferences,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Notification settings saved.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = 'We could not save your notification settings.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
   }
 
-  void _save() {
-    // Firebase save comes next.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Notification settings saved.',
-        ),
-      ),
-    );
+  String _formatMinutes(int minutes) {
+    return MaterialLocalizations.of(
+      context,
+    ).formatTimeOfDay(TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60));
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: SafeArea(
+          child: AppLoadingState(message: 'Loading notification settings…'),
+        ),
+      );
+    }
+
+    if (_errorMessage != null && _familyContext == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Notification Settings')),
+        body: SafeArea(
+          child: AppErrorState(message: _errorMessage!, onRetry: _loadSettings),
+        ),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        title:
-            const Text('Notification Settings'),
-      ),
+      appBar: AppBar(title: const Text('Notification Settings')),
       body: SafeArea(
         child: ListView(
-          padding:
-              const EdgeInsets.all(AppSpacing.xl),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           children: [
             SwitchListTile(
-              title:
-                  const Text('Rhythm Alerts'),
+              title: const Text('Rhythm Alerts'),
               subtitle: const Text(
                 'Receive reminders when family rhythms begin to drift.',
               ),
-              value: _rhythmAlerts,
-              onChanged: (value) {
-                setState(() {
-                  _rhythmAlerts = value;
-                });
-              },
+              value: _preferences.rhythmAlerts,
+              onChanged: _isSaving
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _preferences = _preferences.copyWith(
+                          rhythmAlerts: value,
+                        );
+                      });
+                    },
             ),
 
             SwitchListTile(
-              title: const Text(
-                'Care Action Reminders',
-              ),
+              title: const Text('Care Action Reminders'),
               subtitle: const Text(
                 'Receive reminders for upcoming care actions.',
               ),
-              value: _careReminders,
-              onChanged: (value) {
-                setState(() {
-                  _careReminders = value;
-                });
-              },
+              value: _preferences.careActionReminders,
+              onChanged: _isSaving
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _preferences = _preferences.copyWith(
+                          careActionReminders: value,
+                        );
+                      });
+                    },
             ),
 
             SwitchListTile(
-              title: const Text(
-                'Family Invitations',
-              ),
-              subtitle: const Text(
-                'Receive invitations to family sessions.',
-              ),
-              value: _familyInvitations,
-              onChanged: (value) {
-                setState(() {
-                  _familyInvitations = value;
-                });
-              },
+              title: const Text('Family Invitations'),
+              subtitle: const Text('Receive invitations to family sessions.'),
+              value: _preferences.familyInvitations,
+              onChanged: _isSaving
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _preferences = _preferences.copyWith(
+                          familyInvitations: value,
+                        );
+                      });
+                    },
             ),
 
             SwitchListTile(
-              title: const Text(
-                'Weekly Reports',
-              ),
-              subtitle: const Text(
-                'Receive your weekly Digital Twin summary.',
-              ),
-              value: _weeklyReports,
-              onChanged: (value) {
-                setState(() {
-                  _weeklyReports = value;
-                });
-              },
+              title: const Text('Weekly Reports'),
+              subtitle: const Text('Receive your weekly Digital Twin summary.'),
+              value: _preferences.weeklyReports,
+              onChanged: _isSaving
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _preferences = _preferences.copyWith(
+                          weeklyReports: value,
+                        );
+                      });
+                    },
             ),
 
             SwitchListTile(
-              title: const Text(
-                'Important Moments',
-              ),
+              title: const Text('Important Moments'),
               subtitle: const Text(
                 'Receive reminders for important family moments.',
               ),
-              value: _importantMoments,
-              onChanged: (value) {
-                setState(() {
-                  _importantMoments = value;
-                });
-              },
+              value: _preferences.importantMoments,
+              onChanged: _isSaving
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _preferences = _preferences.copyWith(
+                          importantMoments: value,
+                        );
+                      });
+                    },
             ),
 
-            const Divider(
-              height: 40,
-            ),
+            const Divider(height: 40),
 
             SwitchListTile(
-              title:
-                  const Text('Quiet Hours'),
+              title: const Text('Quiet Hours'),
               subtitle: const Text(
                 'Pause non-urgent notifications during selected hours.',
               ),
-              value: _quietHours,
-              onChanged: (value) {
-                setState(() {
-                  _quietHours = value;
-                });
-              },
+              value: _preferences.quietHoursEnabled,
+              onChanged: _isSaving
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _preferences = _preferences.copyWith(
+                          quietHoursEnabled: value,
+                        );
+                      });
+                    },
             ),
 
-            if (_quietHours) ...[
+            if (_preferences.quietHoursEnabled) ...[
               ListTile(
-                leading: const Icon(
-                  Icons.bedtime_outlined,
-                ),
-                title:
-                    const Text('Quiet Starts'),
-                subtitle: Text(
-                  _formatMinutes(
-                    _quietStartMinutes,
-                  ),
-                ),
-                trailing: const Icon(
-                  Icons.chevron_right,
-                ),
-                onTap: () {
-                  _pickTime(
-                    isStart: true,
-                  );
-                },
+                leading: const Icon(Icons.bedtime_outlined),
+                title: const Text('Quiet Starts'),
+                subtitle: Text(_formatMinutes(_preferences.quietStartMinutes)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _isSaving
+                    ? null
+                    : () {
+                        _pickTime(isStart: true);
+                      },
               ),
 
               ListTile(
-                leading: const Icon(
-                  Icons.wb_sunny_outlined,
-                ),
-                title:
-                    const Text('Quiet Ends'),
-                subtitle: Text(
-                  _formatMinutes(
-                    _quietEndMinutes,
-                  ),
-                ),
-                trailing: const Icon(
-                  Icons.chevron_right,
-                ),
-                onTap: () {
-                  _pickTime(
-                    isStart: false,
-                  );
-                },
+                leading: const Icon(Icons.wb_sunny_outlined),
+                title: const Text('Quiet Ends'),
+                subtitle: Text(_formatMinutes(_preferences.quietEndMinutes)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _isSaving
+                    ? null
+                    : () {
+                        _pickTime(isStart: false);
+                      },
               ),
             ],
 
-            const SizedBox(
-              height: AppSpacing.xxl,
-            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                _errorMessage!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+
+            const SizedBox(height: AppSpacing.xxl),
 
             AppPrimaryButton(
               label: 'Save Settings',
-              onPressed: _save,
+              isLoading: _isSaving,
+              onPressed: _isSaving ? null : _saveSettings,
             ),
           ],
         ),

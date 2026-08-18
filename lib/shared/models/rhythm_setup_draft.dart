@@ -41,14 +41,11 @@ class RhythmSetupDraft {
       title: title ?? this.title,
       description: description ?? this.description,
       category: category ?? this.category,
-      expectedIntervalDays:
-          expectedIntervalDays ?? this.expectedIntervalDays,
-      importanceLevel:
-          importanceLevel ?? this.importanceLevel,
+      expectedIntervalDays: expectedIntervalDays ?? this.expectedIntervalDays,
+      importanceLevel: importanceLevel ?? this.importanceLevel,
       expectedParticipantIds:
           expectedParticipantIds ?? this.expectedParticipantIds,
-      nextOccurrenceAt:
-          nextOccurrenceAt ?? this.nextOccurrenceAt,
+      nextOccurrenceAt: nextOccurrenceAt ?? this.nextOccurrenceAt,
       lastOccurrenceAt: removeLastOccurrence
           ? null
           : lastOccurrenceAt ?? this.lastOccurrenceAt,

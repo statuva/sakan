@@ -26,14 +26,14 @@ class NotificationPreferences {
     }
 
     return NotificationPreferences(
-      rhythmAlerts: map['rhythmAlerts'] ?? true,
-      careActionReminders: map['careActionReminders'] ?? true,
-      familyInvitations: map['familyInvitations'] ?? true,
-      weeklyReports: map['weeklyReports'] ?? true,
-      importantMoments: map['importantMoments'] ?? true,
-      quietHoursEnabled: map['quietHoursEnabled'] ?? false,
-      quietStartMinutes: map['quietStartMinutes'] ?? 1320,
-      quietEndMinutes: map['quietEndMinutes'] ?? 420,
+      rhythmAlerts: map['rhythmAlerts'] as bool? ?? true,
+      careActionReminders: map['careActionReminders'] as bool? ?? true,
+      familyInvitations: map['familyInvitations'] as bool? ?? true,
+      weeklyReports: map['weeklyReports'] as bool? ?? true,
+      importantMoments: map['importantMoments'] as bool? ?? true,
+      quietHoursEnabled: map['quietHoursEnabled'] as bool? ?? false,
+      quietStartMinutes: map['quietStartMinutes'] as int? ?? 1320,
+      quietEndMinutes: map['quietEndMinutes'] as int? ?? 420,
     );
   }
 
@@ -48,5 +48,27 @@ class NotificationPreferences {
       'quietStartMinutes': quietStartMinutes,
       'quietEndMinutes': quietEndMinutes,
     };
+  }
+
+  NotificationPreferences copyWith({
+    bool? rhythmAlerts,
+    bool? careActionReminders,
+    bool? familyInvitations,
+    bool? weeklyReports,
+    bool? importantMoments,
+    bool? quietHoursEnabled,
+    int? quietStartMinutes,
+    int? quietEndMinutes,
+  }) {
+    return NotificationPreferences(
+      rhythmAlerts: rhythmAlerts ?? this.rhythmAlerts,
+      careActionReminders: careActionReminders ?? this.careActionReminders,
+      familyInvitations: familyInvitations ?? this.familyInvitations,
+      weeklyReports: weeklyReports ?? this.weeklyReports,
+      importantMoments: importantMoments ?? this.importantMoments,
+      quietHoursEnabled: quietHoursEnabled ?? this.quietHoursEnabled,
+      quietStartMinutes: quietStartMinutes ?? this.quietStartMinutes,
+      quietEndMinutes: quietEndMinutes ?? this.quietEndMinutes,
+    );
   }
 }

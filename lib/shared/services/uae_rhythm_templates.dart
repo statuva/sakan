@@ -6,57 +6,62 @@ abstract final class UaeRhythmTemplates {
     RhythmTemplate(
       id: 'friday_lunch',
       title: 'Friday Lunch',
-      description: 'A regular family lunch that brings household and extended family members together.',
+      description:
+          'A regular family lunch that brings household and extended family members together.',
       category: MomentCategory.tradition,
       defaultIntervalDays: 7,
       defaultImportanceLevel: 5,
-      ),
+    ),
 
-      RhythmTemplate(id: 'family_majlis',
+    RhythmTemplate(
+      id: 'family_majlis',
       title: 'Family Majlis',
-      description: 'Time for conversation, hospitality, and connection with family members.',
+      description:
+          'Time for conversation, hospitality, and connection with family members.',
       category: MomentCategory.tradition,
       defaultIntervalDays: 7,
       defaultImportanceLevel: 4,
-      ),
+    ),
 
-      RhythmTemplate(id: 'grandparents_visit',
+    RhythmTemplate(
+      id: 'grandparents_visit',
       title: 'Grandparents Visit',
-      description: 'Regular time dedicated to maintaining intergenerational connection.',
+      description:
+          'Regular time dedicated to maintaining intergenerational connection.',
       category: MomentCategory.tradition,
       defaultIntervalDays: 14,
       defaultImportanceLevel: 5,
-      ),
+    ),
 
-      RhythmTemplate(id: 'elder_visit',
+    RhythmTemplate(
+      id: 'elder_visit',
       title: 'Elder Visit',
-      description: 'Time reserved for visiting and supporting older family members.',
+      description:
+          'Time reserved for visiting and supporting older family members.',
       category: MomentCategory.care,
       defaultIntervalDays: 14,
       defaultImportanceLevel: 5,
-      ),
+    ),
 
-      RhythmTemplate(
+    RhythmTemplate(
       id: 'extended_family_gathering',
       title: 'Extended Family Gathering',
-      description:
-          'A gathering with relatives beyond the immediate household.',
+      description: 'A gathering with relatives beyond the immediate household.',
       category: MomentCategory.tradition,
       defaultIntervalDays: 30,
       defaultImportanceLevel: 4,
-       ),
+    ),
 
-      RhythmTemplate(
+    RhythmTemplate(
       id: 'weekend_breakfast',
       title: 'Weekend Breakfast',
-      description:
-          'A calm shared breakfast at the end of the week.',
+      description: 'A calm shared breakfast at the end of the week.',
       category: MomentCategory.familyTime,
       defaultIntervalDays: 7,
       defaultImportanceLevel: 3,
     ),
 
-      RhythmTemplate(
+    RhythmTemplate(
       id: 'family_dinner',
       title: 'Family Dinner',
       description:
@@ -66,17 +71,16 @@ abstract final class UaeRhythmTemplates {
       defaultImportanceLevel: 4,
     ),
 
-      RhythmTemplate(
+    RhythmTemplate(
       id: 'family_storytelling',
       title: 'Family Storytelling',
-      description:
-          'Time for sharing family stories, memories, and heritage.',
+      description: 'Time for sharing family stories, memories, and heritage.',
       category: MomentCategory.tradition,
       defaultIntervalDays: 14,
       defaultImportanceLevel: 4,
     ),
 
-      RhythmTemplate(
+    RhythmTemplate(
       id: 'desert_outing',
       title: 'Desert Outing',
       description:
