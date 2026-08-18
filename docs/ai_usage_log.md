@@ -1,2 +1,17 @@
-Date  -	Tool -	Purpose - Human Review
-|------------------------------------|
+# AI Usage Log
+
+| Date | Tool | Purpose | Human Review |
+|------|------|---------|--------------|
+| 2026-08-05 | External AI Critique Tool | Evaluated the initial project concept and identified limitations of using attendance duration as an indicator of family relationships. Suggested focusing on measurable family rhythms, recurring traditions, and observable interactions. | The team reviewed the critique, rejected unsupported assumptions, and adopted only measurable concepts that aligned with the project goals. |
+| 2026-08-06 | ChatGPT | Assisted in planning the overall application architecture, page structure, navigation flow, GitHub workflow, and project development roadmap. | The proposed structure was reviewed by the team, modified where necessary, and implemented manually. |
+| 2026-08-07 | ChatGPT | Assisted in designing the Flutter project architecture, reusable widgets, design system, routing structure, repository pattern, and shared data models. | The architecture was adapted to the project requirements, implemented incrementally, and verified using Flutter analyzer and manual testing. |
+| 2026-08-08 | ChatGPT | Assisted in designing the Firebase backend architecture, including Firestore collections, repository interfaces, authentication flow, family creation, invitation system, and Firestore Security Rules. | The Firebase structure and security rules were reviewed, modified during development, deployed, and validated using multiple test accounts. |
+| 2026-08-09 | ChatGPT | Assisted in designing and debugging the Family Setup workflow, including family roles, relationship management, rhythm selection, baseline generation, and synchronization between setup screens and Firestore. | The workflow was implemented, tested using multiple accounts, corrected after integration issues, and validated before continuing development. |
+| 2026-08-10 – 2026-08-12 | ChatGPT | Assisted in designing the Profile module, including personal profile management, recurring schedules, family-time preferences, notification settings, privacy settings, family administration, and Hub management. Also assisted in connecting these features to Firebase persistence and role-based access control. | Each feature was reviewed, integrated into the existing project, tested on both web and Android, and modified to support personalized member data and administrator-only functionality. |
+| 2026-08-13 – 2026-08-18 | ChatGPT | Assisted in debugging integration issues, improving Firestore data flow, designing schedule and availability architecture for future Calendar integration, troubleshooting Android deployment, and preparing integration testing and project documentation. | All recommendations were reviewed, adapted where appropriate, tested using real Firebase data, and validated through analyzer checks, physical-device testing, and multi-account integration testing. |
+
+## Human Review Statement
+
+AI tools were used to assist with software architecture, implementation guidance, debugging, documentation, and technical explanations throughout the project.
+
+All AI-assisted suggestions were critically reviewed by the development team before implementation. The team was responsible for selecting the final architecture, integrating the code into the project, modifying suggestions where necessary, testing functionality, validating Firebase integration, reviewing security rules, resolving implementation issues, and verifying the application through manual testing on both web and Android platforms.

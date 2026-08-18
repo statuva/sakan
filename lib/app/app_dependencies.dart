@@ -3,6 +3,7 @@ import 'package:sakan/features/family_setup/data/firebase_family_access_reposito
 import 'package:sakan/features/family_setup/data/firebase_family_setup_repository.dart';
 import 'package:sakan/features/profile/data/firebase_profile_repository.dart';
 import 'package:sakan/shared/services/current_family_service.dart';
+import 'package:sakan/features/profile/data/firebase_schedule_repository.dart';
 
 abstract final class AppDependencies {
   static final FirebaseAuthRepository authRepository = FirebaseAuthRepository();
@@ -15,6 +16,9 @@ abstract final class AppDependencies {
 
   static final FirebaseProfileRepository profileRepository =
       FirebaseProfileRepository();
+
+  static final FirebaseScheduleRepository scheduleRepository =
+      FirebaseScheduleRepository();
 
   static final CurrentFamilyService currentFamilyService =
       CurrentFamilyService();
