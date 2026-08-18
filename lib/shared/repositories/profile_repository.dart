@@ -1,11 +1,13 @@
 import 'package:sakan/shared/models/family.dart';
 import 'package:sakan/shared/models/hub.dart';
 import 'package:sakan/shared/models/member.dart';
+import 'package:sakan/shared/models/model_enums.dart' as models;
+
 import 'package:sakan/shared/models/notification_preferences.dart';
 import 'package:sakan/shared/models/schedule_block.dart';
+import 'package:sakan/shared/models/privacy_preferences.dart';
 
 abstract interface class ProfileRepository {
-  // Current member
   Stream<Member?> watchMember({
     required String familyId,
     required String memberId,
@@ -15,10 +17,10 @@ abstract interface class ProfileRepository {
     required String familyId,
     required String memberId,
     required String displayName,
+    required models.AgeGroup ageGroup,
     required String? photoUrl,
   });
 
-  // Schedule
   Stream<List<ScheduleBlock>> watchScheduleBlocks({
     required String familyId,
     required String memberId,
@@ -34,7 +36,6 @@ abstract interface class ProfileRepository {
     required String blockId,
   });
 
-  // Family time preferences
   Future<void> updatePreferredFamilyTime({
     required String familyId,
     required String memberId,
@@ -43,21 +44,37 @@ abstract interface class ProfileRepository {
     required int preferredEndMinutes,
   });
 
-  // Preferred activities
   Future<void> updatePreferredActivities({
     required String familyId,
     required String memberId,
     required List<String> activities,
   });
 
-  // Notifications
+  Future<void> updateFamilyTimePreferences({
+    required String familyId,
+    required String memberId,
+    required List<int> preferredDays,
+    required int preferredStartMinutes,
+    required int preferredEndMinutes,
+    required List<String> activities,
+  });
+
+  Future<NotificationPreferences> getNotificationPreferences({
+    required String familyId,
+    required String memberId,
+  });
+
   Future<void> updateNotificationPreferences({
     required String familyId,
     required String memberId,
     required NotificationPreferences preferences,
   });
 
-  // Privacy
+  Future<PrivacyPreferences> getPrivacyPreferences({
+    required String familyId,
+    required String memberId,
+  });
+
   Future<void> updatePrivacySettings({
     required String familyId,
     required String memberId,
@@ -65,7 +82,6 @@ abstract interface class ProfileRepository {
     required bool analyticsConsent,
   });
 
-  // Family
   Stream<Family?> watchFamily(String familyId);
 
   Future<void> updateFamilyName({
@@ -73,7 +89,6 @@ abstract interface class ProfileRepository {
     required String familyName,
   });
 
-  // Hub
   Stream<List<Hub>> watchHubs(String familyId);
 
   Future<void> saveHub(Hub hub);
