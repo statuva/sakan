@@ -95,8 +95,6 @@ flutter run -d <device-id>
 - [`docs/data_model.md`](docs/data_model.md)
 - [`docs/firestore_structure.md`](docs/firestore_structure.md)
 - [`docs/ai_usage_log.md`](docs/ai_usage_log.md)
-- [`docs/CODEBASE_QA_GUIDE.md`](docs/CODEBASE_QA_GUIDE.md)
-- [`docs/FIRST_CODEBASE_CLEANUP_REPORT.md`](docs/FIRST_CODEBASE_CLEANUP_REPORT.md)
 
 ## Team
 

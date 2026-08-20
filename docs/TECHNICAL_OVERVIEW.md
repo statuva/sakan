@@ -1,8 +1,13 @@
-# Sakan Codebase and Q&A Guide
+# Sakan Technical Overview
 
-> Scope: current `main` implementation at the first codebase-cleanup checkpoint. This guide explains what the code does today, how the parts connect, and what is still planned. It is written for technical review and competition Q&A.
+This document explains the current Sakan Flutter application architecture,
+data flow, feature boundaries, Firebase integration, role model, privacy
+decisions, current limitations, and planned extensions.
 
-## 1. Thirty-second explanation
+It describes the implementation currently present in the repository and
+distinguishes completed functionality from planned functionality.
+
+## 1.SAKAN explanation
 
 Sakan is a Flutter application backed by Firebase Authentication and Cloud Firestore. A signed-in user belongs to a family, configures recurring traditions and one-time family moments, records personal availability, and sees shared family information through Calendar, Moments, Profile, and setup flows. The code uses repository interfaces to separate Flutter screens from Firebase implementations. Current Calendar recommendations are rule-based and grounded in stored dates, rhythms, participants, and availability; an external generative-AI backend is not connected yet.
 
@@ -80,7 +85,7 @@ User edits
 
 The main benefit is replaceability: a screen depends on a repository contract rather than embedding every Firestore path and query inside the UI.
 
-## 5. Core concepts you must be able to distinguish
+## 5. Core concepts 
 
 ### AppUser versus Member
 
@@ -422,65 +427,8 @@ families/{familyId}
 - Repository methods throw on invalid ownership/state and let presentation convert failures to user-safe messages.
 - `mounted` checks prevent UI updates after a screen is disposed.
 
-## 13. Honest answers to likely Q&A questions
 
-### “What is the novel contribution?”
-
-Sakan combines a family-activity graph, recurring rhythm records, shared availability, meaningful one-time moments, and physical participation evidence into one family-specific state model. The defensible value comes from structured longitudinal family data, not from a generic chatbot.
-
-### “Is the Digital Twin already complete?”
-
-No. The data foundation is present—members, moments, rhythms, participation, availability, care actions, and memories—but the visible Digital Twin graph and simulation page remain a placeholder. That distinction should be stated clearly.
-
-### “Is the AI currently live?”
-
-No external generative model is connected in the current branch. Calendar insights are rule-based and inspect verified Firestore data. The planned AI layer will explain and organize those facts through a protected backend, with the rule-based engine remaining as fallback.
-
-### “Why not call ChatGPT directly from Flutter?”
-
-API secrets must not be shipped in the client. The planned flow is Flutter -> protected Firebase function -> AI provider -> validated structured response.
-
-### “How do you avoid fake emotional scoring?”
-
-Sakan measures observable system data: attendance evidence, recurrence gaps, completion state, participants, schedules, and user-selected importance. It does not label emotions or psychological health.
-
-### “Why are there both users and members?”
-
-A Firebase user is an account. A member is that account’s role and profile inside one family. Separating them supports family-scoped permissions and preferences.
-
-### “Why duplicate schedule data as availability?”
-
-It is deliberate privacy separation. The owner keeps labels such as School; the family Calendar receives only a busy interval and member ID.
-
-### “How does cold start work?”
-
-During setup, the family chooses recurring traditions, expected frequency, importance, participants, and dates. Sakan creates initial RhythmRecords with `stillLearning` and low confidence rather than pretending to have historical evidence.
-
-### “How do you know someone attended an external event?”
-
-Sakan does not claim passive detection for off-site events. External attendance must be user-confirmed. Home sessions can later use Hub check-in/out evidence.
-
-### “What does the NFC Hub do?”
-
-The planned Hub is a shared NFC ritual point. Members check in and out individually. It provides intentional participation evidence; it does not measure emotional connection. NFC implementation is not yet connected in the current code.
-
-### “How are recommendations produced?”
-
-Today, the Calendar insight service ranks actual moment urgency, rhythm drift, importance, participant data, and shared availability. Future AI may turn that structured evidence into a clearer action plan, but it will not determine the underlying facts.
-
-### “How are permissions enforced?”
-
-The UI hides unauthorized actions, but Firestore Security Rules independently verify authentication, membership, ownership, and role before allowing writes.
-
-### “What happens if AI is unavailable?”
-
-The deterministic insight service remains the fallback. Core Calendar, Moments, setup, schedules, and Firestore data do not depend on an LLM response.
-
-### “What remains before the final demo?”
-
-The major remaining product work is Home, visible Digital Twin, memory creation/upload, NFC, real notification delivery, external AI backend, fuller automated tests, and final visual polish.
-
-## 14. Fast code walkthrough for judges
+## 13. Fast code walkthrough 
 
 Use this order during a technical walkthrough:
 
@@ -496,16 +444,3 @@ Use this order during a technical walkthrough:
 10. `calendar_insight_service.dart` — deterministic recommendation layer.
 11. Firestore Security Rules — server-side authorization.
 
-## 15. Commands to run before merging a cleanup
-
-```powershell
-flutter pub get
-dart format lib test
-flutter analyze
-flutter test
-flutter run -d edge
-flutter devices
-flutter run -d <android-device-id>
-```
-
-A cleanup should be merged only after the application behaves identically before and after these checks.
