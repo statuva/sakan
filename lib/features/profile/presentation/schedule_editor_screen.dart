@@ -13,12 +13,10 @@ class ScheduleEditorScreen extends StatefulWidget {
   const ScheduleEditorScreen({super.key});
 
   @override
-  State<ScheduleEditorScreen> createState() =>
-      _ScheduleEditorScreenState();
+  State<ScheduleEditorScreen> createState() => _ScheduleEditorScreenState();
 }
 
-class _ScheduleEditorScreenState
-    extends State<ScheduleEditorScreen> {
+class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
   CurrentFamilyContext? _familyContext;
   Stream<List<ScheduleBlock>>? _scheduleStream;
 
@@ -39,13 +37,9 @@ class _ScheduleEditorScreenState
     });
 
     try {
-      final familyContext =
-          await AppDependencies
-              .currentFamilyService
-              .load();
+      final familyContext = await AppDependencies.currentFamilyService.load();
 
-      final stream = AppDependencies.scheduleRepository
-          .watchPersonalSchedule(
+      final stream = AppDependencies.scheduleRepository.watchPersonalSchedule(
         familyId: familyContext.familyId,
         memberId: familyContext.userId,
       );
@@ -62,8 +56,7 @@ class _ScheduleEditorScreenState
 
       setState(() {
         _isLoading = false;
-        _errorMessage =
-            'We could not load your schedule.';
+        _errorMessage = 'We could not load your schedule.';
       });
     }
   }
@@ -74,17 +67,14 @@ class _ScheduleEditorScreenState
   }) async {
     final familyContext = _familyContext;
 
-    if (familyContext == null ||
-        _isSaving) {
+    if (familyContext == null || _isSaving) {
       return;
     }
 
     final draft = await showDialog<_ScheduleDraft>(
       context: context,
       builder: (context) {
-        return _ScheduleDialog(
-          existingBlock: existingBlock,
-        );
+        return _ScheduleDialog(existingBlock: existingBlock);
       },
     );
 
@@ -109,7 +99,8 @@ class _ScheduleEditorScreenState
     final now = DateTime.now().toUtc();
 
     final block = ScheduleBlock(
-      id: existingBlock?.id ??
+      id:
+          existingBlock?.id ??
           '${familyContext.userId}_'
               '${DateTime.now().microsecondsSinceEpoch}',
       familyId: familyContext.familyId,
@@ -129,26 +120,20 @@ class _ScheduleEditorScreenState
 
     try {
       if (existingBlock == null) {
-        await AppDependencies.scheduleRepository
-            .createScheduleBlock(block);
+        await AppDependencies.scheduleRepository.createScheduleBlock(block);
       } else {
-        await AppDependencies.scheduleRepository
-            .updateScheduleBlock(block);
+        await AppDependencies.scheduleRepository.updateScheduleBlock(block);
       }
 
       if (!mounted) return;
 
       _showMessage(
-        existingBlock == null
-            ? 'Schedule added.'
-            : 'Schedule updated.',
+        existingBlock == null ? 'Schedule added.' : 'Schedule updated.',
       );
     } catch (_) {
       if (!mounted) return;
 
-      _showMessage(
-        'We could not save this schedule block.',
-      );
+      _showMessage('We could not save this schedule block.');
     } finally {
       if (mounted) {
         setState(() {
@@ -177,16 +162,12 @@ class _ScheduleEditorScreenState
     });
   }
 
-  Future<void> _deleteScheduleBlock(
-    ScheduleBlock block,
-  ) async {
+  Future<void> _deleteScheduleBlock(ScheduleBlock block) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text(
-            'Delete schedule block?',
-          ),
+          title: const Text('Delete schedule block?'),
           content: Text(
             'Remove "${block.label}" from '
             'your recurring schedule?',
@@ -218,8 +199,7 @@ class _ScheduleEditorScreenState
     });
 
     try {
-      await AppDependencies.scheduleRepository
-          .deleteScheduleBlock(
+      await AppDependencies.scheduleRepository.deleteScheduleBlock(
         familyId: block.familyId,
         memberId: block.memberId,
         blockId: block.id,
@@ -231,9 +211,7 @@ class _ScheduleEditorScreenState
     } catch (_) {
       if (!mounted) return;
 
-      _showMessage(
-        'We could not delete this schedule block.',
-      );
+      _showMessage('We could not delete this schedule block.');
     } finally {
       if (mounted) {
         setState(() {
@@ -244,11 +222,9 @@ class _ScheduleEditorScreenState
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -256,23 +232,17 @@ class _ScheduleEditorScreenState
     if (_isLoading) {
       return const Scaffold(
         body: SafeArea(
-          child: AppLoadingState(
-            message: 'Loading your schedule…',
-          ),
+          child: AppLoadingState(message: 'Loading your schedule…'),
         ),
       );
     }
 
-    if (_errorMessage != null ||
-        _scheduleStream == null) {
+    if (_errorMessage != null || _scheduleStream == null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('My Schedule'),
-        ),
+        appBar: AppBar(title: const Text('My Schedule')),
         body: SafeArea(
           child: AppErrorState(
-            message: _errorMessage ??
-                'Your schedule is unavailable.',
+            message: _errorMessage ?? 'Your schedule is unavailable.',
             onRetry: _loadSchedule,
           ),
         ),
@@ -284,80 +254,57 @@ class _ScheduleEditorScreenState
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Scaffold(
-            appBar: AppBar(
-              title: const Text('My Schedule'),
-            ),
+            appBar: AppBar(title: const Text('My Schedule')),
             body: SafeArea(
               child: AppErrorState(
-                message:
-                    'We could not load your schedule.',
+                message: 'We could not load your schedule.',
                 onRetry: _loadSchedule,
               ),
             ),
           );
         }
 
-        if (snapshot.connectionState ==
-                ConnectionState.waiting &&
+        if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
           return const Scaffold(
             body: SafeArea(
-              child: AppLoadingState(
-                message:
-                    'Loading your schedule…',
-              ),
+              child: AppLoadingState(message: 'Loading your schedule…'),
             ),
           );
         }
 
-        final blocks =
-            snapshot.data ?? <ScheduleBlock>[];
+        final blocks = snapshot.data ?? <ScheduleBlock>[];
 
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('My Schedule'),
-          ),
-          floatingActionButton:
-              FloatingActionButton(
+          appBar: AppBar(title: const Text('My Schedule')),
+          floatingActionButton: FloatingActionButton(
             onPressed: _isSaving
                 ? null
                 : () {
-                    _openScheduleEditor(
-                      blocks: blocks,
-                    );
+                    _openScheduleEditor(blocks: blocks);
                   },
             child: const Icon(Icons.add_rounded),
           ),
           body: SafeArea(
             child: ListView(
-              padding: const EdgeInsets.all(
-                AppSpacing.xl,
-              ),
+              padding: const EdgeInsets.all(AppSpacing.xl),
               children: [
                 AppCard(
                   child: Row(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(
                         Icons.calendar_month_outlined,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
-                      const SizedBox(
-                        width: AppSpacing.md,
-                      ),
+                      const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'Connected to Calendar',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium,
+                              style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const SizedBox(height: 6),
                             Text(
@@ -366,9 +313,7 @@ class _ScheduleEditorScreenState
                               'Other family members will be shown '
                               'only that you are busy, not the '
                               'private schedule label.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium,
+                              style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ],
                         ),
@@ -377,18 +322,14 @@ class _ScheduleEditorScreenState
                   ),
                 ),
 
-                const SizedBox(
-                  height: AppSpacing.xl,
-                ),
+                const SizedBox(height: AppSpacing.xl),
 
                 if (blocks.isEmpty)
                   _EmptyScheduleState(
                     onAdd: _isSaving
                         ? null
                         : () {
-                            _openScheduleEditor(
-                              blocks: blocks,
-                            );
+                            _openScheduleEditor(blocks: blocks);
                           },
                   )
                 else ...[
@@ -397,30 +338,21 @@ class _ScheduleEditorScreenState
                       Expanded(
                         child: Text(
                           'Recurring unavailable times',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge,
+                          style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),
                       Text(
                         '${blocks.length}',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium,
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ],
                   ),
 
-                  const SizedBox(
-                    height: AppSpacing.md,
-                  ),
+                  const SizedBox(height: AppSpacing.md),
 
                   ...blocks.map(
                     (block) => Padding(
-                      padding:
-                          const EdgeInsets.only(
-                        bottom: AppSpacing.md,
-                      ),
+                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
                       child: _ScheduleBlockCard(
                         block: block,
                         isDisabled: _isSaving,
@@ -431,17 +363,13 @@ class _ScheduleEditorScreenState
                           );
                         },
                         onDelete: () {
-                          _deleteScheduleBlock(
-                            block,
-                          );
+                          _deleteScheduleBlock(block);
                         },
                       ),
                     ),
                   ),
 
-                  const SizedBox(
-                    height: AppSpacing.xxl,
-                  ),
+                  const SizedBox(height: AppSpacing.xxl),
                 ],
               ],
             ),
@@ -453,54 +381,36 @@ class _ScheduleEditorScreenState
 }
 
 class _EmptyScheduleState extends StatelessWidget {
-  const _EmptyScheduleState({
-    required this.onAdd,
-  });
+  const _EmptyScheduleState({required this.onAdd});
 
   final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: AppSpacing.xxl,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
       child: Column(
         children: [
           Icon(
             Icons.schedule_outlined,
             size: 72,
-            color: Theme.of(context)
-                .colorScheme
-                .primary,
+            color: Theme.of(context).colorScheme.primary,
           ),
-          const SizedBox(
-            height: AppSpacing.lg,
-          ),
+          const SizedBox(height: AppSpacing.lg),
           Text(
             'No schedule added yet',
-            style: Theme.of(context)
-                .textTheme
-                .headlineSmall,
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
-          const SizedBox(
-            height: AppSpacing.sm,
-          ),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             'Tell Sakan when you are usually busy '
             'so the Calendar can find better family '
             'times.',
             textAlign: TextAlign.center,
-            style:
-                Theme.of(context).textTheme.bodyMedium,
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(
-            height: AppSpacing.xl,
-          ),
-          AppPrimaryButton(
-            label: 'Add Schedule',
-            onPressed: onAdd,
-          ),
+          const SizedBox(height: AppSpacing.xl),
+          AppPrimaryButton(label: 'Add Schedule', onPressed: onAdd),
         ],
       ),
     );
@@ -525,11 +435,7 @@ class _ScheduleBlockCard extends StatelessWidget {
     return AppCard(
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        leading: CircleAvatar(
-          child: Text(
-            _dayAbbreviation(block.dayOfWeek),
-          ),
-        ),
+        leading: CircleAvatar(child: Text(_dayAbbreviation(block.dayOfWeek))),
         title: Text(block.label),
         subtitle: Text(
           '${_dayName(block.dayOfWeek)}\n'
@@ -549,14 +455,8 @@ class _ScheduleBlockCard extends StatelessWidget {
           },
           itemBuilder: (context) {
             return const [
-              PopupMenuItem(
-                value: 'edit',
-                child: Text('Edit'),
-              ),
-              PopupMenuItem(
-                value: 'delete',
-                child: Text('Delete'),
-              ),
+              PopupMenuItem(value: 'edit', child: Text('Edit')),
+              PopupMenuItem(value: 'delete', child: Text('Delete')),
             ];
           },
         ),
@@ -590,38 +490,26 @@ class _ScheduleBlockCard extends StatelessWidget {
     };
   }
 
-  static String _formatMinutes(
-    BuildContext context,
-    int minutes,
-  ) {
-    return MaterialLocalizations.of(context)
-        .formatTimeOfDay(
-      TimeOfDay(
-        hour: minutes ~/ 60,
-        minute: minutes % 60,
-      ),
-    );
+  static String _formatMinutes(BuildContext context, int minutes) {
+    return MaterialLocalizations.of(
+      context,
+    ).formatTimeOfDay(TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60));
   }
 }
 
 class _ScheduleDialog extends StatefulWidget {
-  const _ScheduleDialog({
-    this.existingBlock,
-  });
+  const _ScheduleDialog({this.existingBlock});
 
   final ScheduleBlock? existingBlock;
 
   @override
-  State<_ScheduleDialog> createState() =>
-      _ScheduleDialogState();
+  State<_ScheduleDialog> createState() => _ScheduleDialogState();
 }
 
-class _ScheduleDialogState
-    extends State<_ScheduleDialog> {
+class _ScheduleDialogState extends State<_ScheduleDialog> {
   final _formKey = GlobalKey<FormState>();
 
-  late final TextEditingController
-      _labelController;
+  late final TextEditingController _labelController;
 
   late int _dayOfWeek;
   late TimeOfDay _startTime;
@@ -635,9 +523,7 @@ class _ScheduleDialogState
 
     final block = widget.existingBlock;
 
-    _labelController = TextEditingController(
-      text: block?.label ?? '',
-    );
+    _labelController = TextEditingController(text: block?.label ?? '');
 
     _dayOfWeek = block?.dayOfWeek ?? 1;
 
@@ -691,16 +577,13 @@ class _ScheduleDialogState
       return;
     }
 
-    final startMinutes =
-        _startTime.hour * 60 + _startTime.minute;
+    final startMinutes = _startTime.hour * 60 + _startTime.minute;
 
-    final endMinutes =
-        _endTime.hour * 60 + _endTime.minute;
+    final endMinutes = _endTime.hour * 60 + _endTime.minute;
 
     if (endMinutes <= startMinutes) {
       setState(() {
-        _timeError =
-            'End time must be after start time.';
+        _timeError = 'End time must be after start time.';
       });
       return;
     }
@@ -724,8 +607,7 @@ class _ScheduleDialogState
             : 'Edit Unavailable Time',
       ),
       content: ConstrainedBox(
-        constraints:
-            const BoxConstraints(maxWidth: 420),
+        constraints: const BoxConstraints(maxWidth: 420),
         child: SingleChildScrollView(
           child: Form(
             key: _formKey,
@@ -734,16 +616,13 @@ class _ScheduleDialogState
               children: [
                 TextFormField(
                   controller: _labelController,
-                  textCapitalization:
-                      TextCapitalization.words,
+                  textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
                     labelText: 'Label',
-                    hintText:
-                        'School, work, university…',
+                    hintText: 'School, work, university…',
                   ),
                   validator: (value) {
-                    if (value == null ||
-                        value.trim().isEmpty) {
+                    if (value == null || value.trim().isEmpty) {
                       return 'Enter a schedule label.';
                     }
 
@@ -751,44 +630,19 @@ class _ScheduleDialogState
                   },
                 ),
 
-                const SizedBox(
-                  height: AppSpacing.md,
-                ),
+                const SizedBox(height: AppSpacing.md),
 
                 DropdownButtonFormField<int>(
                   initialValue: _dayOfWeek,
-                  decoration: const InputDecoration(
-                    labelText: 'Day',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Day'),
                   items: const [
-                    DropdownMenuItem(
-                      value: 1,
-                      child: Text('Monday'),
-                    ),
-                    DropdownMenuItem(
-                      value: 2,
-                      child: Text('Tuesday'),
-                    ),
-                    DropdownMenuItem(
-                      value: 3,
-                      child: Text('Wednesday'),
-                    ),
-                    DropdownMenuItem(
-                      value: 4,
-                      child: Text('Thursday'),
-                    ),
-                    DropdownMenuItem(
-                      value: 5,
-                      child: Text('Friday'),
-                    ),
-                    DropdownMenuItem(
-                      value: 6,
-                      child: Text('Saturday'),
-                    ),
-                    DropdownMenuItem(
-                      value: 7,
-                      child: Text('Sunday'),
-                    ),
+                    DropdownMenuItem(value: 1, child: Text('Monday')),
+                    DropdownMenuItem(value: 2, child: Text('Tuesday')),
+                    DropdownMenuItem(value: 3, child: Text('Wednesday')),
+                    DropdownMenuItem(value: 4, child: Text('Thursday')),
+                    DropdownMenuItem(value: 5, child: Text('Friday')),
+                    DropdownMenuItem(value: 6, child: Text('Saturday')),
+                    DropdownMenuItem(value: 7, child: Text('Sunday')),
                   ],
                   onChanged: (value) {
                     if (value == null) return;
@@ -799,80 +653,60 @@ class _ScheduleDialogState
                   },
                 ),
 
-                const SizedBox(
-                  height: AppSpacing.md,
-                ),
+                const SizedBox(height: AppSpacing.md),
 
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
-                    Icons.access_time_outlined,
-                  ),
+                  leading: const Icon(Icons.access_time_outlined),
                   title: const Text('Starts'),
                   subtitle: Text(
-                    MaterialLocalizations.of(context)
-                        .formatTimeOfDay(_startTime),
+                    MaterialLocalizations.of(
+                      context,
+                    ).formatTimeOfDay(_startTime),
                   ),
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                  ),
+                  trailing: const Icon(Icons.chevron_right),
                   onTap: _pickStartTime,
                 ),
 
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
-                    Icons.access_time_filled,
-                  ),
+                  leading: const Icon(Icons.access_time_filled),
                   title: const Text('Ends'),
                   subtitle: Text(
-                    MaterialLocalizations.of(context)
-                        .formatTimeOfDay(_endTime),
+                    MaterialLocalizations.of(context).formatTimeOfDay(_endTime),
                   ),
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                  ),
+                  trailing: const Icon(Icons.chevron_right),
                   onTap: _pickEndTime,
                 ),
 
                 if (_timeError != null) ...[
-                  const SizedBox(
-                    height: AppSpacing.sm,
-                  ),
+                  const SizedBox(height: AppSpacing.sm),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
                       _timeError!,
                       style: TextStyle(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .error,
+                        color: Theme.of(context).colorScheme.error,
                       ),
                     ),
                   ),
                 ],
 
-                const SizedBox(
-                  height: AppSpacing.sm,
-                ),
+                const SizedBox(height: AppSpacing.sm),
 
                 Row(
                   children: [
                     Icon(
                       Icons.repeat_rounded,
                       size: 18,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'This unavailable time repeats '
                         'every week.',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium,
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
                   ],
@@ -889,10 +723,7 @@ class _ScheduleDialogState
           },
           child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Save'),
-        ),
+        FilledButton(onPressed: _save, child: const Text('Save')),
       ],
     );
   }

@@ -21,15 +21,11 @@ service cloud.firestore {
 
     function isFamilyMember(familyId) {
       return signedIn()
-        && exists(
-          memberPath(familyId, request.auth.uid)
-        );
+        && exists(memberPath(familyId, request.auth.uid));
     }
 
     function memberRole(familyId) {
-      return get(
-        memberPath(familyId, request.auth.uid)
-      ).data.role;
+      return get(memberPath(familyId, request.auth.uid)).data.role;
     }
 
     function isFamilyAdmin(familyId) {
@@ -46,20 +42,15 @@ service cloud.firestore {
     }
 
     function familyAfter(familyId) {
-      return getAfter(
-        familyPath(familyId)
-      );
+      return getAfter(familyPath(familyId));
     }
 
     function validInvitation(code, familyId) {
       return exists(invitationPath(code))
         && exists(familyPath(familyId))
-        && get(invitationPath(code)).data.familyId
-          == familyId
-        && get(invitationPath(code)).data.isActive
-          == true
-        && get(invitationPath(code)).data.expiresAt
-          > request.time;
+        && get(invitationPath(code)).data.familyId == familyId
+        && get(invitationPath(code)).data.isActive == true
+        && get(invitationPath(code)).data.expiresAt > request.time;
     }
 
     match /users/{userId} {
@@ -76,31 +67,26 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && request.resource.data.code == code
-        && request.resource.data.createdBy
-          == request.auth.uid
+        && request.resource.data.createdBy == request.auth.uid
         && familyAfter(
           request.resource.data.familyId
         ).data.createdBy == request.auth.uid;
 
       allow update, delete: if signedIn()
-        && resource.data.createdBy
-          == request.auth.uid;
+        && resource.data.createdBy == request.auth.uid;
     }
 
     match /families/{familyId} {
       allow create: if signedIn()
-        && request.resource.data.createdBy
-          == request.auth.uid;
+        && request.resource.data.createdBy == request.auth.uid;
 
       allow read: if isFamilyMember(familyId)
         || (
           signedIn()
-          && resource.data.createdBy
-            == request.auth.uid
+          && resource.data.createdBy == request.auth.uid
         );
 
-      allow update, delete:
-        if isFamilyAdmin(familyId);
+      allow update, delete: if isFamilyAdmin(familyId);
 
       match /members/{memberId} {
         allow get: if signedIn()
@@ -109,18 +95,15 @@ service cloud.firestore {
             || isFamilyMember(familyId)
           );
 
-        allow list:
-          if isFamilyMember(familyId);
+        allow list: if isFamilyMember(familyId);
 
         allow create: if signedIn()
           && memberId == request.auth.uid
-          && request.resource.data.familyId
-            == familyId
+          && request.resource.data.familyId == familyId
           && (
             (
               request.resource.data.role == 'admin'
-              && familyAfter(familyId).data.createdBy
-                == request.auth.uid
+              && familyAfter(familyId).data.createdBy == request.auth.uid
             )
             ||
             (
@@ -128,11 +111,9 @@ service cloud.firestore {
                 request.resource.data.role == 'adult'
                 || request.resource.data.role == 'child'
               )
-              && request.resource.data
-                .joinedViaInviteCode is string
+              && request.resource.data.joinedViaInviteCode is string
               && validInvitation(
-                request.resource.data
-                  .joinedViaInviteCode,
+                request.resource.data.joinedViaInviteCode,
                 familyId
               )
             )
@@ -159,8 +140,7 @@ service cloud.firestore {
               ])
           );
 
-        allow delete:
-          if isFamilyAdmin(familyId);
+        allow delete: if isFamilyAdmin(familyId);
 
         match /scheduleBlocks/{blockId} {
           allow read: if isFamilyMember(familyId)
@@ -168,99 +148,72 @@ service cloud.firestore {
 
           allow create: if isFamilyMember(familyId)
             && memberId == request.auth.uid
-            && request.resource.data.familyId
-              == familyId
-            && request.resource.data.memberId
-              == request.auth.uid;
+            && request.resource.data.familyId == familyId
+            && request.resource.data.memberId == request.auth.uid;
 
           allow update: if isFamilyMember(familyId)
             && memberId == request.auth.uid
-            && resource.data.memberId
-              == request.auth.uid
-            && request.resource.data.memberId
-              == request.auth.uid
-            && request.resource.data.familyId
-              == familyId;
+            && resource.data.memberId == request.auth.uid
+            && request.resource.data.memberId == request.auth.uid
+            && request.resource.data.familyId == familyId;
 
           allow delete: if isFamilyMember(familyId)
             && memberId == request.auth.uid
-            && resource.data.memberId
-              == request.auth.uid;
+            && resource.data.memberId == request.auth.uid;
         }
       }
 
       match /availabilityBlocks/{blockId} {
-        allow read:
-          if isFamilyMember(familyId);
+        allow read: if isFamilyMember(familyId);
 
-        allow create, update:
-          if isFamilyMember(familyId)
-          && request.resource.data.familyId
-            == familyId
-          && request.resource.data.memberId
-            == request.auth.uid;
+        allow create, update: if isFamilyMember(familyId)
+          && request.resource.data.familyId == familyId
+          && request.resource.data.memberId == request.auth.uid;
 
-        allow delete:
-          if isFamilyMember(familyId)
-          && resource.data.memberId
-            == request.auth.uid;
+        allow delete: if isFamilyMember(familyId)
+          && resource.data.memberId == request.auth.uid;
       }
 
       match /moments/{momentId} {
-        allow read:
-          if isFamilyMember(familyId);
+        allow read: if isFamilyMember(familyId);
 
-        allow create:
-          if isAdultOrAdmin(familyId)
-          && request.resource.data.familyId
-            == familyId
-          && request.resource.data.createdBy
-            == request.auth.uid;
+        allow create: if isAdultOrAdmin(familyId)
+          && request.resource.data.familyId == familyId
+          && request.resource.data.createdBy == request.auth.uid;
 
-        allow update, delete:
-          if isAdultOrAdmin(familyId);
+        allow update, delete: if isAdultOrAdmin(familyId);
       }
 
       match /momentInstances/{instanceId} {
-        allow read:
-          if isFamilyMember(familyId);
-
-        allow create, update:
-          if isAdultOrAdmin(familyId);
-
-        allow delete:
-          if isFamilyAdmin(familyId);
+        allow read: if isFamilyMember(familyId);
+        allow create, update: if isAdultOrAdmin(familyId);
+        allow delete: if isFamilyAdmin(familyId);
 
         match /participants/{memberId} {
-          allow read:
-            if isFamilyMember(familyId);
+          allow read: if isFamilyMember(familyId);
 
-          allow create, update:
-            if isFamilyMember(familyId)
+          allow create, update: if isFamilyMember(familyId)
             && memberId == request.auth.uid
-            && request.resource.data.memberId
-              == request.auth.uid;
+            && request.resource.data.memberId == request.auth.uid;
 
-          allow delete:
-            if isFamilyAdmin(familyId);
+          allow delete: if isFamilyAdmin(familyId);
         }
       }
 
       match /careActions/{actionId} {
-        allow read:
-          if isFamilyMember(familyId);
+        allow read: if isFamilyMember(familyId);
 
-        allow create, delete:
-          if isAdultOrAdmin(familyId);
+        allow create: if isAdultOrAdmin(familyId)
+          && request.resource.data.familyId == familyId
+          && request.resource.data.assignedMemberId is string;
 
-        allow update:
-          if isAdultOrAdmin(familyId)
+        allow delete: if isAdultOrAdmin(familyId);
+
+        allow update: if isAdultOrAdmin(familyId)
           || (
             isFamilyMember(familyId)
-            && resource.data.assignedMemberId
-              == request.auth.uid
-            && request.resource.data
-              .assignedMemberId
+            && resource.data.assignedMemberId == request.auth.uid
+            && request.resource.data.assignedMemberId
               == resource.data.assignedMemberId
             && request.resource.data
               .diff(resource.data)
@@ -275,22 +228,23 @@ service cloud.firestore {
       }
 
       match /rhythms/{rhythmId} {
-        allow read:
-          if isFamilyMember(familyId);
+        allow read: if isFamilyMember(familyId);
+        allow create, update: if isAdultOrAdmin(familyId);
+        allow delete: if isFamilyAdmin(familyId);
+      }
 
-        allow create, update:
-          if isAdultOrAdmin(familyId);
+      match /memories/{memoryId} {
+        allow read: if isFamilyMember(familyId);
 
-        allow delete:
-          if isFamilyAdmin(familyId);
+        allow create: if isAdultOrAdmin(familyId)
+          && request.resource.data.familyId == familyId;
+
+        allow update, delete: if isAdultOrAdmin(familyId);
       }
 
       match /hubs/{hubId} {
-        allow read:
-          if isFamilyMember(familyId);
-
-        allow create, update, delete:
-          if isFamilyAdmin(familyId);
+        allow read: if isFamilyMember(familyId);
+        allow create, update, delete: if isFamilyAdmin(familyId);
       }
     }
 
