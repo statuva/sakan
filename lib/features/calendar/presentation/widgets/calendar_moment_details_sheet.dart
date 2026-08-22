@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_spacing.dart';
+import '../../../../shared/models/family_memory.dart';
 import '../../../../shared/models/family_moment.dart';
 import '../../../../shared/models/model_enums.dart';
 import '../../../../shared/models/rhythm_record.dart';
@@ -12,23 +13,38 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
   const CalendarMomentDetailsSheet({
     required this.moment,
     required this.rhythm,
+    required this.memory,
     required this.currentUserId,
     required this.canEdit,
-    required this.onEdit,
+    required this.onEditMoment,
+    this.onAddMemory,
+    this.onViewMemory,
+    this.onEditMemory,
     super.key,
   });
 
   final FamilyMoment moment;
   final RhythmRecord? rhythm;
+  final FamilyMemory? memory;
+
   final String currentUserId;
   final bool canEdit;
-  final VoidCallback onEdit;
+
+  final VoidCallback onEditMoment;
+  final VoidCallback? onAddMemory;
+  final VoidCallback? onViewMemory;
+  final VoidCallback? onEditMemory;
+
+  bool get _isCompleted => moment.status == MomentStatus.completed;
 
   @override
   Widget build(BuildContext context) {
     final localStart = moment.startAt.toLocal();
+
     final localEnd = moment.endAt?.toLocal();
+
     final style = calendarMomentStyle(moment, currentUserId: currentUserId);
+
     final status = calendarStatusStyle(moment: moment, rhythm: rhythm);
 
     return SafeArea(
@@ -49,7 +65,9 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
                   ),
                   child: Icon(style.icon, color: style.color, size: 21),
                 ),
+
                 const SizedBox(width: AppSpacing.md),
+
                 Expanded(
                   child: Text(
                     moment.title,
@@ -58,13 +76,18 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
                     ),
                   ),
                 ),
+
                 IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
                   icon: const Icon(Icons.close_rounded),
                 ),
               ],
             ),
+
             const SizedBox(height: AppSpacing.md),
+
             Align(
               alignment: Alignment.centerLeft,
               child: Container(
@@ -85,63 +108,195 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
                 ),
               ),
             ),
+
             const SizedBox(height: AppSpacing.xl),
+
             _DetailRow(
               icon: Icons.calendar_today_outlined,
               title: 'Date',
               value: DateFormat('EEEE, d MMMM y').format(localStart),
             ),
+
             _DetailRow(
               icon: Icons.access_time_outlined,
               title: 'Time',
               value: localEnd == null
                   ? DateFormat('h:mm a').format(localStart)
-                  : '${DateFormat('h:mm a').format(localStart)}–${DateFormat('h:mm a').format(localEnd)}',
+                  : '${DateFormat('h:mm a').format(localStart)}'
+                        '–'
+                        '${DateFormat('h:mm a').format(localEnd)}',
             ),
+
             _DetailRow(
               icon: Icons.repeat_rounded,
               title: 'Type',
               value: moment.type == MomentType.recurring
-                  ? 'Recurring every ${moment.expectedIntervalDays ?? rhythm?.expectedIntervalDays ?? 7} days'
+                  ? 'Recurring every '
+                        '${moment.expectedIntervalDays ?? rhythm?.expectedIntervalDays ?? 7} days'
                   : 'One-time',
             ),
+
             _DetailRow(icon: style.icon, title: 'Category', value: style.label),
+
             _DetailRow(
               icon: Icons.group_outlined,
               title: 'Expected Participants',
               value: '${moment.expectedParticipantIds.length}',
             ),
+
             _DetailRow(
               icon: Icons.priority_high_rounded,
               title: 'Importance',
               value: '${moment.importanceLevel}/5',
             ),
+
             if (moment.location?.trim().isNotEmpty == true)
               _DetailRow(
                 icon: Icons.location_on_outlined,
                 title: 'Location',
                 value: moment.location!,
               ),
+
             if (moment.notes?.trim().isNotEmpty == true)
               _DetailRow(
                 icon: Icons.notes_outlined,
                 title: 'Notes',
                 value: moment.notes!,
               ),
-            const SizedBox(height: AppSpacing.lg),
+
+            if (_isCompleted) ...[
+              const SizedBox(height: AppSpacing.sm),
+
+              _MemoryStatusCard(memory: memory),
+
+              const SizedBox(height: AppSpacing.lg),
+            ],
+
             if (canEdit)
               FilledButton.icon(
-                onPressed: onEdit,
+                onPressed: onEditMoment,
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('Edit Moment'),
-              )
-            else
+              ),
+
+            if (_isCompleted &&
+                memory == null &&
+                canEdit &&
+                onAddMemory != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+
+              OutlinedButton.icon(
+                onPressed: onAddMemory,
+                icon: const Icon(Icons.bookmark_add_outlined),
+                label: const Text('Add Memory'),
+              ),
+            ],
+
+            if (_isCompleted && memory != null && onViewMemory != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+
+              OutlinedButton.icon(
+                onPressed: onViewMemory,
+                icon: const Icon(Icons.auto_stories_outlined),
+                label: const Text('View Memory'),
+              ),
+            ],
+
+            if (_isCompleted &&
+                memory != null &&
+                canEdit &&
+                onEditMemory != null) ...[
+              const SizedBox(height: AppSpacing.xs),
+
+              TextButton.icon(
+                onPressed: onEditMemory,
+                icon: const Icon(Icons.edit_note_outlined),
+                label: const Text('Edit Memory'),
+              ),
+            ],
+
+            if (!canEdit) ...[
+              const SizedBox(height: AppSpacing.sm),
+
               FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
                 child: const Text('Done'),
               ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MemoryStatusCard extends StatelessWidget {
+  const _MemoryStatusCard({required this.memory});
+
+  final FamilyMemory? memory;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasMemory = memory != null;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: hasMemory
+            ? CalendarPalette.forestSoft
+            : CalendarPalette.surfaceSoft,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: hasMemory
+              ? CalendarPalette.forest.withAlpha(70)
+              : CalendarPalette.border,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            hasMemory
+                ? Icons.auto_stories_outlined
+                : Icons.bookmark_add_outlined,
+            color: hasMemory
+                ? CalendarPalette.forestDark
+                : CalendarPalette.inkSoft,
+          ),
+
+          const SizedBox(width: AppSpacing.md),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hasMemory ? 'Memory saved' : 'No Memory saved yet',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(color: CalendarPalette.ink),
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  hasMemory
+                      ? 'A family note has been '
+                            'preserved for this '
+                            'completed Moment.'
+                      : 'Preserve a family note '
+                            'after this completed '
+                            'Moment.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: CalendarPalette.inkSoft,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -166,7 +321,9 @@ class _DetailRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 21, color: CalendarPalette.forest),
+
           const SizedBox(width: AppSpacing.md),
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -177,7 +334,9 @@ class _DetailRow extends StatelessWidget {
                     color: CalendarPalette.inkSoft,
                   ),
                 ),
+
                 const SizedBox(height: 3),
+
                 Text(
                   value,
                   style: Theme.of(

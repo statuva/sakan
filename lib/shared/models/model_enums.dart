@@ -1,4 +1,8 @@
-enum FamilyRole { admin, adult, child }
+enum FamilyRole {
+  admin,
+  adult,
+  child,
+}
 
 enum FamilyRelationship {
   parent,
@@ -10,9 +14,17 @@ enum FamilyRelationship {
   other,
 }
 
-enum AgeGroup { adult, child, teen, senior }
+enum AgeGroup {
+  adult,
+  child,
+  teen,
+  senior,
+}
 
-enum MomentType { recurring, singular }
+enum MomentType {
+  recurring,
+  singular,
+}
 
 enum MomentCategory {
   tradition,
@@ -31,10 +43,42 @@ enum EvidenceType {
   manual,
 }
 
-enum MomentStatus { scheduled, active, completed, cancelled, missed }
+enum MomentStatus {
+  scheduled,
+  active,
+  completed,
+  cancelled,
+  missed,
+}
 
-enum CareActionStatus { pending, inProgress, completed, skipped }
+enum CareActionStatus {
+  pending,
+  inProgress,
+  completed,
+  skipped,
+}
 
-enum RhythmStatus { stillLearning, stable, drifting, recovering, strengthening }
+/// Describes where a reminder was originally created.
+///
+/// This allows My Reminders to explain whether an item
+/// was created manually or suggested elsewhere in Sakan.
+enum CareActionSource {
+  manual,
+  calendar,
+  digitalTwin,
+  schedule,
+}
 
-enum ConfidenceLevel { low, medium, high }
+enum RhythmStatus {
+  stillLearning,
+  stable,
+  drifting,
+  recovering,
+  strengthening,
+}
+
+enum ConfidenceLevel {
+  low,
+  medium,
+  high,
+}

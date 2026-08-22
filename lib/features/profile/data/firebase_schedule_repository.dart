@@ -70,11 +70,14 @@ class FirebaseScheduleRepository implements ScheduleRepository {
         .collection('scheduleBlocks')
         .snapshots()
         .map((snapshot) {
+          final now = DateTime.now();
+
           final blocks = snapshot.docs
               .map(
                 (document) =>
                     ScheduleBlock.fromMap(document.id, document.data()),
               )
+              .where((block) => !block.isExpiredAt(now))
               .toList();
 
           blocks.sort(_compareScheduleBlocks);
@@ -93,11 +96,14 @@ class FirebaseScheduleRepository implements ScheduleRepository {
         .collection('availabilityBlocks')
         .snapshots()
         .map((snapshot) {
+          final now = DateTime.now();
+
           final blocks = snapshot.docs
               .map(
                 (document) =>
                     AvailabilityBlock.fromMap(document.id, document.data()),
               )
+              .where((block) => !block.isExpiredAt(now))
               .toList();
 
           blocks.sort(_compareAvailabilityBlocks);
@@ -216,10 +222,6 @@ class FirebaseScheduleRepository implements ScheduleRepository {
       throw ArgumentError('Schedule label cannot be empty.');
     }
 
-    if (block.dayOfWeek < 1 || block.dayOfWeek > 7) {
-      throw ArgumentError('Schedule day must be between 1 and 7.');
-    }
-
     if (block.startMinutes < 0 ||
         block.startMinutes >= 1440 ||
         block.endMinutes <= 0 ||
@@ -230,10 +232,69 @@ class FirebaseScheduleRepository implements ScheduleRepository {
     if (block.endMinutes <= block.startMinutes) {
       throw ArgumentError('End time must be after start time.');
     }
+
+    if (block.isRecurring) {
+      if (block.repeatDays.isEmpty) {
+        throw ArgumentError('Choose at least one repeat day.');
+      }
+
+      for (final day in block.repeatDays) {
+        if (day < 1 || day > 7) {
+          throw ArgumentError('Repeat days must be between 1 and 7.');
+        }
+      }
+
+      if (block.repeatDays.toSet().length != block.repeatDays.length) {
+        throw ArgumentError('Repeat days cannot contain duplicates.');
+      }
+
+      return;
+    }
+
+    final date = block.scheduledDate;
+
+    if (date == null) {
+      throw ArgumentError('A one-time schedule needs a date.');
+    }
+
+    final localDate = date.toLocal();
+
+    final endDateTime = DateTime(
+      localDate.year,
+      localDate.month,
+      localDate.day,
+      block.endMinutes ~/ 60,
+      block.endMinutes % 60,
+    );
+
+    if (!endDateTime.isAfter(DateTime.now())) {
+      throw ArgumentError('A one-time schedule must end in the future.');
+    }
   }
 
   int _compareScheduleBlocks(ScheduleBlock first, ScheduleBlock second) {
-    final dayResult = first.dayOfWeek.compareTo(second.dayOfWeek);
+    if (first.isRecurring != second.isRecurring) {
+      // Show upcoming one-time entries first.
+      return first.isRecurring ? 1 : -1;
+    }
+
+    if (!first.isRecurring) {
+      final dateResult = (first.scheduledDate ?? DateTime(9999)).compareTo(
+        second.scheduledDate ?? DateTime(9999),
+      );
+
+      if (dateResult != 0) {
+        return dateResult;
+      }
+
+      return first.startMinutes.compareTo(second.startMinutes);
+    }
+
+    final firstDay = first.repeatDays.isEmpty ? 8 : first.repeatDays.first;
+
+    final secondDay = second.repeatDays.isEmpty ? 8 : second.repeatDays.first;
+
+    final dayResult = firstDay.compareTo(secondDay);
 
     if (dayResult != 0) {
       return dayResult;
@@ -246,7 +307,27 @@ class FirebaseScheduleRepository implements ScheduleRepository {
     AvailabilityBlock first,
     AvailabilityBlock second,
   ) {
-    final dayResult = first.dayOfWeek.compareTo(second.dayOfWeek);
+    if (first.isRecurring != second.isRecurring) {
+      return first.isRecurring ? 1 : -1;
+    }
+
+    if (!first.isRecurring) {
+      final dateResult = (first.scheduledDate ?? DateTime(9999)).compareTo(
+        second.scheduledDate ?? DateTime(9999),
+      );
+
+      if (dateResult != 0) {
+        return dateResult;
+      }
+
+      return first.startMinutes.compareTo(second.startMinutes);
+    }
+
+    final firstDay = first.repeatDays.isEmpty ? 8 : first.repeatDays.first;
+
+    final secondDay = second.repeatDays.isEmpty ? 8 : second.repeatDays.first;
+
+    final dayResult = firstDay.compareTo(secondDay);
 
     if (dayResult != 0) {
       return dayResult;

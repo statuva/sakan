@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import 'package:sakan/app/app_dependencies.dart';
+import 'package:sakan/core/theme/app_spacing.dart';
+import 'package:sakan/shared/models/current_family_context.dart';
+import 'package:sakan/shared/models/schedule_block.dart';
+import 'package:sakan/shared/widgets/cards/app_card.dart';
 import 'package:sakan/shared/widgets/feedback/app_error_state.dart';
 import 'package:sakan/shared/widgets/feedback/app_loading_state.dart';
-import 'package:sakan/shared/models/schedule_block.dart';
-import 'package:sakan/core/theme/app_spacing.dart';
-import 'package:sakan/shared/widgets/buttons/app_primary_button.dart';
-import 'package:sakan/shared/widgets/cards/app_card.dart';
-import 'package:sakan/shared/models/current_family_context.dart';
+
+enum _ScheduleEntryType { oneTime, weekly }
 
 class ScheduleEditorScreen extends StatefulWidget {
   const ScheduleEditorScreen({super.key});
@@ -18,16 +22,35 @@ class ScheduleEditorScreen extends StatefulWidget {
 
 class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
   CurrentFamilyContext? _familyContext;
+
   Stream<List<ScheduleBlock>>? _scheduleStream;
+
+  Timer? _expiryTimer;
 
   bool _isLoading = true;
   bool _isSaving = false;
+
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
+
     _loadSchedule();
+
+    // Causes one-time entries to disappear
+    // shortly after their end time passes.
+    _expiryTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _expiryTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadSchedule() async {
@@ -39,16 +62,17 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
     try {
       final familyContext = await AppDependencies.currentFamilyService.load();
 
-      final stream = AppDependencies.scheduleRepository.watchPersonalSchedule(
-        familyId: familyContext.familyId,
-        memberId: familyContext.userId,
-      );
+      final scheduleStream = AppDependencies.scheduleRepository
+          .watchPersonalSchedule(
+            familyId: familyContext.familyId,
+            memberId: familyContext.userId,
+          );
 
       if (!mounted) return;
 
       setState(() {
         _familyContext = familyContext;
-        _scheduleStream = stream;
+        _scheduleStream = scheduleStream;
         _isLoading = false;
       });
     } catch (_) {
@@ -63,6 +87,7 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
 
   Future<void> _openScheduleEditor({
     required List<ScheduleBlock> blocks,
+    required _ScheduleEntryType preferredType,
     ScheduleBlock? existingBlock,
   }) async {
     final familyContext = _familyContext;
@@ -73,8 +98,11 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
 
     final draft = await showDialog<_ScheduleDraft>(
       context: context,
-      builder: (context) {
-        return _ScheduleDialog(existingBlock: existingBlock);
+      builder: (dialogContext) {
+        return _ScheduleDialog(
+          existingBlock: existingBlock,
+          preferredType: preferredType,
+        );
       },
     );
 
@@ -82,21 +110,26 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
       return;
     }
 
-    final hasOverlap = _hasOverlap(
+    final conflictingBlock = _findConflictingBlock(
       draft: draft,
       blocks: blocks,
       ignoredBlockId: existingBlock?.id,
     );
 
-    if (hasOverlap) {
+    if (conflictingBlock != null) {
       _showMessage(
-        'This time overlaps with another '
-        'unavailable schedule block.',
+        '"${draft.label}" overlaps with '
+        '"${conflictingBlock.label}".',
       );
+
       return;
     }
 
     final now = DateTime.now().toUtc();
+
+    final isRecurring = draft.type == _ScheduleEntryType.weekly;
+
+    final repeatDays = draft.repeatDays.toList()..sort();
 
     final block = ScheduleBlock(
       id:
@@ -106,10 +139,11 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
       familyId: familyContext.familyId,
       memberId: familyContext.userId,
       label: draft.label.trim(),
-      dayOfWeek: draft.dayOfWeek,
+      repeatDays: isRecurring ? repeatDays : const <int>[],
+      scheduledDate: isRecurring ? null : draft.scheduledDate,
       startMinutes: draft.startMinutes,
       endMinutes: draft.endMinutes,
-      isRecurring: true,
+      isRecurring: isRecurring,
       createdAt: existingBlock?.createdAt ?? now,
       updatedAt: now,
     );
@@ -128,12 +162,19 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
       if (!mounted) return;
 
       _showMessage(
-        existingBlock == null ? 'Schedule added.' : 'Schedule updated.',
+        existingBlock == null
+            ? 'Unavailable time added.'
+            : 'Unavailable time updated.',
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
 
-      _showMessage('We could not save this schedule block.');
+      _showMessage(
+        error is ArgumentError
+            ? error.message.toString()
+            : 'We could not save this '
+                  'unavailable time.',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -143,45 +184,88 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
     }
   }
 
-  bool _hasOverlap({
+  ScheduleBlock? _findConflictingBlock({
     required _ScheduleDraft draft,
     required List<ScheduleBlock> blocks,
     String? ignoredBlockId,
   }) {
-    return blocks.any((block) {
+    for (final block in blocks) {
       if (block.id == ignoredBlockId) {
-        return false;
+        continue;
       }
 
-      if (block.dayOfWeek != draft.dayOfWeek) {
-        return false;
+      if (block.isExpiredAt(DateTime.now())) {
+        continue;
       }
 
-      return draft.startMinutes < block.endMinutes &&
+      final timesOverlap =
+          draft.startMinutes < block.endMinutes &&
           draft.endMinutes > block.startMinutes;
-    });
+
+      if (!timesOverlap) {
+        continue;
+      }
+
+      if (_datePatternsOverlap(draft, block)) {
+        return block;
+      }
+    }
+
+    return null;
+  }
+
+  bool _datePatternsOverlap(_ScheduleDraft draft, ScheduleBlock block) {
+    final draftIsRecurring = draft.type == _ScheduleEntryType.weekly;
+
+    if (draftIsRecurring && block.isRecurring) {
+      return draft.repeatDays.any(block.repeatDays.contains);
+    }
+
+    if (!draftIsRecurring && !block.isRecurring) {
+      final draftDate = draft.scheduledDate;
+
+      final blockDate = block.scheduledDate;
+
+      if (draftDate == null || blockDate == null) {
+        return false;
+      }
+
+      return _sameDate(draftDate, blockDate);
+    }
+
+    if (!draftIsRecurring && block.isRecurring) {
+      final draftDate = draft.scheduledDate;
+
+      return draftDate != null && block.repeatDays.contains(draftDate.weekday);
+    }
+
+    final blockDate = block.scheduledDate;
+
+    return blockDate != null && draft.repeatDays.contains(blockDate.weekday);
   }
 
   Future<void> _deleteScheduleBlock(ScheduleBlock block) async {
+    if (_isSaving) return;
+
     final shouldDelete = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Delete schedule block?'),
+          title: const Text('Delete unavailable time?'),
           content: Text(
-            'Remove "${block.label}" from '
-            'your recurring schedule?',
+            'Remove "${block.label}" '
+            'from your schedule?',
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop(false);
+                Navigator.of(dialogContext).pop(false);
               },
               child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.of(context).pop(true);
+                Navigator.of(dialogContext).pop(true);
               },
               child: const Text('Delete'),
             ),
@@ -207,11 +291,14 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
 
       if (!mounted) return;
 
-      _showMessage('Schedule deleted.');
+      _showMessage('Unavailable time deleted.');
     } catch (_) {
       if (!mounted) return;
 
-      _showMessage('We could not delete this schedule block.');
+      _showMessage(
+        'We could not delete this '
+        'unavailable time.',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -222,9 +309,79 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
   }
 
   void _showMessage(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget _buildScheduleSection({
+    required String title,
+    required String description,
+    required String emptyMessage,
+    required List<ScheduleBlock> blocks,
+    required List<ScheduleBlock> allBlocks,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '${blocks.length}',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: AppSpacing.xs),
+
+        Text(description, style: Theme.of(context).textTheme.bodyMedium),
+
+        const SizedBox(height: AppSpacing.md),
+
+        if (blocks.isEmpty)
+          AppCard(
+            child: Text(
+              emptyMessage,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          )
+        else
+          ...blocks.map(
+            (block) => Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: _ScheduleBlockCard(
+                block: block,
+                isDisabled: _isSaving,
+                onEdit: () {
+                  _openScheduleEditor(
+                    blocks: allBlocks,
+                    preferredType: block.isRecurring
+                        ? _ScheduleEntryType.weekly
+                        : _ScheduleEntryType.oneTime,
+                    existingBlock: block,
+                  );
+                },
+                onDelete: () {
+                  _deleteScheduleBlock(block);
+                },
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -242,7 +399,10 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
         appBar: AppBar(title: const Text('My Schedule')),
         body: SafeArea(
           child: AppErrorState(
-            message: _errorMessage ?? 'Your schedule is unavailable.',
+            message:
+                _errorMessage ??
+                'Your schedule '
+                    'is unavailable.',
             onRetry: _loadSchedule,
           ),
         ),
@@ -257,7 +417,9 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
             appBar: AppBar(title: const Text('My Schedule')),
             body: SafeArea(
               child: AppErrorState(
-                message: 'We could not load your schedule.',
+                message:
+                    'We could not load '
+                    'your schedule.',
                 onRetry: _loadSchedule,
               ),
             ),
@@ -273,28 +435,62 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
           );
         }
 
-        final blocks = snapshot.data ?? <ScheduleBlock>[];
+        final now = DateTime.now();
+
+        final allBlocks = (snapshot.data ?? <ScheduleBlock>[])
+            .where((block) => !block.isExpiredAt(now))
+            .toList();
+
+        final oneTimeBlocks =
+            allBlocks.where((block) => !block.isRecurring).toList()
+              ..sort((first, second) {
+                final dateResult = (first.scheduledDate ?? DateTime(9999))
+                    .compareTo(second.scheduledDate ?? DateTime(9999));
+
+                if (dateResult != 0) {
+                  return dateResult;
+                }
+
+                return first.startMinutes.compareTo(second.startMinutes);
+              });
+
+        final weeklyBlocks =
+            allBlocks.where((block) => block.isRecurring).toList()
+              ..sort((first, second) {
+                final firstDay = first.repeatDays.isEmpty
+                    ? 8
+                    : first.repeatDays.first;
+
+                final secondDay = second.repeatDays.isEmpty
+                    ? 8
+                    : second.repeatDays.first;
+
+                final dayResult = firstDay.compareTo(secondDay);
+
+                if (dayResult != 0) {
+                  return dayResult;
+                }
+
+                return first.startMinutes.compareTo(second.startMinutes);
+              });
 
         return Scaffold(
           appBar: AppBar(title: const Text('My Schedule')),
-          floatingActionButton: FloatingActionButton(
-            onPressed: _isSaving
-                ? null
-                : () {
-                    _openScheduleEditor(blocks: blocks);
-                  },
-            child: const Icon(Icons.add_rounded),
-          ),
           body: SafeArea(
             child: ListView(
-              padding: const EdgeInsets.all(AppSpacing.xl),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.xl,
+                AppSpacing.xl,
+                AppSpacing.xl,
+                120,
+              ),
               children: [
                 AppCard(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(
-                        Icons.calendar_month_outlined,
+                        Icons.event_busy_outlined,
                         color: Theme.of(context).colorScheme.primary,
                       ),
                       const SizedBox(width: AppSpacing.md),
@@ -308,12 +504,19 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Your unavailable times help '
-                              'Sakan find shared family windows. '
-                              'Other family members will be shown '
-                              'only that you are busy, not the '
-                              'private schedule label.',
+                              'One-time appointments '
+                              'and weekly routines '
+                              'help Sakan find better '
+                              'shared family times.',
                               style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Other family members '
+                              'can see only that you '
+                              'are busy—not the '
+                              'private label.',
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ],
                         ),
@@ -324,95 +527,81 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
 
                 const SizedBox(height: AppSpacing.xl),
 
-                if (blocks.isEmpty)
-                  _EmptyScheduleState(
-                    onAdd: _isSaving
-                        ? null
-                        : () {
-                            _openScheduleEditor(blocks: blocks);
-                          },
-                  )
-                else ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Recurring unavailable times',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ),
-                      Text(
-                        '${blocks.length}',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
+                Text(
+                  'Add unavailable time',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
 
-                  const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: AppSpacing.sm),
 
-                  ...blocks.map(
-                    (block) => Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                      child: _ScheduleBlockCard(
-                        block: block,
-                        isDisabled: _isSaving,
-                        onEdit: () {
-                          _openScheduleEditor(
-                            blocks: blocks,
-                            existingBlock: block,
-                          );
-                        },
-                        onDelete: () {
-                          _deleteScheduleBlock(block);
-                        },
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: _isSaving
+                            ? null
+                            : () {
+                                _openScheduleEditor(
+                                  blocks: allBlocks,
+                                  preferredType: _ScheduleEntryType.oneTime,
+                                );
+                              },
+                        icon: const Icon(Icons.event_outlined),
+                        label: const Text('One-time'),
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: AppSpacing.xxl),
-                ],
+                    const SizedBox(width: AppSpacing.sm),
+
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: _isSaving
+                            ? null
+                            : () {
+                                _openScheduleEditor(
+                                  blocks: allBlocks,
+                                  preferredType: _ScheduleEntryType.weekly,
+                                );
+                              },
+                        icon: const Icon(Icons.repeat_rounded),
+                        label: const Text('Weekly'),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: AppSpacing.xxl),
+
+                _buildScheduleSection(
+                  title: 'One-time',
+                  description:
+                      'Appointments and temporary '
+                      'busy periods. They disappear '
+                      'after their end time.',
+                  emptyMessage:
+                      'No upcoming one-time '
+                      'unavailable periods.',
+                  blocks: oneTimeBlocks,
+                  allBlocks: allBlocks,
+                ),
+
+                const SizedBox(height: AppSpacing.xxl),
+
+                _buildScheduleSection(
+                  title: 'Weekly routine',
+                  description:
+                      'School, university, work, '
+                      'or other times that repeat '
+                      'on selected weekdays.',
+                  emptyMessage: 'No weekly routines added.',
+                  blocks: weeklyBlocks,
+                  allBlocks: allBlocks,
+                ),
               ],
             ),
           ),
         );
       },
-    );
-  }
-}
-
-class _EmptyScheduleState extends StatelessWidget {
-  const _EmptyScheduleState({required this.onAdd});
-
-  final VoidCallback? onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
-      child: Column(
-        children: [
-          Icon(
-            Icons.schedule_outlined,
-            size: 72,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text(
-            'No schedule added yet',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Tell Sakan when you are usually busy '
-            'so the Calendar can find better family '
-            'times.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          AppPrimaryButton(label: 'Add Schedule', onPressed: onAdd),
-        ],
-      ),
     );
   }
 }
@@ -427,79 +616,82 @@ class _ScheduleBlockCard extends StatelessWidget {
 
   final ScheduleBlock block;
   final bool isDisabled;
+
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
+    final timeText =
+        '${_formatMinutes(context, block.startMinutes)}'
+        '–'
+        '${_formatMinutes(context, block.endMinutes)}';
+
+    final subtitle = block.isRecurring
+        ? '${_formatRepeatDays(block.repeatDays)}\n'
+              '$timeText\n'
+              'Repeats weekly'
+        : '${block.scheduledDate == null ? 'Date unavailable' : DateFormat('EEEE, d MMM y').format(block.scheduledDate!.toLocal())}\n'
+              '$timeText\n'
+              'Disappears after it ends';
+
     return AppCard(
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        leading: CircleAvatar(child: Text(_dayAbbreviation(block.dayOfWeek))),
-        title: Text(block.label),
-        subtitle: Text(
-          '${_dayName(block.dayOfWeek)}\n'
-          '${_formatMinutes(context, block.startMinutes)}'
-          '–${_formatMinutes(context, block.endMinutes)}'
-          '\nRepeats weekly',
+        leading: CircleAvatar(
+          child: Icon(
+            block.isRecurring ? Icons.repeat_rounded : Icons.event_outlined,
+          ),
         ),
+        title: Text(block.label),
+        subtitle: Text(subtitle),
         isThreeLine: true,
         trailing: PopupMenuButton<String>(
           enabled: !isDisabled,
+          tooltip: 'Schedule options',
           onSelected: (value) {
             if (value == 'edit') {
               onEdit();
-            } else if (value == 'delete') {
+            }
+
+            if (value == 'delete') {
               onDelete();
             }
           },
           itemBuilder: (context) {
             return const [
-              PopupMenuItem(value: 'edit', child: Text('Edit')),
-              PopupMenuItem(value: 'delete', child: Text('Delete')),
+              PopupMenuItem<String>(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined),
+                    SizedBox(width: 10),
+                    Text('Edit'),
+                  ],
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline),
+                    SizedBox(width: 10),
+                    Text('Delete'),
+                  ],
+                ),
+              ),
             ];
           },
         ),
       ),
     );
   }
-
-  static String _dayAbbreviation(int day) {
-    return switch (day) {
-      1 => 'M',
-      2 => 'T',
-      3 => 'W',
-      4 => 'T',
-      5 => 'F',
-      6 => 'S',
-      7 => 'S',
-      _ => '?',
-    };
-  }
-
-  static String _dayName(int day) {
-    return switch (day) {
-      1 => 'Monday',
-      2 => 'Tuesday',
-      3 => 'Wednesday',
-      4 => 'Thursday',
-      5 => 'Friday',
-      6 => 'Saturday',
-      7 => 'Sunday',
-      _ => 'Unknown day',
-    };
-  }
-
-  static String _formatMinutes(BuildContext context, int minutes) {
-    return MaterialLocalizations.of(
-      context,
-    ).formatTimeOfDay(TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60));
-  }
 }
 
 class _ScheduleDialog extends StatefulWidget {
-  const _ScheduleDialog({this.existingBlock});
+  const _ScheduleDialog({required this.preferredType, this.existingBlock});
 
+  final _ScheduleEntryType preferredType;
   final ScheduleBlock? existingBlock;
 
   @override
@@ -511,11 +703,16 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
 
   late final TextEditingController _labelController;
 
-  late int _dayOfWeek;
+  late _ScheduleEntryType _type;
+
+  late DateTime _scheduledDate;
+
+  late Set<int> _repeatDays;
+
   late TimeOfDay _startTime;
   late TimeOfDay _endTime;
 
-  String? _timeError;
+  String? _scheduleError;
 
   @override
   void initState() {
@@ -525,7 +722,17 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
 
     _labelController = TextEditingController(text: block?.label ?? '');
 
-    _dayOfWeek = block?.dayOfWeek ?? 1;
+    _type = block == null
+        ? widget.preferredType
+        : block.isRecurring
+        ? _ScheduleEntryType.weekly
+        : _ScheduleEntryType.oneTime;
+
+    _scheduledDate = _dateOnly(
+      block?.scheduledDate?.toLocal() ?? DateTime.now(),
+    );
+
+    _repeatDays = block?.repeatDays.toSet() ?? <int>{};
 
     _startTime = TimeOfDay(
       hour: (block?.startMinutes ?? 480) ~/ 60,
@@ -533,8 +740,8 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
     );
 
     _endTime = TimeOfDay(
-      hour: (block?.endMinutes ?? 900) ~/ 60,
-      minute: (block?.endMinutes ?? 900) % 60,
+      hour: (block?.endMinutes ?? 540) ~/ 60,
+      minute: (block?.endMinutes ?? 540) % 60,
     );
   }
 
@@ -542,6 +749,24 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
   void dispose() {
     _labelController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final today = _dateOnly(DateTime.now());
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _scheduledDate.isBefore(today) ? today : _scheduledDate,
+      firstDate: today,
+      lastDate: DateTime(today.year + 3, 12, 31),
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      _scheduledDate = _dateOnly(picked);
+      _scheduleError = null;
+    });
   }
 
   Future<void> _pickStartTime() async {
@@ -554,7 +779,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
 
     setState(() {
       _startTime = picked;
-      _timeError = null;
+      _scheduleError = null;
     });
   }
 
@@ -568,7 +793,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
 
     setState(() {
       _endTime = picked;
-      _timeError = null;
+      _scheduleError = null;
     });
   }
 
@@ -583,15 +808,52 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
 
     if (endMinutes <= startMinutes) {
       setState(() {
-        _timeError = 'End time must be after start time.';
+        _scheduleError =
+            'End time must be after '
+            'the start time.';
       });
+
       return;
+    }
+
+    if (_type == _ScheduleEntryType.weekly && _repeatDays.isEmpty) {
+      setState(() {
+        _scheduleError =
+            'Choose at least one '
+            'repeat day.';
+      });
+
+      return;
+    }
+
+    if (_type == _ScheduleEntryType.oneTime) {
+      final endDateTime = DateTime(
+        _scheduledDate.year,
+        _scheduledDate.month,
+        _scheduledDate.day,
+        endMinutes ~/ 60,
+        endMinutes % 60,
+      );
+
+      if (!endDateTime.isAfter(DateTime.now())) {
+        setState(() {
+          _scheduleError =
+              'Choose a date and time '
+              'that ends in the future.';
+        });
+
+        return;
+      }
     }
 
     Navigator.of(context).pop(
       _ScheduleDraft(
         label: _labelController.text.trim(),
-        dayOfWeek: _dayOfWeek,
+        type: _type,
+        repeatDays: Set<int>.from(_repeatDays),
+        scheduledDate: _type == _ScheduleEntryType.oneTime
+            ? _scheduledDate
+            : null,
         startMinutes: startMinutes,
         endMinutes: endMinutes,
       ),
@@ -607,23 +869,52 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
             : 'Edit Unavailable Time',
       ),
       content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
+        constraints: const BoxConstraints(maxWidth: 440),
         child: SingleChildScrollView(
           child: Form(
             key: _formKey,
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                SegmentedButton<_ScheduleEntryType>(
+                  segments: const [
+                    ButtonSegment<_ScheduleEntryType>(
+                      value: _ScheduleEntryType.oneTime,
+                      icon: Icon(Icons.event_outlined),
+                      label: Text('One-time'),
+                    ),
+                    ButtonSegment<_ScheduleEntryType>(
+                      value: _ScheduleEntryType.weekly,
+                      icon: Icon(Icons.repeat_rounded),
+                      label: Text('Weekly'),
+                    ),
+                  ],
+                  selected: <_ScheduleEntryType>{_type},
+                  onSelectionChanged: (selection) {
+                    setState(() {
+                      _type = selection.first;
+                      _scheduleError = null;
+                    });
+                  },
+                ),
+
+                const SizedBox(height: AppSpacing.lg),
+
                 TextFormField(
                   controller: _labelController,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
                     labelText: 'Label',
-                    hintText: 'School, work, university…',
+                    hintText: 'Doctor, School, Work…',
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'Enter a schedule label.';
+                    }
+
+                    if (value.trim().length < 2) {
+                      return 'The label is too short.';
                     }
 
                     return null;
@@ -632,28 +923,66 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
 
                 const SizedBox(height: AppSpacing.md),
 
-                DropdownButtonFormField<int>(
-                  initialValue: _dayOfWeek,
-                  decoration: const InputDecoration(labelText: 'Day'),
-                  items: const [
-                    DropdownMenuItem(value: 1, child: Text('Monday')),
-                    DropdownMenuItem(value: 2, child: Text('Tuesday')),
-                    DropdownMenuItem(value: 3, child: Text('Wednesday')),
-                    DropdownMenuItem(value: 4, child: Text('Thursday')),
-                    DropdownMenuItem(value: 5, child: Text('Friday')),
-                    DropdownMenuItem(value: 6, child: Text('Saturday')),
-                    DropdownMenuItem(value: 7, child: Text('Sunday')),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
+                if (_type == _ScheduleEntryType.oneTime) ...[
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.calendar_today_outlined),
+                    title: const Text('Date'),
+                    subtitle: Text(
+                      DateFormat('EEEE, d MMMM y').format(_scheduledDate),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _pickDate,
+                  ),
 
-                    setState(() {
-                      _dayOfWeek = value;
-                    });
-                  },
-                ),
+                  Text(
+                    'This entry will stop '
+                    'affecting your availability '
+                    'after its end time.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ] else ...[
+                  Text(
+                    'Repeats on',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
 
-                const SizedBox(height: AppSpacing.md),
+                  const SizedBox(height: AppSpacing.sm),
+
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: List.generate(7, (index) {
+                      final day = index + 1;
+
+                      return FilterChip(
+                        label: Text(_shortDayName(day)),
+                        selected: _repeatDays.contains(day),
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              _repeatDays.add(day);
+                            } else {
+                              _repeatDays.remove(day);
+                            }
+
+                            _scheduleError = null;
+                          });
+                        },
+                      );
+                    }),
+                  ),
+
+                  const SizedBox(height: AppSpacing.sm),
+
+                  Text(
+                    'Choose every weekday when '
+                    'this routine normally happens.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+
+                const SizedBox(height: AppSpacing.lg),
 
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -679,38 +1008,16 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                   onTap: _pickEndTime,
                 ),
 
-                if (_timeError != null) ...[
+                if (_scheduleError != null) ...[
                   const SizedBox(height: AppSpacing.sm),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      _timeError!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
+
+                  Text(
+                    _scheduleError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
                     ),
                   ),
                 ],
-
-                const SizedBox(height: AppSpacing.sm),
-
-                Row(
-                  children: [
-                    Icon(
-                      Icons.repeat_rounded,
-                      size: 18,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'This unavailable time repeats '
-                        'every week.',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
@@ -732,13 +1039,95 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
 class _ScheduleDraft {
   const _ScheduleDraft({
     required this.label,
-    required this.dayOfWeek,
+    required this.type,
+    required this.repeatDays,
+    required this.scheduledDate,
     required this.startMinutes,
     required this.endMinutes,
   });
 
   final String label;
-  final int dayOfWeek;
+
+  final _ScheduleEntryType type;
+
+  final Set<int> repeatDays;
+
+  final DateTime? scheduledDate;
+
   final int startMinutes;
   final int endMinutes;
+}
+
+String _shortDayName(int day) {
+  return switch (day) {
+    1 => 'Mon',
+    2 => 'Tue',
+    3 => 'Wed',
+    4 => 'Thu',
+    5 => 'Fri',
+    6 => 'Sat',
+    7 => 'Sun',
+    _ => '?',
+  };
+}
+
+String _fullDayName(int day) {
+  return switch (day) {
+    1 => 'Monday',
+    2 => 'Tuesday',
+    3 => 'Wednesday',
+    4 => 'Thursday',
+    5 => 'Friday',
+    6 => 'Saturday',
+    7 => 'Sunday',
+    _ => 'Unknown',
+  };
+}
+
+String _formatRepeatDays(List<int> days) {
+  final sortedDays = days.toSet().toList()..sort();
+
+  if (sortedDays.length == 7) {
+    return 'Every day';
+  }
+
+  if (_sameIntegerLists(sortedDays, const <int>[1, 2, 3, 4, 5])) {
+    return 'Weekdays';
+  }
+
+  if (_sameIntegerLists(sortedDays, const <int>[6, 7])) {
+    return 'Weekend';
+  }
+
+  return sortedDays.map(_fullDayName).join(', ');
+}
+
+bool _sameIntegerLists(List<int> first, List<int> second) {
+  if (first.length != second.length) {
+    return false;
+  }
+
+  for (var index = 0; index < first.length; index++) {
+    if (first[index] != second[index]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+String _formatMinutes(BuildContext context, int minutes) {
+  return MaterialLocalizations.of(
+    context,
+  ).formatTimeOfDay(TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60));
+}
+
+DateTime _dateOnly(DateTime date) {
+  return DateTime(date.year, date.month, date.day);
+}
+
+bool _sameDate(DateTime first, DateTime second) {
+  return first.year == second.year &&
+      first.month == second.month &&
+      first.day == second.day;
 }

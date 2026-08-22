@@ -45,6 +45,8 @@ dependencies:
   cloud_firestore: ^6.8.0
   qr_flutter: ^4.1.0
   table_calendar: ^3.2.1
+  firebase_storage: ^13.4.6
+  image_picker: ^1.2.3
 
 dev_dependencies:
   flutter_test:

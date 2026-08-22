@@ -11,6 +11,7 @@ import 'schedule_editor_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sakan/shared/models/model_enums.dart';
 import 'package:sakan/shared/models/member.dart';
+import 'my_reminders_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -126,6 +127,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         );
                       },
                     ),
+
+                    _ProfileTile(
+  icon: Icons.checklist_rounded,
+  title: 'My Reminders',
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const MyRemindersScreen(),
+      ),
+    );
+  },
+),
+
+
 
                     _ProfileTile(
                       icon: Icons.favorite_outline,
