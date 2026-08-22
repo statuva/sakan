@@ -201,31 +201,88 @@ service cloud.firestore {
       }
 
       match /careActions/{actionId} {
-        allow read: if isFamilyMember(familyId);
+  // Adults/admins may access family Care Actions.
+  //
+  // Other members may access only reminders
+  // assigned to their own account.
+  allow read: if isAdultOrAdmin(familyId)
+    || (
+      isFamilyMember(familyId)
+      && resource.data.assignedMemberId
+        == request.auth.uid
+    );
 
-        allow create: if isAdultOrAdmin(familyId)
-          && request.resource.data.familyId == familyId
-          && request.resource.data.assignedMemberId is string;
+  // Adults/admins may assign family actions.
+  //
+  // Any family member may create a personal
+  // reminder assigned only to themselves.
+  allow create: if isFamilyMember(familyId)
+    && request.resource.data.familyId
+      == familyId
+    && request.resource.data.title is string
+    && request.resource.data.dueAt is timestamp
+    && request.resource.data.assignedMemberId
+      is string
+    && (
+      isAdultOrAdmin(familyId)
+      || request.resource.data.assignedMemberId
+        == request.auth.uid
+    );
 
-        allow delete: if isAdultOrAdmin(familyId);
+  // Adults/admins may manage family actions.
+  //
+  // Assigned users may edit their own reminder
+  // text, date, status, and completion state.
+  allow update: if isAdultOrAdmin(familyId)
+    || (
+      isFamilyMember(familyId)
+      && resource.data.assignedMemberId
+        == request.auth.uid
+      && request.resource.data.familyId
+        == resource.data.familyId
+      && request.resource.data.assignedMemberId
+        == resource.data.assignedMemberId
 
-        allow update: if isAdultOrAdmin(familyId)
-          || (
-            isFamilyMember(familyId)
-            && resource.data.assignedMemberId == request.auth.uid
-            && request.resource.data.assignedMemberId
-              == resource.data.assignedMemberId
-            && request.resource.data
-              .diff(resource.data)
-              .affectedKeys()
-              .hasOnly([
-                'status',
-                'evidenceType',
-                'completedAt',
-                'updatedAt'
-              ])
-          );
-      }
+      // Existing source and Moment links cannot
+      // be changed after they have been stored.
+      && (
+        !resource.data.keys().hasAny([
+          'source'
+        ])
+        || request.resource.data.source
+          == resource.data.source
+      )
+      && (
+        !resource.data.keys().hasAny([
+          'momentId'
+        ])
+        || request.resource.data.momentId
+          == resource.data.momentId
+      )
+
+      && request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasOnly([
+          'title',
+          'reason',
+          'dueAt',
+          'status',
+          'source',
+          'momentId',
+          'evidenceType',
+          'completedAt',
+          'updatedAt'
+        ])
+    );
+
+  allow delete: if isAdultOrAdmin(familyId)
+    || (
+      isFamilyMember(familyId)
+      && resource.data.assignedMemberId
+        == request.auth.uid
+    );
+}
 
       match /rhythms/{rhythmId} {
         allow read: if isFamilyMember(familyId);

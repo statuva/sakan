@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import 'package:sakan/app/app_dependencies.dart';
+import 'package:sakan/core/theme/app_colors.dart';
 import 'package:sakan/core/theme/app_spacing.dart';
+import 'package:sakan/features/memories/presentation/add_memory_screen.dart';
+import 'package:sakan/features/memories/presentation/memory_details_screen.dart';
 import 'package:sakan/shared/models/current_family_context.dart';
+import 'package:sakan/shared/models/family_memory.dart';
 import 'package:sakan/shared/models/family_moment.dart';
 import 'package:sakan/shared/models/model_enums.dart';
+import 'package:sakan/shared/models/rhythm_record.dart';
 import 'package:sakan/shared/utils/moment_visuals.dart';
 import 'package:sakan/shared/widgets/buttons/app_primary_button.dart';
 import 'package:sakan/shared/widgets/cards/app_card.dart';
 import 'package:sakan/shared/widgets/feedback/app_error_state.dart';
 import 'package:sakan/shared/widgets/feedback/app_loading_state.dart';
-import 'package:sakan/shared/models/rhythm_record.dart';
+
 import 'moment_form_screen.dart';
-import 'package:sakan/core/theme/app_colors.dart';
 
 enum _MomentLibraryFilter { all, recurring, oneTime, care, needsAttention }
 
@@ -30,6 +35,7 @@ class _MomentsScreenState extends State<MomentsScreen> {
 
   Stream<List<FamilyMoment>>? _momentsStream;
   Stream<List<RhythmRecord>>? _rhythmsStream;
+  Stream<List<FamilyMemory>>? _memoriesStream;
 
   _MomentLibraryFilter _filter = _MomentLibraryFilter.all;
 
@@ -67,6 +73,10 @@ class _MomentsScreenState extends State<MomentsScreen> {
         );
 
         _rhythmsStream = AppDependencies.calendarRepository.watchRhythms(
+          familyId: familyContext.familyId,
+        );
+
+        _memoriesStream = AppDependencies.memoryRepository.watchMemories(
           familyId: familyContext.familyId,
         );
 
@@ -161,6 +171,26 @@ class _MomentsScreenState extends State<MomentsScreen> {
     );
   }
 
+  Future<void> _openMemoryEditor(FamilyMoment moment) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AddMemoryScreen(initialMoment: moment)),
+    );
+
+    if (saved != true || !mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Family Memory saved.')));
+  }
+
+  Future<void> _openMemory(FamilyMemory memory) {
+    return Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => MemoryDetailsScreen(memory: memory)),
+    );
+  }
+
   void _showReadOnlyDetails({
     required FamilyMoment moment,
     RhythmRecord? rhythm,
@@ -169,7 +199,7 @@ class _MomentsScreenState extends State<MomentsScreen> {
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
-      builder: (context) {
+      builder: (sheetContext) {
         return SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.xl),
           child: Column(
@@ -213,7 +243,7 @@ class _MomentsScreenState extends State<MomentsScreen> {
 
               FilledButton(
                 onPressed: () {
-                  Navigator.of(context).pop();
+                  Navigator.of(sheetContext).pop();
                 },
                 child: const Text('Done'),
               ),
@@ -221,6 +251,15 @@ class _MomentsScreenState extends State<MomentsScreen> {
           ),
         );
       },
+    );
+  }
+
+  Scaffold _errorScaffold(String message) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Family Moments')),
+      body: SafeArea(
+        child: AppErrorState(message: message, onRetry: _loadMoments),
+      ),
     );
   }
 
@@ -236,16 +275,9 @@ class _MomentsScreenState extends State<MomentsScreen> {
 
     if (_familyContext == null ||
         _momentsStream == null ||
-        _rhythmsStream == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Family Moments')),
-        body: SafeArea(
-          child: AppErrorState(
-            message: _errorMessage ?? 'Family Moments are unavailable.',
-            onRetry: _loadMoments,
-          ),
-        ),
-      );
+        _rhythmsStream == null ||
+        _memoriesStream == null) {
+      return _errorScaffold(_errorMessage ?? 'Family Moments are unavailable.');
     }
 
     final canEdit = _familyContext!.isAdult;
@@ -254,13 +286,14 @@ class _MomentsScreenState extends State<MomentsScreen> {
       stream: _momentsStream,
       builder: (context, momentSnapshot) {
         if (momentSnapshot.hasError) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Family Moments')),
+          return _errorScaffold('We could not load family moments.');
+        }
+
+        if (momentSnapshot.connectionState == ConnectionState.waiting &&
+            !momentSnapshot.hasData) {
+          return const Scaffold(
             body: SafeArea(
-              child: AppErrorState(
-                message: 'We could not load family moments.',
-                onRetry: _loadMoments,
-              ),
+              child: AppLoadingState(message: 'Loading family moments…'),
             ),
           );
         }
@@ -268,137 +301,197 @@ class _MomentsScreenState extends State<MomentsScreen> {
         return StreamBuilder<List<RhythmRecord>>(
           stream: _rhythmsStream,
           builder: (context, rhythmSnapshot) {
-            final moments = momentSnapshot.data ?? <FamilyMoment>[];
+            if (rhythmSnapshot.hasError) {
+              return _errorScaffold('We could not load family rhythms.');
+            }
 
-            final rhythms = rhythmSnapshot.data ?? <RhythmRecord>[];
+            return StreamBuilder<List<FamilyMemory>>(
+              stream: _memoriesStream,
+              builder: (context, memorySnapshot) {
+                if (memorySnapshot.hasError) {
+                  return _errorScaffold('We could not load family memories.');
+                }
 
-            final rhythmsByMomentId = <String, RhythmRecord>{
-              for (final rhythm in rhythms) rhythm.momentId: rhythm,
-            };
+                if (memorySnapshot.connectionState == ConnectionState.waiting &&
+                    !memorySnapshot.hasData) {
+                  return const Scaffold(
+                    body: SafeArea(
+                      child: AppLoadingState(
+                        message: 'Loading family memories…',
+                      ),
+                    ),
+                  );
+                }
 
-            final filtered = _applyFilters(
-              moments: moments,
-              rhythmsByMomentId: rhythmsByMomentId,
-            );
+                final moments = momentSnapshot.data ?? <FamilyMoment>[];
 
-            final attentionCount = moments
-                .where(
-                  (moment) => _needsAttention(
+                final rhythms = rhythmSnapshot.data ?? <RhythmRecord>[];
+
+                final memories = memorySnapshot.data ?? <FamilyMemory>[];
+
+                final rhythmsByMomentId = <String, RhythmRecord>{
+                  for (final rhythm in rhythms) rhythm.momentId: rhythm,
+                };
+
+                final memoriesByMomentId = <String, FamilyMemory>{};
+
+                // watchMemories returns newest first.
+                // putIfAbsent keeps the newest record
+                // if older duplicate data exists.
+                for (final memory in memories) {
+                  memoriesByMomentId.putIfAbsent(memory.momentId, () => memory);
+                }
+
+                final filtered = _applyFilters(
+                  moments: moments,
+                  rhythmsByMomentId: rhythmsByMomentId,
+                );
+
+                final attentionCount = moments.where((moment) {
+                  return _needsAttention(
                     moment: moment,
                     rhythm: rhythmsByMomentId[moment.id],
+                  );
+                }).length;
+
+                return Scaffold(
+                  appBar: AppBar(
+                    title: const Text('Family Moments'),
+                    actions: [
+                      if (canEdit)
+                        IconButton(
+                          tooltip: 'Add Family Moment',
+                          onPressed: () {
+                            _openMomentForm();
+                          },
+                          icon: const Icon(Icons.add_rounded),
+                        ),
+                    ],
                   ),
-                )
-                .length;
-
-            return Scaffold(
-              appBar: AppBar(
-                title: const Text('Family Moments'),
-                actions: [
-                  if (canEdit)
-                    IconButton(
-                      tooltip: 'Add Family Moment',
-                      onPressed: () {
-                        _openMomentForm();
-                      },
-                      icon: const Icon(Icons.add_rounded),
-                    ),
-                ],
-              ),
-              body: SafeArea(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    AppSpacing.sm,
-                    AppSpacing.lg,
-                    96,
-                  ),
-                  children: [
-                    Text(
-                      '${moments.length} moments · '
-                      '$attentionCount need attention',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-
-                    const SizedBox(height: AppSpacing.md),
-
-                    TextField(
-                      controller: _searchController,
-                      decoration: const InputDecoration(
-                        hintText: 'Search family moments',
-                        prefixIcon: Icon(Icons.search_rounded),
+                  body: SafeArea(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        AppSpacing.sm,
+                        AppSpacing.lg,
+                        96,
                       ),
-                      onChanged: (_) {
-                        setState(() {});
-                      },
-                    ),
+                      children: [
+                        Text(
+                          '${moments.length} moments · '
+                          '$attentionCount need attention',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
 
-                    const SizedBox(height: AppSpacing.md),
+                        const SizedBox(height: AppSpacing.md),
 
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: _MomentLibraryFilter.values.map((filter) {
-                          return Padding(
-                            padding: const EdgeInsets.only(
-                              right: AppSpacing.xs,
+                        TextField(
+                          controller: _searchController,
+                          decoration: const InputDecoration(
+                            hintText: 'Search family moments',
+                            prefixIcon: Icon(Icons.search_rounded),
+                          ),
+                          onChanged: (_) {
+                            setState(() {});
+                          },
+                        ),
+
+                        const SizedBox(height: AppSpacing.md),
+
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: _MomentLibraryFilter.values.map((filter) {
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                  right: AppSpacing.xs,
+                                ),
+                                child: _LibraryFilterChip(
+                                  filter: filter,
+                                  selected: _filter == filter,
+                                  onTap: () {
+                                    setState(() {
+                                      _filter = filter;
+                                    });
+                                  },
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+
+                        const SizedBox(height: AppSpacing.xl),
+
+                        if (filtered.isEmpty)
+                          const AppCard(
+                            child: Text(
+                              'No family moments '
+                              'match this view.',
                             ),
-                            child: _LibraryFilterChip(
-                              filter: filter,
-                              selected: _filter == filter,
-                              onTap: () {
-                                setState(() {
-                                  _filter = filter;
-                                });
-                              },
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
+                          )
+                        else
+                          ...filtered.map((moment) {
+                            final rhythm = rhythmsByMomentId[moment.id];
 
-                    const SizedBox(height: AppSpacing.xl),
+                            final memory = memoriesByMomentId[moment.id];
 
-                    if (filtered.isEmpty)
-                      const AppCard(
-                        child: Text('No family moments match this view.'),
-                      )
-                    else
-                      ...filtered.map((moment) {
-                        final rhythm = rhythmsByMomentId[moment.id];
+                            return Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: AppSpacing.md,
+                              ),
+                              child: _MomentLibraryCard(
+                                moment: moment,
+                                rhythm: rhythm,
+                                memory: memory,
+                                canManageMemory: canEdit,
+                                onTap: () {
+                                  if (canEdit) {
+                                    _openMomentForm(moment: moment);
+                                  } else {
+                                    _showReadOnlyDetails(
+                                      moment: moment,
+                                      rhythm: rhythm,
+                                    );
+                                  }
+                                },
+                                onAddMemory:
+                                    moment.status == MomentStatus.completed &&
+                                        memory == null &&
+                                        canEdit
+                                    ? () {
+                                        _openMemoryEditor(moment);
+                                      }
+                                    : null,
+                                onViewMemory: memory == null
+                                    ? null
+                                    : () {
+                                        _openMemory(memory);
+                                      },
+                                onEditMemory: memory != null && canEdit
+                                    ? () {
+                                        _openMemoryEditor(moment);
+                                      }
+                                    : null,
+                              ),
+                            );
+                          }),
 
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                          child: _MomentLibraryCard(
-                            moment: moment,
-                            rhythm: rhythm,
-                            onTap: () {
-                              if (canEdit) {
-                                _openMomentForm(moment: moment);
-                              } else {
-                                _showReadOnlyDetails(
-                                  moment: moment,
-                                  rhythm: rhythm,
-                                );
-                              }
+                        if (canEdit) ...[
+                          const SizedBox(height: AppSpacing.lg),
+
+                          AppPrimaryButton(
+                            label: 'Add a Family Moment',
+                            icon: Icons.add_rounded,
+                            onPressed: () {
+                              _openMomentForm();
                             },
                           ),
-                        );
-                      }),
-
-                    if (canEdit) ...[
-                      const SizedBox(height: AppSpacing.lg),
-
-                      AppPrimaryButton(
-                        label: 'Add a Family Moment',
-                        icon: Icons.add_rounded,
-                        onPressed: () {
-                          _openMomentForm();
-                        },
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
             );
           },
         );
@@ -461,12 +554,24 @@ class _MomentLibraryCard extends StatelessWidget {
   const _MomentLibraryCard({
     required this.moment,
     required this.rhythm,
+    required this.memory,
+    required this.canManageMemory,
     required this.onTap,
+    this.onAddMemory,
+    this.onViewMemory,
+    this.onEditMemory,
   });
 
   final FamilyMoment moment;
   final RhythmRecord? rhythm;
+  final FamilyMemory? memory;
+
+  final bool canManageMemory;
   final VoidCallback onTap;
+
+  final VoidCallback? onAddMemory;
+  final VoidCallback? onViewMemory;
+  final VoidCallback? onEditMemory;
 
   @override
   Widget build(BuildContext context) {
@@ -578,6 +683,22 @@ class _MomentLibraryCard extends StatelessWidget {
                   ),
                 ],
               ),
+
+              if (moment.status == MomentStatus.completed) ...[
+                const SizedBox(height: AppSpacing.md),
+
+                const Divider(),
+
+                const SizedBox(height: AppSpacing.sm),
+
+                _MomentMemorySection(
+                  memory: memory,
+                  canManageMemory: canManageMemory,
+                  onAddMemory: onAddMemory,
+                  onViewMemory: onViewMemory,
+                  onEditMemory: onEditMemory,
+                ),
+              ],
             ],
           ),
         ),
@@ -595,6 +716,105 @@ class _MomentLibraryCard extends StatelessWidget {
     }
 
     return 'Every $interval days';
+  }
+}
+
+class _MomentMemorySection extends StatelessWidget {
+  const _MomentMemorySection({
+    required this.memory,
+    required this.canManageMemory,
+    required this.onAddMemory,
+    required this.onViewMemory,
+    required this.onEditMemory,
+  });
+
+  final FamilyMemory? memory;
+  final bool canManageMemory;
+
+  final VoidCallback? onAddMemory;
+  final VoidCallback? onViewMemory;
+  final VoidCallback? onEditMemory;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasMemory = memory != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              hasMemory
+                  ? Icons.auto_stories_outlined
+                  : Icons.bookmark_add_outlined,
+              size: 21,
+              color: hasMemory ? AppColors.primary : AppColors.textSecondary,
+            ),
+
+            const SizedBox(width: AppSpacing.sm),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasMemory ? 'Memory saved' : 'No Memory saved yet',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+
+                  const SizedBox(height: 3),
+
+                  Text(
+                    hasMemory
+                        ? 'A family note is connected '
+                              'to this completed Moment.'
+                        : canManageMemory
+                        ? 'Preserve what your family '
+                              'would like to remember.'
+                        : 'An adult can preserve a '
+                              'Memory for this Moment.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        if (hasMemory || onAddMemory != null) ...[
+          const SizedBox(height: AppSpacing.sm),
+
+          Wrap(
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
+            children: [
+              if (!hasMemory && onAddMemory != null)
+                OutlinedButton.icon(
+                  onPressed: onAddMemory,
+                  icon: const Icon(Icons.bookmark_add_outlined),
+                  label: const Text('Add Memory'),
+                ),
+
+              if (hasMemory && onViewMemory != null)
+                OutlinedButton.icon(
+                  onPressed: onViewMemory,
+                  icon: const Icon(Icons.auto_stories_outlined),
+                  label: const Text('View Memory'),
+                ),
+
+              if (hasMemory && onEditMemory != null)
+                TextButton.icon(
+                  onPressed: onEditMemory,
+                  icon: const Icon(Icons.edit_note_outlined),
+                  label: const Text('Edit Memory'),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
   }
 }
 

@@ -12,55 +12,94 @@ class CalendarSupportCards extends StatelessWidget {
     required this.memory,
     required this.onAvailabilityTap,
     required this.onMemoryTap,
+    required this.onAddMemoryTap,
+    required this.onAllMemoriesTap,
     super.key,
   });
 
   final CalendarAvailabilityWindow? availability;
+
   final FamilyMemory? memory;
+
   final VoidCallback? onAvailabilityTap;
   final VoidCallback? onMemoryTap;
+  final VoidCallback? onAddMemoryTap;
+
+  final VoidCallback onAllMemoriesTap;
 
   @override
   Widget build(BuildContext context) {
-    if (availability == null && memory == null) {
-      return const SizedBox.shrink();
-    }
-
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (availability != null)
-            Expanded(
-              child: _SupportCard(
-                icon: Icons.schedule_outlined,
-                iconColor: CalendarPalette.mine,
-                iconBackground: CalendarPalette.mineSoft,
-                eyebrow: 'Best Availability',
-                title: DateFormat('EEEE').format(availability!.date),
-                subtitle:
-                    '${_formatMinutes(context, availability!.startMinutes)}–${_formatMinutes(context, availability!.endMinutes)}\n${availability!.availableMemberCount} of ${availability!.totalMemberCount} members available',
-                onTap: onAvailabilityTap,
-              ),
-            ),
-          if (availability != null && memory != null)
-            const SizedBox(width: AppSpacing.sm),
-          if (memory != null)
-            Expanded(
-              child: _SupportCard(
-                icon: Icons.photo_library_outlined,
-                iconColor: CalendarPalette.milestone,
-                iconBackground: CalendarPalette.milestoneSoft,
-                eyebrow: 'Memory',
-                title: memory!.title,
-                subtitle:
-                    '${DateFormat('d MMM y').format(memory!.occurredAt.toLocal())}\nTap to view photos and reflection',
-                onTap: onMemoryTap,
-                imageUrl: memory!.photoUrls.isEmpty
-                    ? null
-                    : memory!.photoUrls.first,
-              ),
-            ),
+          Expanded(
+            child: availability == null
+                ? const _SupportCard(
+                    icon: Icons.schedule_outlined,
+                    iconColor: CalendarPalette.mine,
+                    iconBackground: CalendarPalette.mineSoft,
+                    eyebrow: 'Best Availability',
+                    title: 'No shared window yet',
+                    subtitle:
+                        'Add personal schedules '
+                        'to calculate a shared '
+                        'family window.',
+                    onTap: null,
+                  )
+                : _SupportCard(
+                    icon: Icons.schedule_outlined,
+                    iconColor: CalendarPalette.mine,
+                    iconBackground: CalendarPalette.mineSoft,
+                    eyebrow: 'Best Availability',
+                    title: DateFormat('EEEE').format(availability!.date),
+                    subtitle:
+                        '${_formatMinutes(context, availability!.startMinutes)}'
+                        '–'
+                        '${_formatMinutes(context, availability!.endMinutes)}\n'
+                        '${availability!.availableMemberCount} of '
+                        '${availability!.totalMemberCount} members available',
+                    actionLabel: 'View Week',
+                    onTap: onAvailabilityTap,
+                  ),
+          ),
+
+          const SizedBox(width: AppSpacing.sm),
+
+          Expanded(
+            child: memory == null
+                ? _SupportCard(
+                    icon: Icons.bookmark_add_outlined,
+                    iconColor: CalendarPalette.milestone,
+                    iconBackground: CalendarPalette.milestoneSoft,
+                    eyebrow: 'Memory',
+                    topActionLabel: 'All Memories',
+                    onTopActionTap: onAllMemoriesTap,
+                    title: 'No memories yet',
+                    subtitle:
+                        'Preserve a note from a '
+                        'completed family Moment.',
+                    actionLabel: onAddMemoryTap == null ? null : 'Add Memory',
+                    onTap: onAddMemoryTap,
+                  )
+                : _SupportCard(
+                    icon: Icons.auto_stories_outlined,
+                    iconColor: CalendarPalette.milestone,
+                    iconBackground: CalendarPalette.milestoneSoft,
+                    eyebrow: 'Memory',
+                    topActionLabel: 'All Memories',
+                    onTopActionTap: onAllMemoriesTap,
+                    title: memory!.title,
+                    subtitle:
+                        '${DateFormat('d MMM y').format(memory!.occurredAt.toLocal())}\n'
+                        'Family note saved',
+                    actionLabel: 'View Memory',
+                    onTap: onMemoryTap,
+                    imageUrl: memory!.photoUrls.isEmpty
+                        ? null
+                        : memory!.photoUrls.first,
+                  ),
+          ),
         ],
       ),
     );
@@ -82,17 +121,27 @@ class _SupportCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.actionLabel,
     this.imageUrl,
+    this.topActionLabel,
+    this.onTopActionTap,
   });
 
   final IconData icon;
   final Color iconColor;
   final Color iconBackground;
+
   final String eyebrow;
   final String title;
   final String subtitle;
-  final VoidCallback? onTap;
+
+  final String? actionLabel;
   final String? imageUrl;
+
+  final String? topActionLabel;
+  final VoidCallback? onTopActionTap;
+
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -109,6 +158,46 @@ class _SupportCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    eyebrow.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: CalendarPalette.inkSoft,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+
+                if (topActionLabel != null && onTopActionTap != null)
+                  TextButton(
+                    onPressed: onTopActionTap,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: Text(
+                      topActionLabel!,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+
+            const SizedBox(height: AppSpacing.sm),
+
             if (imageUrl != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
@@ -118,11 +207,13 @@ class _SupportCard extends StatelessWidget {
                   child: Image.network(
                     imageUrl!,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => _IconBox(
-                      icon: icon,
-                      color: iconColor,
-                      background: iconBackground,
-                    ),
+                    errorBuilder: (context, error, stackTrace) {
+                      return _IconBox(
+                        icon: icon,
+                        color: iconColor,
+                        background: iconBackground,
+                      );
+                    },
                   ),
                 ),
               )
@@ -132,16 +223,9 @@ class _SupportCard extends StatelessWidget {
                 color: iconColor,
                 background: iconBackground,
               ),
+
             const SizedBox(height: AppSpacing.sm),
-            Text(
-              eyebrow.toUpperCase(),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: CalendarPalette.inkSoft,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
-              ),
-            ),
-            const SizedBox(height: 4),
+
             Text(
               title,
               maxLines: 2,
@@ -151,14 +235,30 @@ class _SupportCard extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
+
             const SizedBox(height: 4),
+
             Text(
               subtitle,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: CalendarPalette.inkSoft,
                 height: 1.35,
               ),
             ),
+
+            if (actionLabel != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+
+              Text(
+                actionLabel!,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: CalendarPalette.forestDark,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ],
         ),
       ),

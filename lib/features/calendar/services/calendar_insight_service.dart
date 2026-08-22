@@ -101,7 +101,7 @@ class CalendarInsightService {
       if (selectedMoment.expectedParticipantIds.contains(currentUserId))
         'You are one of the expected participants.',
       if (personalWindow.usesAvailability)
-        'A suitable reminder window was found from your recurring availability.',
+        'A suitable reminder window was found from your availability.',
       if (rhythm?.status == RhythmStatus.drifting)
         'Its current rhythm status is Drifting.',
     ];
@@ -142,7 +142,8 @@ class CalendarInsightService {
         final end = start + 120;
         final busyMemberIds = availability
             .where((block) {
-              return block.dayOfWeek == date.weekday &&
+              return !block.isExpiredAt(referenceNow) &&
+                  block.occursOn(date) &&
                   start < block.endMinutes &&
                   end > block.startMinutes;
             })
@@ -251,7 +252,8 @@ class CalendarInsightService {
       ]) {
         final endMinutes = startMinutes + 60;
         final overlaps = personalBlocks.any((block) {
-          return block.dayOfWeek == candidateDate.weekday &&
+          return !block.isExpiredAt(now) &&
+              block.occursOn(candidateDate) &&
               startMinutes < block.endMinutes &&
               endMinutes > block.startMinutes;
         });

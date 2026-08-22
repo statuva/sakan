@@ -13,6 +13,8 @@ import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/rhythm_record.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
+import '../../memories/presentation/add_memory_screen.dart';
+import '../../memories/presentation/all_memories_screen.dart';
 import '../../memories/presentation/memory_details_screen.dart';
 import '../../moments/presentation/moment_form_screen.dart';
 import '../../moments/presentation/moments_screen.dart';
@@ -381,6 +383,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ),
                         );
                       },
+                onAddMemoryTap: familyContext.isAdult
+                    ? () {
+                        _openAddMemoryScreen();
+                      }
+                    : null,
+                onAllMemoriesTap: _openAllMemoriesScreen,
               ),
             ],
           ],
@@ -486,6 +494,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
     required FamilyMoment moment,
     required RhythmRecord? rhythm,
   }) async {
+    FamilyMemory? memory;
+
+    try {
+      memory = await AppDependencies.memoryRepository.getMemoryForMoment(
+        familyId: _familyContext!.familyId,
+        momentId: moment.id,
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The Moment opened, but its '
+            'Memory status could not be loaded.',
+          ),
+        ),
+      );
+    }
+
+    if (!mounted) return;
+
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
@@ -498,19 +528,75 @@ class _CalendarScreenState extends State<CalendarScreen> {
         return CalendarMomentDetailsSheet(
           moment: moment,
           rhythm: rhythm,
+          memory: memory,
           currentUserId: _familyContext!.userId,
           canEdit: _familyContext!.isAdult,
-          onEdit: () {
+
+          onEditMoment: () {
             Navigator.of(sheetContext).pop();
+
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => MomentFormScreen(initialMoment: moment),
               ),
             );
           },
+
+          onAddMemory:
+              moment.status == MomentStatus.completed &&
+                  memory == null &&
+                  _familyContext!.isAdult
+              ? () {
+                  Navigator.of(sheetContext).pop();
+
+                  _openAddMemoryScreen(initialMoment: moment);
+                }
+              : null,
+
+          onViewMemory: memory == null
+              ? null
+              : () {
+                  Navigator.of(sheetContext).pop();
+
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => MemoryDetailsScreen(memory: memory!),
+                    ),
+                  );
+                },
+
+          onEditMemory: memory != null && _familyContext!.isAdult
+              ? () {
+                  Navigator.of(sheetContext).pop();
+
+                  _openAddMemoryScreen(initialMoment: moment);
+                }
+              : null,
         );
       },
     );
+  }
+
+  Future<void> _openAddMemoryScreen({FamilyMoment? initialMoment}) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AddMemoryScreen(initialMoment: initialMoment),
+      ),
+    );
+
+    if (saved != true || !mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Family Memory saved.')));
+  }
+
+  Future<void> _openAllMemoriesScreen() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AllMemoriesScreen()));
   }
 
   Future<void> _openRecommendationDialog(
@@ -544,6 +630,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       assignedMemberId: familyContext.userId,
       dueAt: recommendation.recommendedReminderAt.toUtc(),
       status: CareActionStatus.pending,
+      source: CareActionSource.calendar,
       evidenceType: EvidenceType.scheduledOnly,
       createdAt: now,
       updatedAt: now,
@@ -556,7 +643,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Reminder saved. Device notification delivery can use this action when notifications are connected.',
+          'Reminder added to My Reminders.',
         ),
       ),
     );
