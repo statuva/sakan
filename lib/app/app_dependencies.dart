@@ -7,6 +7,7 @@ import 'package:sakan/features/memories/data/firebase_memory_repository.dart';
 import 'package:sakan/features/profile/data/firebase_profile_repository.dart';
 import 'package:sakan/features/profile/data/firebase_schedule_repository.dart';
 import 'package:sakan/shared/services/current_family_service.dart';
+import 'package:sakan/shared/services/reminder_notification_service.dart';
 
 abstract final class AppDependencies {
   static final FirebaseAuthRepository authRepository = FirebaseAuthRepository();
@@ -34,4 +35,6 @@ abstract final class AppDependencies {
 
   static final CurrentFamilyService currentFamilyService =
       CurrentFamilyService();
+  static final ReminderNotificationService reminderNotificationService =
+      ReminderNotificationService.instance;
 }

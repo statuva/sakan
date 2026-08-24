@@ -638,15 +638,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     await AppDependencies.careActionRepository.createCareAction(action);
 
+    final notificationService = AppDependencies.reminderNotificationService;
+
+    final notificationScheduled = await notificationService.scheduleReminder(
+      action,
+      requestPermission: true,
+    );
+
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Reminder added to My Reminders.',
-        ),
-      ),
-    );
+    final message = !notificationService.supportsScheduling
+        ? 'Reminder added to My Reminders. '
+              'Notification delivery must be '
+              'tested on Android.'
+        : notificationScheduled
+        ? 'Reminder added and notification scheduled.'
+        : 'Reminder added to My Reminders. '
+              'Notifications are currently disabled.';
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 

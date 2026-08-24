@@ -58,21 +58,13 @@ class CareAction {
   }
 
   bool isOverdueAt(DateTime referenceTime) {
-    return !isFinished &&
-        dueAt.toLocal().isBefore(
-          referenceTime.toLocal(),
-        );
+    return !isFinished && dueAt.toLocal().isBefore(referenceTime.toLocal());
   }
 
-  factory CareAction.fromMap(
-    String id,
-    Map<String, dynamic> map,
-  ) {
+  factory CareAction.fromMap(String id, Map<String, dynamic> map) {
     final rawMomentId = map['momentId'];
 
-    final momentId =
-        rawMomentId is String &&
-            rawMomentId.trim().isNotEmpty
+    final momentId = rawMomentId is String && rawMomentId.trim().isNotEmpty
         ? rawMomentId
         : null;
 
@@ -84,14 +76,10 @@ class CareAction {
       id: id,
       familyId: map['familyId'] as String,
       momentId: momentId,
-      title:
-          map['title'] as String? ??
-          'Untitled reminder',
+      title: map['title'] as String? ?? 'Untitled reminder',
       reason: map['reason'] as String? ?? '',
-      assignedMemberId:
-          map['assignedMemberId'] as String,
-      dueAt:
-          (map['dueAt'] as Timestamp).toDate(),
+      assignedMemberId: map['assignedMemberId'] as String,
+      dueAt: (map['dueAt'] as Timestamp).toDate(),
       status: _enumValueOrFallback(
         CareActionStatus.values,
         map['status'],
@@ -109,14 +97,9 @@ class CareAction {
       ),
       completedAt: map['completedAt'] == null
           ? null
-          : (map['completedAt'] as Timestamp)
-                .toDate(),
-      createdAt:
-          (map['createdAt'] as Timestamp)
-              .toDate(),
-      updatedAt:
-          (map['updatedAt'] as Timestamp)
-              .toDate(),
+          : (map['completedAt'] as Timestamp).toDate(),
+      createdAt: (map['createdAt'] as Timestamp).toDate(),
+      updatedAt: (map['updatedAt'] as Timestamp).toDate(),
     );
   }
 
@@ -133,13 +116,9 @@ class CareAction {
       'evidenceType': evidenceType.name,
       'completedAt': completedAt == null
           ? null
-          : Timestamp.fromDate(
-              completedAt!,
-            ),
-      'createdAt':
-          Timestamp.fromDate(createdAt),
-      'updatedAt':
-          Timestamp.fromDate(updatedAt),
+          : Timestamp.fromDate(completedAt!),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
     };
   }
 
@@ -158,36 +137,25 @@ class CareAction {
     return CareAction(
       id: id,
       familyId: familyId,
-      momentId: identical(
-        momentId,
-        _notProvided,
-      )
+      momentId: identical(momentId, _notProvided)
           ? this.momentId
           : momentId as String?,
       title: title ?? this.title,
       reason: reason ?? this.reason,
-      assignedMemberId:
-          assignedMemberId ??
-          this.assignedMemberId,
+      assignedMemberId: assignedMemberId ?? this.assignedMemberId,
       dueAt: dueAt ?? this.dueAt,
       status: status ?? this.status,
       source: source ?? this.source,
-      evidenceType:
-          evidenceType ?? this.evidenceType,
-      completedAt: identical(
-        completedAt,
-        _notProvided,
-      )
+      evidenceType: evidenceType ?? this.evidenceType,
+      completedAt: identical(completedAt, _notProvided)
           ? this.completedAt
           : completedAt as DateTime?,
       createdAt: createdAt,
-      updatedAt:
-          updatedAt ?? this.updatedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
-  static T _enumValueOrFallback<
-      T extends Enum>(
+  static T _enumValueOrFallback<T extends Enum>(
     List<T> values,
     Object? rawValue,
     T fallback,

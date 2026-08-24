@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 
 import '../../../app/app_dependencies.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -12,39 +13,56 @@ import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 import 'reminder_form_screen.dart';
 
-enum _ReminderView {
-  pending,
-  completed,
-}
+enum _ReminderView { pending, completed }
 
-class MyRemindersScreen
-    extends StatefulWidget {
+class MyRemindersScreen extends StatefulWidget {
   const MyRemindersScreen({super.key});
 
   @override
-  State<MyRemindersScreen> createState() =>
-      _MyRemindersScreenState();
+  State<MyRemindersScreen> createState() => _MyRemindersScreenState();
 }
 
-class _MyRemindersScreenState
-    extends State<MyRemindersScreen> {
+class _MyRemindersScreenState extends State<MyRemindersScreen> {
   CurrentFamilyContext? _familyContext;
 
-  Stream<List<CareAction>>?
-      _remindersStream;
+  Stream<List<CareAction>>? _remindersStream;
 
-  _ReminderView _view =
-      _ReminderView.pending;
+  _ReminderView _view = _ReminderView.pending;
 
   bool _isLoading = true;
   bool _isUpdating = false;
 
   String? _errorMessage;
+  String? _lastNotificationSyncKey;
 
   @override
   void initState() {
     super.initState();
     _loadReminders();
+  }
+
+  void _syncReminderNotifications(List<CareAction> reminders) {
+    final syncKey = reminders
+        .map(
+          (reminder) =>
+              '${reminder.id}:'
+              '${reminder.status.name}:'
+              '${reminder.dueAt.millisecondsSinceEpoch}:'
+              '${reminder.updatedAt.millisecondsSinceEpoch}',
+        )
+        .join('|');
+
+    if (_lastNotificationSyncKey == syncKey) {
+      return;
+    }
+
+    _lastNotificationSyncKey = syncKey;
+
+    unawaited(
+      AppDependencies.reminderNotificationService.syncAssignedReminders(
+        reminders,
+      ),
+    );
   }
 
   Future<void> _loadReminders() async {
@@ -54,25 +72,19 @@ class _MyRemindersScreenState
     });
 
     try {
-      final familyContext =
-          await AppDependencies
-              .currentFamilyService
-              .load();
+      final familyContext = await AppDependencies.currentFamilyService.load();
 
-      final remindersStream =
-          AppDependencies
-              .careActionRepository
-              .watchAssignedCareActions(
-        familyId: familyContext.familyId,
-        memberId: familyContext.userId,
-      );
+      final remindersStream = AppDependencies.careActionRepository
+          .watchAssignedCareActions(
+            familyId: familyContext.familyId,
+            memberId: familyContext.userId,
+          );
 
       if (!mounted) return;
 
       setState(() {
         _familyContext = familyContext;
-        _remindersStream =
-            remindersStream;
+        _remindersStream = remindersStream;
         _isLoading = false;
       });
     } catch (_) {
@@ -80,66 +92,38 @@ class _MyRemindersScreenState
 
       setState(() {
         _isLoading = false;
-        _errorMessage =
-            'We could not load your reminders.';
+        _errorMessage = 'We could not load your reminders.';
       });
     }
   }
 
-  List<CareAction> _visibleReminders(
-    List<CareAction> reminders,
-  ) {
-    final visible = reminders.where(
-      (reminder) {
-        return switch (_view) {
-          _ReminderView.pending =>
-            !reminder.isFinished,
-          _ReminderView.completed =>
-            reminder.isFinished,
-        };
-      },
-    ).toList();
+  List<CareAction> _visibleReminders(List<CareAction> reminders) {
+    final visible = reminders.where((reminder) {
+      return switch (_view) {
+        _ReminderView.pending => !reminder.isFinished,
+        _ReminderView.completed => reminder.isFinished,
+      };
+    }).toList();
 
-    if (_view ==
-        _ReminderView.pending) {
-      visible.sort(
-        (first, second) =>
-            first.dueAt.compareTo(
-          second.dueAt,
-        ),
-      );
+    if (_view == _ReminderView.pending) {
+      visible.sort((first, second) => first.dueAt.compareTo(second.dueAt));
     } else {
-      visible.sort(
-        (first, second) {
-          final firstDate =
-              first.completedAt ??
-              first.updatedAt;
+      visible.sort((first, second) {
+        final firstDate = first.completedAt ?? first.updatedAt;
 
-          final secondDate =
-              second.completedAt ??
-              second.updatedAt;
+        final secondDate = second.completedAt ?? second.updatedAt;
 
-          return secondDate.compareTo(
-            firstDate,
-          );
-        },
-      );
+        return secondDate.compareTo(firstDate);
+      });
     }
 
     return visible;
   }
 
-  Future<void> _openReminderForm({
-    CareAction? reminder,
-  }) async {
-    final saved =
-        await Navigator.of(context)
-            .push<bool>(
+  Future<void> _openReminderForm({CareAction? reminder}) async {
+    final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) =>
-            ReminderFormScreen(
-          initialAction: reminder,
-        ),
+        builder: (_) => ReminderFormScreen(initialAction: reminder),
       ),
     );
 
@@ -147,17 +131,10 @@ class _MyRemindersScreenState
       return;
     }
 
-    _showMessage(
-      reminder == null
-          ? 'Reminder added.'
-          : 'Reminder updated.',
-    );
+    _showMessage(reminder == null ? 'Reminder added.' : 'Reminder updated.');
   }
 
-  Future<void> _toggleCompleted(
-    CareAction reminder,
-    bool completed,
-  ) async {
+  Future<void> _toggleCompleted(CareAction reminder, bool completed) async {
     if (_isUpdating) return;
 
     setState(() {
@@ -165,28 +142,32 @@ class _MyRemindersScreenState
     });
 
     try {
-      final now =
-          DateTime.now().toUtc();
+      final now = DateTime.now().toUtc();
 
-      final updated =
-          reminder.copyWith(
+      final updated = reminder.copyWith(
         status: completed
             ? CareActionStatus.completed
             : CareActionStatus.pending,
         evidenceType: completed
             ? EvidenceType.userConfirmed
-            : reminder.source ==
-                    CareActionSource.manual
-                ? EvidenceType.manual
-                : EvidenceType.scheduledOnly,
-        completedAt:
-            completed ? now : null,
+            : reminder.source == CareActionSource.manual
+            ? EvidenceType.manual
+            : EvidenceType.scheduledOnly,
+        completedAt: completed ? now : null,
         updatedAt: now,
       );
 
-      await AppDependencies
-          .careActionRepository
-          .updateCareAction(updated);
+      await AppDependencies.careActionRepository.updateCareAction(updated);
+      if (completed) {
+        await AppDependencies.reminderNotificationService.cancelReminder(
+          updated.id,
+        );
+      } else {
+        await AppDependencies.reminderNotificationService.scheduleReminder(
+          updated,
+          requestPermission: false,
+        );
+      }
 
       if (!mounted) return;
 
@@ -194,7 +175,7 @@ class _MyRemindersScreenState
         completed
             ? 'Reminder completed.'
             : 'Reminder moved back '
-                'to Pending.',
+                  'to Pending.',
       );
     } catch (_) {
       if (!mounted) return;
@@ -212,35 +193,25 @@ class _MyRemindersScreenState
     }
   }
 
-  Future<void> _deleteReminder(
-    CareAction reminder,
-  ) async {
+  Future<void> _deleteReminder(CareAction reminder) async {
     if (_isUpdating) return;
 
-    final confirmed =
-        await showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title:
-              const Text('Delete reminder?'),
-          content: Text(
-            'Delete "${reminder.title}"?',
-          ),
+          title: const Text('Delete reminder?'),
+          content: Text('Delete "${reminder.title}"?'),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(
-                  dialogContext,
-                ).pop(false);
+                Navigator.of(dialogContext).pop(false);
               },
               child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.of(
-                  dialogContext,
-                ).pop(true);
+                Navigator.of(dialogContext).pop(true);
               },
               child: const Text('Delete'),
             ),
@@ -249,8 +220,7 @@ class _MyRemindersScreenState
       },
     );
 
-    if (confirmed != true ||
-        !mounted) {
+    if (confirmed != true || !mounted) {
       return;
     }
 
@@ -259,18 +229,18 @@ class _MyRemindersScreenState
     });
 
     try {
-      await AppDependencies
-          .careActionRepository
-          .deleteCareAction(
+      await AppDependencies.careActionRepository.deleteCareAction(
         familyId: reminder.familyId,
         actionId: reminder.id,
       );
 
+      await AppDependencies.reminderNotificationService.cancelReminder(
+        reminder.id,
+      );
+
       if (!mounted) return;
 
-      _showMessage(
-        'Reminder deleted.',
-      );
+      _showMessage('Reminder deleted.');
     } catch (_) {
       if (!mounted) return;
 
@@ -290,27 +260,16 @@ class _MyRemindersScreenState
   void _showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
-      SnackBar(
-        content: Text(message),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Scaffold _errorScaffold(
-    String message,
-  ) {
+  Scaffold _errorScaffold(String message) {
     return Scaffold(
-      appBar: AppBar(
-        title:
-            const Text('My Reminders'),
-      ),
+      appBar: AppBar(title: const Text('My Reminders')),
       body: SafeArea(
-        child: AppErrorState(
-          message: message,
-          onRetry: _loadReminders,
-        ),
+        child: AppErrorState(message: message, onRetry: _loadReminders),
       ),
     );
   }
@@ -320,16 +279,12 @@ class _MyRemindersScreenState
     if (_isLoading) {
       return const Scaffold(
         body: SafeArea(
-          child: AppLoadingState(
-            message:
-                'Loading your reminders…',
-          ),
+          child: AppLoadingState(message: 'Loading your reminders…'),
         ),
       );
     }
 
-    if (_familyContext == null ||
-        _remindersStream == null) {
+    if (_familyContext == null || _remindersStream == null) {
       return _errorScaffold(
         _errorMessage ??
             'Your reminders '
@@ -347,48 +302,31 @@ class _MyRemindersScreenState
           );
         }
 
-        if (snapshot.connectionState ==
-                ConnectionState.waiting &&
+        if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
           return const Scaffold(
             body: SafeArea(
-              child: AppLoadingState(
-                message:
-                    'Loading your reminders…',
-              ),
+              child: AppLoadingState(message: 'Loading your reminders…'),
             ),
           );
         }
 
-        final allReminders =
-            snapshot.data ??
-            <CareAction>[];
+        final allReminders = snapshot.data ?? <CareAction>[];
+        _syncReminderNotifications(allReminders);
 
-        final visibleReminders =
-            _visibleReminders(
-          allReminders,
-        );
+        final visibleReminders = _visibleReminders(allReminders);
 
-        final pendingCount =
-            allReminders
-                .where(
-                  (item) =>
-                      !item.isFinished,
-                )
-                .length;
+        final pendingCount = allReminders
+            .where((item) => !item.isFinished)
+            .length;
 
-        final completedCount =
-            allReminders
-                .where(
-                  (item) =>
-                      item.isFinished,
-                )
-                .length;
+        final completedCount = allReminders
+            .where((item) => item.isFinished)
+            .length;
 
         return Scaffold(
           appBar: AppBar(
-            title:
-                const Text('My Reminders'),
+            title: const Text('My Reminders'),
             actions: [
               IconButton(
                 tooltip: 'Add Reminder',
@@ -397,16 +335,13 @@ class _MyRemindersScreenState
                     : () {
                         _openReminderForm();
                       },
-                icon: const Icon(
-                  Icons.add_rounded,
-                ),
+                icon: const Icon(Icons.add_rounded),
               ),
             ],
           ),
           body: SafeArea(
             child: ListView(
-              padding:
-                  const EdgeInsets.fromLTRB(
+              padding: const EdgeInsets.fromLTRB(
                 AppSpacing.xl,
                 AppSpacing.md,
                 AppSpacing.xl,
@@ -415,50 +350,33 @@ class _MyRemindersScreenState
               children: [
                 AppCard(
                   child: Row(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(
-                        Icons
-                            .checklist_rounded,
-                        color:
-                            Theme.of(context)
-                                .colorScheme
-                                .primary,
+                        Icons.checklist_rounded,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
 
-                      const SizedBox(
-                        width: AppSpacing.md,
-                      ),
+                      const SizedBox(width: AppSpacing.md),
 
                       Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'Your personal '
                               'to-do list',
-                              style:
-                                  Theme.of(context)
-                                      .textTheme
-                                      .titleMedium,
+                              style: Theme.of(context).textTheme.titleMedium,
                             ),
 
-                            const SizedBox(
-                              height: 5,
-                            ),
+                            const SizedBox(height: 5),
 
                             Text(
                               'Manual reminders and '
                               'suggestions you approve '
                               'from Calendar or the '
                               'Digital Twin appear here.',
-                              style:
-                                  Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium,
+                              style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ],
                         ),
@@ -467,34 +385,18 @@ class _MyRemindersScreenState
                   ),
                 ),
 
-                const SizedBox(
-                  height: AppSpacing.lg,
-                ),
+                const SizedBox(height: AppSpacing.lg),
 
-                SegmentedButton<
-                    _ReminderView>(
+                SegmentedButton<_ReminderView>(
                   segments: [
-                    ButtonSegment<
-                        _ReminderView>(
-                      value:
-                          _ReminderView.pending,
-                      icon: const Icon(
-                        Icons
-                            .radio_button_unchecked,
-                      ),
-                      label: Text(
-                        'Pending ($pendingCount)',
-                      ),
+                    ButtonSegment<_ReminderView>(
+                      value: _ReminderView.pending,
+                      icon: const Icon(Icons.radio_button_unchecked),
+                      label: Text('Pending ($pendingCount)'),
                     ),
-                    ButtonSegment<
-                        _ReminderView>(
-                      value:
-                          _ReminderView
-                              .completed,
-                      icon: const Icon(
-                        Icons
-                            .check_circle_outline,
-                      ),
+                    ButtonSegment<_ReminderView>(
+                      value: _ReminderView.completed,
+                      icon: const Icon(Icons.check_circle_outline),
                       label: Text(
                         'Completed '
                         '($completedCount)',
@@ -502,18 +404,14 @@ class _MyRemindersScreenState
                     ),
                   ],
                   selected: {_view},
-                  onSelectionChanged:
-                      (selection) {
+                  onSelectionChanged: (selection) {
                     setState(() {
-                      _view =
-                          selection.first;
+                      _view = selection.first;
                     });
                   },
                 ),
 
-                const SizedBox(
-                  height: AppSpacing.xl,
-                ),
+                const SizedBox(height: AppSpacing.xl),
 
                 if (visibleReminders.isEmpty)
                   _EmptyReminderState(
@@ -525,31 +423,18 @@ class _MyRemindersScreenState
                 else
                   ...visibleReminders.map(
                     (reminder) => Padding(
-                      padding:
-                          const EdgeInsets.only(
-                        bottom:
-                            AppSpacing.md,
-                      ),
+                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
                       child: _ReminderCard(
                         reminder: reminder,
-                        isDisabled:
-                            _isUpdating,
-                        onCompletedChanged:
-                            (completed) {
-                          _toggleCompleted(
-                            reminder,
-                            completed,
-                          );
+                        isDisabled: _isUpdating,
+                        onCompletedChanged: (completed) {
+                          _toggleCompleted(reminder, completed);
                         },
                         onEdit: () {
-                          _openReminderForm(
-                            reminder: reminder,
-                          );
+                          _openReminderForm(reminder: reminder);
                         },
                         onDelete: () {
-                          _deleteReminder(
-                            reminder,
-                          );
+                          _deleteReminder(reminder);
                         },
                       ),
                     ),
@@ -563,72 +448,48 @@ class _MyRemindersScreenState
   }
 }
 
-class _EmptyReminderState
-    extends StatelessWidget {
-  const _EmptyReminderState({
-    required this.view,
-    required this.onAddReminder,
-  });
+class _EmptyReminderState extends StatelessWidget {
+  const _EmptyReminderState({required this.view, required this.onAddReminder});
 
   final _ReminderView view;
   final VoidCallback onAddReminder;
 
   @override
   Widget build(BuildContext context) {
-    final showingPending =
-        view == _ReminderView.pending;
+    final showingPending = view == _ReminderView.pending;
 
     return AppCard(
       child: Column(
         children: [
           Icon(
-            showingPending
-                ? Icons
-                    .task_alt_outlined
-                : Icons
-                    .history_rounded,
+            showingPending ? Icons.task_alt_outlined : Icons.history_rounded,
             size: 58,
-            color:
-                Theme.of(context)
-                    .colorScheme
-                    .primary,
+            color: Theme.of(context).colorScheme.primary,
           ),
 
-          const SizedBox(
-            height: AppSpacing.lg,
-          ),
+          const SizedBox(height: AppSpacing.lg),
 
           Text(
-            showingPending
-                ? 'Nothing pending'
-                : 'No completed reminders yet',
+            showingPending ? 'Nothing pending' : 'No completed reminders yet',
             textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge,
+            style: Theme.of(context).textTheme.titleLarge,
           ),
 
-          const SizedBox(
-            height: AppSpacing.sm,
-          ),
+          const SizedBox(height: AppSpacing.sm),
 
           Text(
             showingPending
                 ? 'Add a personal reminder or '
-                    'approve a suggestion from '
-                    'another Sakan feature.'
+                      'approve a suggestion from '
+                      'another Sakan feature.'
                 : 'Completed reminders will '
-                    'appear here.',
+                      'appear here.',
             textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium,
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
 
           if (showingPending) ...[
-            const SizedBox(
-              height: AppSpacing.xl,
-            ),
+            const SizedBox(height: AppSpacing.xl),
 
             AppPrimaryButton(
               label: 'Add Reminder',
@@ -642,8 +503,7 @@ class _EmptyReminderState
   }
 }
 
-class _ReminderCard
-    extends StatelessWidget {
+class _ReminderCard extends StatelessWidget {
   const _ReminderCard({
     required this.reminder,
     required this.isDisabled,
@@ -655,88 +515,60 @@ class _ReminderCard
   final CareAction reminder;
   final bool isDisabled;
 
-  final ValueChanged<bool>
-      onCompletedChanged;
+  final ValueChanged<bool> onCompletedChanged;
 
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final completed =
-        reminder.isFinished;
+    final completed = reminder.isFinished;
 
-    final overdue =
-        reminder.isOverdueAt(
-      DateTime.now(),
-    );
+    final overdue = reminder.isOverdueAt(DateTime.now());
 
-    final note =
-        reminder.reason.trim();
+    final note = reminder.reason.trim();
 
     return AppCard(
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding:
-                const EdgeInsets.only(
-              top: 1,
-            ),
+            padding: const EdgeInsets.only(top: 1),
             child: Checkbox(
               value: completed,
               onChanged: isDisabled
                   ? null
                   : (value) {
-                      onCompletedChanged(
-                        value ?? false,
-                      );
+                      onCompletedChanged(value ?? false);
                     },
             ),
           ),
 
-          const SizedBox(
-            width: AppSpacing.xs,
-          ),
+          const SizedBox(width: AppSpacing.xs),
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   reminder.title,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                        decoration: completed
-                            ? TextDecoration
-                                  .lineThrough
-                            : null,
-                      ),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    decoration: completed ? TextDecoration.lineThrough : null,
+                  ),
                 ),
 
                 if (note.isNotEmpty) ...[
-                  const SizedBox(
-                    height: 5,
-                  ),
+                  const SizedBox(height: 5),
 
                   Text(
                     note,
                     maxLines: 3,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ],
 
-                const SizedBox(
-                  height: AppSpacing.sm,
-                ),
+                const SizedBox(height: AppSpacing.sm),
 
                 Wrap(
                   spacing: AppSpacing.sm,
@@ -744,29 +576,20 @@ class _ReminderCard
                   children: [
                     _ReminderChip(
                       icon: overdue
-                          ? Icons
-                              .warning_amber_rounded
-                          : Icons
-                              .schedule_outlined,
+                          ? Icons.warning_amber_rounded
+                          : Icons.schedule_outlined,
                       label: overdue
                           ? 'Overdue · '
-                              '${DateFormat('d MMM · h:mm a').format(reminder.dueAt.toLocal())}'
+                                '${DateFormat('d MMM · h:mm a').format(reminder.dueAt.toLocal())}'
                           : DateFormat(
                               'EEE, d MMM · h:mm a',
-                            ).format(
-                              reminder.dueAt
-                                  .toLocal(),
-                            ),
+                            ).format(reminder.dueAt.toLocal()),
                       isError: overdue,
                     ),
 
                     _ReminderChip(
-                      icon: _sourceIcon(
-                        reminder.source,
-                      ),
-                      label: _sourceLabel(
-                        reminder.source,
-                      ),
+                      icon: _sourceIcon(reminder.source),
+                      label: _sourceLabel(reminder.source),
                     ),
                   ],
                 ),
@@ -792,9 +615,7 @@ class _ReminderCard
                   value: 'edit',
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.edit_outlined,
-                      ),
+                      Icon(Icons.edit_outlined),
                       SizedBox(width: 10),
                       Text('Edit'),
                     ],
@@ -804,9 +625,7 @@ class _ReminderCard
                   value: 'delete',
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.delete_outline,
-                      ),
+                      Icon(Icons.delete_outline),
                       SizedBox(width: 10),
                       Text('Delete'),
                     ],
@@ -821,8 +640,7 @@ class _ReminderCard
   }
 }
 
-class _ReminderChip
-    extends StatelessWidget {
+class _ReminderChip extends StatelessWidget {
   const _ReminderChip({
     required this.icon,
     required this.label,
@@ -836,43 +654,26 @@ class _ReminderChip
   @override
   Widget build(BuildContext context) {
     final color = isError
-        ? Theme.of(context)
-            .colorScheme
-            .error
-        : Theme.of(context)
-            .colorScheme
-            .primary;
+        ? Theme.of(context).colorScheme.error
+        : Theme.of(context).colorScheme.primary;
 
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 9,
-        vertical: 5,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: color.withAlpha(18),
-        borderRadius:
-            BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 14,
-            color: color,
-          ),
+          Icon(icon, size: 14, color: color),
           const SizedBox(width: 5),
           Text(
             label,
-            style: Theme.of(context)
-                .textTheme
-                .labelSmall
-                ?.copyWith(
-                  color: color,
-                  fontWeight:
-                      FontWeight.w600,
-                ),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -880,32 +681,20 @@ class _ReminderChip
   }
 }
 
-String _sourceLabel(
-  CareActionSource source,
-) {
+String _sourceLabel(CareActionSource source) {
   return switch (source) {
-    CareActionSource.manual =>
-      'Manual',
-    CareActionSource.calendar =>
-      'Calendar',
-    CareActionSource.digitalTwin =>
-      'Digital Twin',
-    CareActionSource.schedule =>
-      'Schedule',
+    CareActionSource.manual => 'Manual',
+    CareActionSource.calendar => 'Calendar',
+    CareActionSource.digitalTwin => 'Digital Twin',
+    CareActionSource.schedule => 'Schedule',
   };
 }
 
-IconData _sourceIcon(
-  CareActionSource source,
-) {
+IconData _sourceIcon(CareActionSource source) {
   return switch (source) {
-    CareActionSource.manual =>
-      Icons.edit_note_outlined,
-    CareActionSource.calendar =>
-      Icons.calendar_month_outlined,
-    CareActionSource.digitalTwin =>
-      Icons.account_tree_outlined,
-    CareActionSource.schedule =>
-      Icons.schedule_outlined,
+    CareActionSource.manual => Icons.edit_note_outlined,
+    CareActionSource.calendar => Icons.calendar_month_outlined,
+    CareActionSource.digitalTwin => Icons.account_tree_outlined,
+    CareActionSource.schedule => Icons.schedule_outlined,
   };
 }

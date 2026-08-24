@@ -11,29 +11,21 @@ import '../../../shared/widgets/cards/app_card.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 
-class ReminderFormScreen
-    extends StatefulWidget {
-  const ReminderFormScreen({
-    this.initialAction,
-    super.key,
-  });
+class ReminderFormScreen extends StatefulWidget {
+  const ReminderFormScreen({this.initialAction, super.key});
 
   final CareAction? initialAction;
 
   @override
-  State<ReminderFormScreen> createState() =>
-      _ReminderFormScreenState();
+  State<ReminderFormScreen> createState() => _ReminderFormScreenState();
 }
 
-class _ReminderFormScreenState
-    extends State<ReminderFormScreen> {
+class _ReminderFormScreenState extends State<ReminderFormScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  late final TextEditingController
-      _titleController;
+  late final TextEditingController _titleController;
 
-  late final TextEditingController
-      _noteController;
+  late final TextEditingController _noteController;
 
   CurrentFamilyContext? _familyContext;
 
@@ -53,32 +45,19 @@ class _ReminderFormScreenState
   void initState() {
     super.initState();
 
-    final initialAction =
-        widget.initialAction;
+    final initialAction = widget.initialAction;
 
-    _titleController =
-        TextEditingController(
-      text: initialAction?.title ?? '',
-    );
+    _titleController = TextEditingController(text: initialAction?.title ?? '');
 
-    _noteController =
-        TextEditingController(
-      text: initialAction?.reason ?? '',
-    );
+    _noteController = TextEditingController(text: initialAction?.reason ?? '');
 
     final initialDueAt =
         initialAction?.dueAt.toLocal() ??
-        DateTime.now().add(
-          const Duration(hours: 1),
-        );
+        DateTime.now().add(const Duration(hours: 1));
 
-    _selectedDate =
-        DateUtils.dateOnly(initialDueAt);
+    _selectedDate = DateUtils.dateOnly(initialDueAt);
 
-    _selectedTime =
-        TimeOfDay.fromDateTime(
-      initialDueAt,
-    );
+    _selectedTime = TimeOfDay.fromDateTime(initialDueAt);
 
     _loadContext();
   }
@@ -97,17 +76,12 @@ class _ReminderFormScreenState
     });
 
     try {
-      final familyContext =
-          await AppDependencies
-              .currentFamilyService
-              .load();
+      final familyContext = await AppDependencies.currentFamilyService.load();
 
-      final initialAction =
-          widget.initialAction;
+      final initialAction = widget.initialAction;
 
       if (initialAction != null &&
-          initialAction.assignedMemberId !=
-              familyContext.userId) {
+          initialAction.assignedMemberId != familyContext.userId) {
         throw StateError(
           'You may edit only reminders '
           'assigned to you.',
@@ -125,49 +99,34 @@ class _ReminderFormScreenState
 
       setState(() {
         _isLoading = false;
-        _errorMessage =
-            _readableError(
+        _errorMessage = _readableError(
           error,
           'We could not prepare '
-              'the reminder form.',
+          'the reminder form.',
         );
       });
     }
   }
 
   Future<void> _pickDate() async {
-    final today = DateUtils.dateOnly(
-      DateTime.now(),
-    );
+    final today = DateUtils.dateOnly(DateTime.now());
 
-    final selected =
-        await showDatePicker(
+    final selected = await showDatePicker(
       context: context,
-      initialDate:
-          _selectedDate,
-      firstDate: DateTime(
-        today.year - 2,
-        1,
-        1,
-      ),
-      lastDate: DateTime(
-        today.year + 5,
-        12,
-        31,
-      ),
+      initialDate: _selectedDate,
+      firstDate: DateTime(today.year - 2, 1, 1),
+      lastDate: DateTime(today.year + 5, 12, 31),
     );
 
     if (selected == null) return;
 
     setState(() {
-      _selectedDate =
-          DateUtils.dateOnly(selected);
+      _selectedDate = DateUtils.dateOnly(selected);
     });
   }
 
   Future<void> _pickTime() async {
-    final selected =
-        await showTimePicker(
+    final selected = await showTimePicker(
       context: context,
       initialTime: _selectedTime,
     );
@@ -180,16 +139,13 @@ class _ReminderFormScreenState
   }
 
   Future<void> _saveReminder() async {
-    if (!_formKey.currentState!
-        .validate()) {
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    final familyContext =
-        _familyContext;
+    final familyContext = _familyContext;
 
-    if (familyContext == null ||
-        _isSaving) {
+    if (familyContext == null || _isSaving) {
       return;
     }
 
@@ -201,13 +157,9 @@ class _ReminderFormScreenState
       _selectedTime.minute,
     );
 
-    final initialAction =
-        widget.initialAction;
+    final initialAction = widget.initialAction;
 
-    if (initialAction == null &&
-        !dueLocal.isAfter(
-          DateTime.now(),
-        )) {
+    if (initialAction == null && !dueLocal.isAfter(DateTime.now())) {
       setState(() {
         _errorMessage =
             'Choose a reminder time '
@@ -223,50 +175,44 @@ class _ReminderFormScreenState
     });
 
     try {
-      final now =
-          DateTime.now().toUtc();
+      final now = DateTime.now().toUtc();
 
       final action = CareAction(
-        id: initialAction?.id ??
+        id:
+            initialAction?.id ??
             'care_'
                 '${familyContext.userId}_'
                 '${DateTime.now().microsecondsSinceEpoch}',
-        familyId:
-            familyContext.familyId,
-        momentId:
-            initialAction?.momentId,
-        title:
-            _titleController.text.trim(),
-        reason:
-            _noteController.text.trim(),
-        assignedMemberId:
-            familyContext.userId,
+        familyId: familyContext.familyId,
+        momentId: initialAction?.momentId,
+        title: _titleController.text.trim(),
+        reason: _noteController.text.trim(),
+        assignedMemberId: familyContext.userId,
         dueAt: dueLocal.toUtc(),
-        status:
-            initialAction?.status ??
-            CareActionStatus.pending,
-        source:
-            initialAction?.source ??
-            CareActionSource.manual,
-        evidenceType:
-            initialAction?.evidenceType ??
-            EvidenceType.manual,
-        completedAt:
-            initialAction?.completedAt,
-        createdAt:
-            initialAction?.createdAt ??
-            now,
+        status: initialAction?.status ?? CareActionStatus.pending,
+        source: initialAction?.source ?? CareActionSource.manual,
+        evidenceType: initialAction?.evidenceType ?? EvidenceType.manual,
+        completedAt: initialAction?.completedAt,
+        createdAt: initialAction?.createdAt ?? now,
         updatedAt: now,
       );
 
       if (initialAction == null) {
-        await AppDependencies
-            .careActionRepository
-            .createCareAction(action);
+        await AppDependencies.careActionRepository.createCareAction(action);
       } else {
-        await AppDependencies
-            .careActionRepository
-            .updateCareAction(action);
+        await AppDependencies.careActionRepository.updateCareAction(action);
+      }
+
+      final notificationService = AppDependencies.reminderNotificationService;
+
+      if (action.isFinished ||
+          !action.dueAt.toLocal().isAfter(DateTime.now())) {
+        await notificationService.cancelReminder(action.id);
+      } else {
+        await notificationService.scheduleReminder(
+          action,
+          requestPermission: true,
+        );
       }
 
       if (!mounted) return;
@@ -276,11 +222,10 @@ class _ReminderFormScreenState
       if (!mounted) return;
 
       setState(() {
-        _errorMessage =
-            _readableError(
+        _errorMessage = _readableError(
           error,
           'We could not save '
-              'this reminder.',
+          'this reminder.',
         );
       });
     } finally {
@@ -292,13 +237,9 @@ class _ReminderFormScreenState
     }
   }
 
-  String _readableError(
-    Object error,
-    String fallback,
-  ) {
+  String _readableError(Object error, String fallback) {
     if (error is ArgumentError) {
-      return error.message?.toString() ??
-          fallback;
+      return error.message?.toString() ?? fallback;
     }
 
     if (error is StateError) {
@@ -313,24 +254,18 @@ class _ReminderFormScreenState
     if (_isLoading) {
       return const Scaffold(
         body: SafeArea(
-          child: AppLoadingState(
-            message:
-                'Preparing your reminder…',
-          ),
+          child: AppLoadingState(message: 'Preparing your reminder…'),
         ),
       );
     }
 
     if (_familyContext == null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'Reminder',
-          ),
-        ),
+        appBar: AppBar(title: const Text('Reminder')),
         body: SafeArea(
           child: AppErrorState(
-            message: _errorMessage ??
+            message:
+                _errorMessage ??
                 'The reminder form '
                     'is unavailable.',
             onRetry: _loadContext,
@@ -339,79 +274,51 @@ class _ReminderFormScreenState
       );
     }
 
-    final source =
-        widget.initialAction?.source ??
-        CareActionSource.manual;
+    final source = widget.initialAction?.source ?? CareActionSource.manual;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _isEditing
-              ? 'Edit Reminder'
-              : 'Add Reminder',
-        ),
+        title: Text(_isEditing ? 'Edit Reminder' : 'Add Reminder'),
       ),
       body: SafeArea(
         child: Form(
           key: _formKey,
           child: ListView(
-            padding:
-                const EdgeInsets.all(
-              AppSpacing.xl,
-            ),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             children: [
               Text(
                 _isEditing
                     ? 'Update your reminder'
                     : 'Create a personal reminder',
-                style: Theme.of(context)
-                    .textTheme
-                    .headlineSmall,
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
 
-              const SizedBox(
-                height: AppSpacing.xs,
-              ),
+              const SizedBox(height: AppSpacing.xs),
 
               Text(
                 'Your reminder will appear '
                 'only in your personal '
                 'My Reminders list.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium,
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
 
-              const SizedBox(
-                height: AppSpacing.xl,
-              ),
+              const SizedBox(height: AppSpacing.xl),
 
               TextFormField(
-                controller:
-                    _titleController,
+                controller: _titleController,
                 enabled: !_isSaving,
-                textCapitalization:
-                    TextCapitalization
-                        .sentences,
-                decoration:
-                    const InputDecoration(
-                  labelText:
-                      'Reminder title',
-                  hintText:
-                      'Buy a gift, call Grandma…',
-                  prefixIcon: Icon(
-                    Icons
-                        .check_circle_outline,
-                  ),
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Reminder title',
+                  hintText: 'Buy a gift, call Grandma…',
+                  prefixIcon: Icon(Icons.check_circle_outline),
                 ),
                 validator: (value) {
-                  if (value == null ||
-                      value.trim().isEmpty) {
+                  if (value == null || value.trim().isEmpty) {
                     return 'Enter a reminder title.';
                   }
 
-                  if (value.trim().length <
-                      2) {
+                  if (value.trim().length < 2) {
                     return 'The title is too short.';
                   }
 
@@ -419,136 +326,84 @@ class _ReminderFormScreenState
                 },
               ),
 
-              const SizedBox(
-                height: AppSpacing.md,
-              ),
+              const SizedBox(height: AppSpacing.md),
 
               TextFormField(
-                controller:
-                    _noteController,
+                controller: _noteController,
                 enabled: !_isSaving,
                 minLines: 3,
                 maxLines: 5,
-                textCapitalization:
-                    TextCapitalization
-                        .sentences,
-                decoration:
-                    const InputDecoration(
-                  labelText:
-                      'Notes (optional)',
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
                   hintText:
                       'Add useful details '
                       'for this reminder.',
                   alignLabelWithHint: true,
-                  prefixIcon: Icon(
-                    Icons.notes_outlined,
-                  ),
+                  prefixIcon: Icon(Icons.notes_outlined),
                 ),
               ),
 
-              const SizedBox(
-                height: AppSpacing.lg,
-              ),
+              const SizedBox(height: AppSpacing.lg),
 
               AppCard(
                 child: Column(
                   children: [
                     ListTile(
-                      contentPadding:
-                          EdgeInsets.zero,
-                      leading: const Icon(
-                        Icons
-                            .calendar_today_outlined,
-                      ),
-                      title:
-                          const Text('Date'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.calendar_today_outlined),
+                      title: const Text('Date'),
                       subtitle: Text(
-                        DateFormat(
-                          'EEEE, d MMMM y',
-                        ).format(
-                          _selectedDate,
-                        ),
+                        DateFormat('EEEE, d MMMM y').format(_selectedDate),
                       ),
-                      trailing: const Icon(
-                        Icons.chevron_right,
-                      ),
-                      onTap: _isSaving
-                          ? null
-                          : _pickDate,
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _isSaving ? null : _pickDate,
                     ),
 
                     const Divider(),
 
                     ListTile(
-                      contentPadding:
-                          EdgeInsets.zero,
-                      leading: const Icon(
-                        Icons
-                            .access_time_outlined,
-                      ),
-                      title:
-                          const Text('Time'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.access_time_outlined),
+                      title: const Text('Time'),
                       subtitle: Text(
                         MaterialLocalizations.of(
                           context,
-                        ).formatTimeOfDay(
-                          _selectedTime,
-                        ),
+                        ).formatTimeOfDay(_selectedTime),
                       ),
-                      trailing: const Icon(
-                        Icons.chevron_right,
-                      ),
-                      onTap: _isSaving
-                          ? null
-                          : _pickTime,
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _isSaving ? null : _pickTime,
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(
-                height: AppSpacing.lg,
-              ),
+              const SizedBox(height: AppSpacing.lg),
 
               AppCard(
                 child: Row(
                   children: [
                     Icon(
                       _sourceIcon(source),
-                      color:
-                          Theme.of(context)
-                              .colorScheme
-                              .primary,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
 
-                    const SizedBox(
-                      width: AppSpacing.md,
-                    ),
+                    const SizedBox(width: AppSpacing.md),
 
                     Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment
-                                .start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'Reminder source',
-                            style:
-                                Theme.of(context)
-                                    .textTheme
-                                    .labelLarge,
+                            style: Theme.of(context).textTheme.labelLarge,
                           ),
 
-                          const SizedBox(
-                            height: 4,
-                          ),
+                          const SizedBox(height: 4),
 
                           Text(
                             _sourceLabel(source),
-                            style:
-                                Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium,
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
                       ),
@@ -558,36 +413,21 @@ class _ReminderFormScreenState
               ),
 
               if (_errorMessage != null) ...[
-                const SizedBox(
-                  height: AppSpacing.md,
-                ),
+                const SizedBox(height: AppSpacing.md),
 
                 Text(
                   _errorMessage!,
-                  style: TextStyle(
-                    color:
-                        Theme.of(context)
-                            .colorScheme
-                            .error,
-                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
 
-              const SizedBox(
-                height: AppSpacing.xxl,
-              ),
+              const SizedBox(height: AppSpacing.xxl),
 
               AppPrimaryButton(
-                label: _isEditing
-                    ? 'Save Changes'
-                    : 'Add Reminder',
-                icon: _isEditing
-                    ? Icons.save_outlined
-                    : Icons.add_task_rounded,
+                label: _isEditing ? 'Save Changes' : 'Add Reminder',
+                icon: _isEditing ? Icons.save_outlined : Icons.add_task_rounded,
                 isLoading: _isSaving,
-                onPressed: _isSaving
-                    ? null
-                    : _saveReminder,
+                onPressed: _isSaving ? null : _saveReminder,
               ),
             ],
           ),
@@ -597,32 +437,20 @@ class _ReminderFormScreenState
   }
 }
 
-String _sourceLabel(
-  CareActionSource source,
-) {
+String _sourceLabel(CareActionSource source) {
   return switch (source) {
-    CareActionSource.manual =>
-      'Created manually',
-    CareActionSource.calendar =>
-      'Suggested by Calendar',
-    CareActionSource.digitalTwin =>
-      'Suggested by Digital Twin',
-    CareActionSource.schedule =>
-      'Suggested from your Schedule',
+    CareActionSource.manual => 'Created manually',
+    CareActionSource.calendar => 'Suggested by Calendar',
+    CareActionSource.digitalTwin => 'Suggested by Digital Twin',
+    CareActionSource.schedule => 'Suggested from your Schedule',
   };
 }
 
-IconData _sourceIcon(
-  CareActionSource source,
-) {
+IconData _sourceIcon(CareActionSource source) {
   return switch (source) {
-    CareActionSource.manual =>
-      Icons.edit_note_outlined,
-    CareActionSource.calendar =>
-      Icons.calendar_month_outlined,
-    CareActionSource.digitalTwin =>
-      Icons.account_tree_outlined,
-    CareActionSource.schedule =>
-      Icons.schedule_outlined,
+    CareActionSource.manual => Icons.edit_note_outlined,
+    CareActionSource.calendar => Icons.calendar_month_outlined,
+    CareActionSource.digitalTwin => Icons.account_tree_outlined,
+    CareActionSource.schedule => Icons.schedule_outlined,
   };
 }

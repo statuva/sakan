@@ -129,20 +129,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
 
                     _ProfileTile(
-  icon: Icons.checklist_rounded,
-  title: 'My Reminders',
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            const MyRemindersScreen(),
-      ),
-    );
-  },
-),
-
-
+                      icon: Icons.checklist_rounded,
+                      title: 'My Reminders',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const MyRemindersScreen(),
+                          ),
+                        );
+                      },
+                    ),
 
                     _ProfileTile(
                       icon: Icons.favorite_outline,
