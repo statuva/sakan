@@ -1,4 +1,5 @@
 import 'package:go_router/go_router.dart';
+import 'package:flutter/material.dart';
 
 import 'package:sakan/app/app_shell.dart';
 import 'package:sakan/features/authentication/presentation/forgot_password_screen.dart';
@@ -14,8 +15,12 @@ import 'package:sakan/features/family_setup/presentation/family_setup_screen.dar
 import 'package:sakan/features/family_setup/presentation/join_family_screen.dart';
 import 'package:sakan/features/home/presentation/home_screen.dart';
 import 'package:sakan/features/profile/presentation/profile_screen.dart';
+import 'package:sakan/features/profile/presentation/my_reminders_screen.dart';
+
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final GoRouter appRouter = GoRouter(
+  navigatorKey: rootNavigatorKey,
   initialLocation: '/startup',
   routes: [
     GoRoute(
@@ -56,6 +61,13 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/family-setup',
       builder: (context, state) => const FamilySetupScreen(),
+    ),
+    GoRoute(
+      path: '/my-reminders',
+      name: 'myReminders',
+      builder: (context, state) {
+        return const MyRemindersScreen();
+      },
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
