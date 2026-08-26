@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/models/family_memory.dart';
-import '../calendar_types.dart';
+import '../../../../shared/models/family_insight_report.dart';
 import 'calendar_palette.dart';
 
 class CalendarSupportCards extends StatelessWidget {
@@ -17,7 +17,7 @@ class CalendarSupportCards extends StatelessWidget {
     super.key,
   });
 
-  final CalendarAvailabilityWindow? availability;
+  final FamilyAvailabilityWindow? availability;
 
   final FamilyMemory? memory;
 

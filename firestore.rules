@@ -185,20 +185,94 @@ service cloud.firestore {
       }
 
       match /momentInstances/{instanceId} {
-        allow read: if isFamilyMember(familyId);
-        allow create, update: if isAdultOrAdmin(familyId);
-        allow delete: if isFamilyAdmin(familyId);
+  allow read: if isFamilyMember(familyId);
 
-        match /participants/{memberId} {
-          allow read: if isFamilyMember(familyId);
+  allow create: if isAdultOrAdmin(familyId)
+    && request.resource.data.familyId == familyId
+    && request.resource.data.momentId is string
+    && request.resource.data.titleSnapshot is string
+    && request.resource.data.expectedParticipantIds is list
+    && request.resource.data.scheduledStartAt is timestamp
+    && request.resource.data.createdBy == request.auth.uid
+    && request.resource.data.status in [
+      'proposed',
+      'scheduled',
+      'inviting',
+      'active'
+    ];
 
-          allow create, update: if isFamilyMember(familyId)
-            && memberId == request.auth.uid
-            && request.resource.data.memberId == request.auth.uid;
+  allow update: if isAdultOrAdmin(familyId)
+    && request.resource.data.familyId
+      == resource.data.familyId
+    && request.resource.data.momentId
+      == resource.data.momentId
+    && request.resource.data.createdBy
+      == resource.data.createdBy
+    && request.resource.data.status in [
+      'proposed',
+      'scheduled',
+      'inviting',
+      'active',
+      'completed',
+      'missed',
+      'cancelled'
+    ];
 
-          allow delete: if isFamilyAdmin(familyId);
-        }
-      }
+  allow delete: if isFamilyAdmin(familyId);
+
+  match /participants/{memberId} {
+    allow read: if isFamilyMember(familyId);
+
+    allow create: if isFamilyMember(familyId)
+      && memberId == request.auth.uid
+      && request.resource.data.familyId == familyId
+      && request.resource.data.instanceId == instanceId
+      && request.resource.data.memberId == request.auth.uid
+      && request.resource.data.state in [
+        'invited',
+        'nearby',
+        'checkedIn',
+        'declined',
+        'left'
+      ];
+
+    allow update: if isFamilyMember(familyId)
+      && memberId == request.auth.uid
+      && resource.data.memberId == request.auth.uid
+      && request.resource.data.memberId
+        == resource.data.memberId
+      && request.resource.data.familyId
+        == resource.data.familyId
+      && request.resource.data.instanceId
+        == resource.data.instanceId
+      && request.resource.data.state in [
+        'invited',
+        'nearby',
+        'checkedIn',
+        'declined',
+        'left'
+      ]
+      && request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasOnly([
+          'state',
+          'checkInMethod',
+          'checkedInAt',
+          'checkedOutAt',
+          'nearbyDetectedAt',
+          'confirmedAt',
+          'updatedAt'
+        ]);
+
+    allow delete: if isFamilyAdmin(familyId)
+      || (
+        isFamilyMember(familyId)
+        && memberId == request.auth.uid
+      );
+  }
+}
+
 
       match /careActions/{actionId} {
   // Adults/admins may access family Care Actions.

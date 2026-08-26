@@ -280,6 +280,13 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
       await AppDependencies.calendarRepository.saveMoment(moment);
 
+      await AppDependencies.momentInstanceRepository
+          .syncScheduledInstanceFromMoment(
+            moment: moment,
+            createdBy: familyContext.userId,
+            source: MomentInstanceSource.calendar,
+          );
+
       if (!mounted) return;
 
       Navigator.of(context).pop(true);
@@ -342,6 +349,13 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
     });
 
     try {
+      await AppDependencies.momentInstanceRepository
+          .cancelOpenInstancesForMoment(
+            familyId: initialMoment.familyId,
+            momentId: initialMoment.id,
+            cancelledBy: _familyContext!.userId,
+          );
+
       await AppDependencies.calendarRepository.deleteMoment(
         familyId: initialMoment.familyId,
         momentId: initialMoment.id,

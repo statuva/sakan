@@ -3,24 +3,25 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../../app/app_dependencies.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../shared/models/availability_block.dart';
 import '../../../shared/models/care_action.dart';
 import '../../../shared/models/current_family_context.dart';
+import '../../../shared/models/family_insight_report.dart';
 import '../../../shared/models/family_memory.dart';
 import '../../../shared/models/family_moment.dart';
-import '../../../shared/models/member.dart';
 import '../../../shared/models/model_enums.dart';
+import '../../../shared/models/moment_instance.dart';
 import '../../../shared/models/rhythm_record.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 import '../../memories/presentation/add_memory_screen.dart';
 import '../../memories/presentation/all_memories_screen.dart';
 import '../../memories/presentation/memory_details_screen.dart';
+import '../../moments/presentation/live_moment_screen.dart';
 import '../../moments/presentation/moment_form_screen.dart';
 import '../../moments/presentation/moments_screen.dart';
-import '../services/calendar_insight_service.dart';
+import '../../profile/presentation/my_reminders_screen.dart';
 import 'calendar_types.dart';
-import 'widgets/ai_recommendation_dialog.dart';
+import 'widgets/active_moment_banner.dart';
 import 'widgets/calendar_agenda_view.dart';
 import 'widgets/calendar_day_sheet.dart';
 import 'widgets/calendar_filter_bar.dart';
@@ -30,7 +31,7 @@ import 'widgets/calendar_month_view.dart';
 import 'widgets/calendar_palette.dart';
 import 'widgets/calendar_support_cards.dart';
 import 'widgets/calendar_week_view.dart';
-import 'widgets/sakan_notice_card.dart';
+import 'widgets/family_insight_section.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -40,15 +41,9 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  static const _insightService = CalendarInsightService();
-
   CurrentFamilyContext? _familyContext;
-
-  Stream<List<FamilyMoment>>? _momentsStream;
-  Stream<List<RhythmRecord>>? _rhythmsStream;
-  Stream<List<AvailabilityBlock>>? _availabilityStream;
-  Stream<List<Member>>? _membersStream;
-  Stream<List<FamilyMemory>>? _memoriesStream;
+  Stream<FamilyInsightReport>? _familyInsightReportStream;
+  Stream<MomentInstance?>? _activeInstanceStream;
 
   CalendarViewMode _viewMode = CalendarViewMode.month;
 
@@ -64,6 +59,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _selectedDay = DateTime.now();
 
   bool _isLoading = true;
+  bool _isSavingInsightReminder = false;
+  bool _isStartingMoment = false;
+
   String? _errorMessage;
 
   @override
@@ -81,23 +79,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     try {
       final familyContext = await AppDependencies.currentFamilyService.load();
 
+      final familyInsightReportStream = AppDependencies.familyInsightService
+          .watchReport();
+
+      final activeInstanceStream = AppDependencies.momentInstanceRepository
+          .watchActiveInstance(familyId: familyContext.familyId);
+
       if (!mounted) return;
 
       setState(() {
         _familyContext = familyContext;
-        _momentsStream = AppDependencies.calendarRepository.watchMoments(
-          familyId: familyContext.familyId,
-        );
-        _rhythmsStream = AppDependencies.calendarRepository.watchRhythms(
-          familyId: familyContext.familyId,
-        );
-        _availabilityStream = AppDependencies.scheduleRepository
-            .watchFamilyAvailability(familyId: familyContext.familyId);
-        _membersStream = AppDependencies.currentFamilyService
-            .watchFamilyMembers(familyContext.familyId);
-        _memoriesStream = AppDependencies.memoryRepository.watchMemories(
-          familyId: familyContext.familyId,
-        );
+        _familyInsightReportStream = familyInsightReportStream;
+        _activeInstanceStream = activeInstanceStream;
         _isLoading = false;
       });
     } catch (_) {
@@ -121,11 +114,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     if (_familyContext == null ||
-        _momentsStream == null ||
-        _rhythmsStream == null ||
-        _availabilityStream == null ||
-        _membersStream == null ||
-        _memoriesStream == null) {
+        _familyInsightReportStream == null ||
+        _activeInstanceStream == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Family Calendar')),
         body: SafeArea(
@@ -137,78 +127,48 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
     }
 
-    return StreamBuilder<List<FamilyMoment>>(
-      stream: _momentsStream,
-      builder: (context, momentSnapshot) {
-        if (momentSnapshot.hasError) {
-          return _errorScaffold('We could not load the family moments.');
+    return StreamBuilder<FamilyInsightReport>(
+      stream: _familyInsightReportStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _errorScaffold('We could not calculate your family insights.');
         }
 
-        if (momentSnapshot.connectionState == ConnectionState.waiting &&
-            !momentSnapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
           return const Scaffold(
             body: SafeArea(
-              child: AppLoadingState(message: 'Loading family moments…'),
+              child: AppLoadingState(
+                message: 'Loading family moments and insights…',
+              ),
             ),
           );
         }
 
-        return StreamBuilder<List<RhythmRecord>>(
-          stream: _rhythmsStream,
-          builder: (context, rhythmSnapshot) {
-            return StreamBuilder<List<AvailabilityBlock>>(
-              stream: _availabilityStream,
-              builder: (context, availabilitySnapshot) {
-                return StreamBuilder<List<Member>>(
-                  stream: _membersStream,
-                  builder: (context, memberSnapshot) {
-                    return StreamBuilder<List<FamilyMemory>>(
-                      stream: _memoriesStream,
-                      builder: (context, memorySnapshot) {
-                        final allMoments =
-                            momentSnapshot.data ?? <FamilyMoment>[];
-                        final rhythms = rhythmSnapshot.data ?? <RhythmRecord>[];
-                        final availability =
-                            availabilitySnapshot.data ?? <AvailabilityBlock>[];
-                        final members = memberSnapshot.data ?? <Member>[];
-                        final memories =
-                            memorySnapshot.data ?? <FamilyMemory>[];
+        final report = snapshot.data;
 
-                        final rhythmsByMomentId = <String, RhythmRecord>{
-                          for (final rhythm in rhythms) rhythm.momentId: rhythm,
-                        };
+        if (report == null) {
+          return _errorScaffold('Your family insight report is unavailable.');
+        }
 
-                        final filteredMoments = _applyFilters(allMoments);
+        final allMoments = report.snapshot.moments;
+        final rhythmsByMomentId = report.snapshot.rhythmsByMomentId;
+        final filteredMoments = _applyFilters(allMoments);
 
-                        final recommendation = _insightService
-                            .buildRecommendation(
-                              moments: allMoments,
-                              rhythmsByMomentId: rhythmsByMomentId,
-                              availability: availability,
-                              members: members,
-                              currentUserId: _familyContext!.userId,
-                            );
+        return StreamBuilder<MomentInstance?>(
+          stream: _activeInstanceStream,
+          builder: (context, activeSnapshot) {
+            if (activeSnapshot.hasError) {
+              return _errorScaffold(
+                'We could not load the active family Moment.',
+              );
+            }
 
-                        final bestAvailability = _insightService
-                            .findBestSharedWindow(
-                              availability: availability,
-                              members: members,
-                            );
-
-                        final memory = memories.isEmpty ? null : memories.first;
-
-                        return _calendarScaffold(
-                          filteredMoments: filteredMoments,
-                          rhythmsByMomentId: rhythmsByMomentId,
-                          recommendation: recommendation,
-                          bestAvailability: bestAvailability,
-                          memory: memory,
-                        );
-                      },
-                    );
-                  },
-                );
-              },
+            return _calendarScaffold(
+              filteredMoments: filteredMoments,
+              rhythmsByMomentId: rhythmsByMomentId,
+              insightReport: report,
+              activeInstance: activeSnapshot.data,
             );
           },
         );
@@ -219,11 +179,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget _calendarScaffold({
     required List<FamilyMoment> filteredMoments,
     required Map<String, RhythmRecord> rhythmsByMomentId,
-    required CalendarRecommendation? recommendation,
-    required CalendarAvailabilityWindow? bestAvailability,
-    required FamilyMemory? memory,
+    required FamilyInsightReport insightReport,
+    required MomentInstance? activeInstance,
   }) {
     final familyContext = _familyContext!;
+    final bestAvailability = insightReport.bestSharedWindow;
+    final latestMemory = insightReport.snapshot.latestMemory;
 
     return Scaffold(
       backgroundColor: CalendarPalette.background,
@@ -233,7 +194,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
         surfaceTintColor: Colors.transparent,
         actions: [
           TextButton.icon(
-            onPressed: _openMomentsPage,
+            onPressed: () {
+              _openMomentsPage();
+            },
             icon: const Icon(Icons.auto_awesome_motion_outlined, size: 18),
             label: const Text('Manage Moments'),
           ),
@@ -249,6 +212,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
             96,
           ),
           children: [
+            if (activeInstance != null) ...[
+              ActiveMomentBanner(
+                instance: activeInstance,
+                onOpen: () {
+                  _openLiveMoment(activeInstance);
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+
             CalendarModeSelector(
               selectedMode: _viewMode,
               onChanged: (mode) {
@@ -257,7 +230,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 });
               },
             ),
+
             const SizedBox(height: AppSpacing.md),
+
             CalendarFilterBar(
               activeCategoryFilters: _activeCategoryFilters,
               mineOnly: _mineOnly,
@@ -265,6 +240,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 if (filters.isEmpty) {
                   return;
                 }
+
                 setState(() {
                   _activeCategoryFilters = filters;
                 });
@@ -275,7 +251,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 });
               },
             ),
+
             const SizedBox(height: AppSpacing.lg),
+
             if (_viewMode == CalendarViewMode.month)
               CalendarMonthView(
                 focusedDay: _focusedDay,
@@ -287,10 +265,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     _selectedDay = day;
                     _focusedDay = day;
                   });
+
                   _openDaySheet(
                     date: day,
                     moments: filteredMoments,
                     rhythmsByMomentId: rhythmsByMomentId,
+                    activeInstance: activeInstance,
                   );
                 },
                 onPageChanged: (focused) {
@@ -310,10 +290,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     _selectedDay = day;
                     _focusedDay = day;
                   });
+
                   _openDaySheet(
                     date: day,
                     moments: filteredMoments,
                     rhythmsByMomentId: rhythmsByMomentId,
+                    activeInstance: activeInstance,
                   );
                 },
                 onPreviousWeek: () {
@@ -338,33 +320,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   _openMomentDetails(
                     moment: moment,
                     rhythm: rhythmsByMomentId[moment.id],
+                    activeInstance: activeInstance,
                   );
                 },
               ),
+
             if (_viewMode != CalendarViewMode.agenda) ...[
               const SizedBox(height: AppSpacing.xl),
-              Text(
-                'WHAT SAKAN NOTICES',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: CalendarPalette.inkSoft,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.45,
-                ),
+
+              FamilyInsightSection(
+                report: insightReport,
+                onAddReminder: _scheduleInsightReminder,
+                onOpenReminders: () {
+                  _openMyRemindersPage();
+                },
+                onManageMoments: () {
+                  _openMomentsPage();
+                },
               ),
+
               const SizedBox(height: AppSpacing.sm),
-              if (recommendation != null)
-                SakanNoticeCard(
-                  recommendation: recommendation,
-                  onOpenRecommendation: () {
-                    _openRecommendationDialog(recommendation);
-                  },
-                )
-              else
-                _NoNoticeCard(onManageMoments: _openMomentsPage),
-              const SizedBox(height: AppSpacing.sm),
+
               CalendarSupportCards(
                 availability: bestAvailability,
-                memory: memory,
+                memory: latestMemory,
                 onAvailabilityTap: bestAvailability == null
                     ? null
                     : () {
@@ -374,12 +353,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           _selectedDay = bestAvailability.date;
                         });
                       },
-                onMemoryTap: memory == null
+                onMemoryTap: latestMemory == null
                     ? null
                     : () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => MemoryDetailsScreen(memory: memory),
+                            builder: (_) =>
+                                MemoryDetailsScreen(memory: latestMemory),
                           ),
                         );
                       },
@@ -388,7 +368,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         _openAddMemoryScreen();
                       }
                     : null,
-                onAllMemoriesTap: _openAllMemoriesScreen,
+                onAllMemoriesTap: () {
+                  _openAllMemoriesScreen();
+                },
               ),
             ],
           ],
@@ -411,6 +393,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final filtered = moments.where((moment) {
       final categoryMatch = _matchesSelectedCategory(moment);
+
       final mineMatch =
           !_mineOnly || moment.expectedParticipantIds.contains(userId);
 
@@ -418,11 +401,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }).toList();
 
     filtered.sort((first, second) => first.startAt.compareTo(second.startAt));
+
     return filtered;
   }
 
   bool _matchesSelectedCategory(FamilyMoment moment) {
-    if (_activeCategoryFilters.isEmpty) return false;
+    if (_activeCategoryFilters.isEmpty) {
+      return false;
+    }
 
     if (_activeCategoryFilters.contains(CalendarFilter.milestone) &&
         moment.category == MomentCategory.milestone) {
@@ -457,10 +443,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
     ).push(MaterialPageRoute(builder: (_) => const MomentsScreen()));
   }
 
+  Future<void> _openMyRemindersPage() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const MyRemindersScreen()));
+  }
+
   Future<void> _openDaySheet({
     required DateTime date,
     required List<FamilyMoment> moments,
     required Map<String, RhythmRecord> rhythmsByMomentId,
+    required MomentInstance? activeInstance,
   }) async {
     final dayMoments = _momentsForDay(moments, date);
 
@@ -480,9 +473,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
           currentUserId: _familyContext!.userId,
           onMomentTap: (moment) {
             Navigator.of(sheetContext).pop();
+
             _openMomentDetails(
               moment: moment,
               rhythm: rhythmsByMomentId[moment.id],
+              activeInstance: activeInstance,
             );
           },
         );
@@ -493,6 +488,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Future<void> _openMomentDetails({
     required FamilyMoment moment,
     required RhythmRecord? rhythm,
+    required MomentInstance? activeInstance,
   }) async {
     FamilyMemory? memory;
 
@@ -507,14 +503,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'The Moment opened, but its '
-            'Memory status could not be loaded.',
+            'The Moment opened, but its Memory status could not be loaded.',
           ),
         ),
       );
     }
 
     if (!mounted) return;
+
+    final activeForThisMoment = activeInstance?.momentId == moment.id;
+
+    final canStartNow = _canStartMomentNow(
+      moment: moment,
+      activeInstance: activeInstance,
+    );
+
+    final liveActionLabel = activeForThisMoment
+        ? 'Join Active Moment'
+        : canStartNow
+        ? 'Start This Now'
+        : null;
+
+    final liveActionHint = activeInstance != null && !activeForThisMoment
+        ? 'Another family Moment is already live. End it before starting a new one.'
+        : null;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -531,7 +543,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
           memory: memory,
           currentUserId: _familyContext!.userId,
           canEdit: _familyContext!.isAdult,
-
+          liveActionLabel: liveActionLabel,
+          liveActionHint: liveActionHint,
+          onLiveAction: activeForThisMoment
+              ? () {
+                  Navigator.of(sheetContext).pop();
+                  _openLiveMoment(activeInstance!);
+                }
+              : canStartNow
+              ? () {
+                  Navigator.of(sheetContext).pop();
+                  _startMomentNow(moment);
+                }
+              : null,
           onEditMoment: () {
             Navigator.of(sheetContext).pop();
 
@@ -541,7 +565,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
             );
           },
-
           onAddMemory:
               moment.status == MomentStatus.completed &&
                   memory == null &&
@@ -552,7 +575,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   _openAddMemoryScreen(initialMoment: moment);
                 }
               : null,
-
           onViewMemory: memory == null
               ? null
               : () {
@@ -564,7 +586,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                   );
                 },
-
           onEditMemory: memory != null && _familyContext!.isAdult
               ? () {
                   Navigator.of(sheetContext).pop();
@@ -574,6 +595,115 @@ class _CalendarScreenState extends State<CalendarScreen> {
               : null,
         );
       },
+    );
+  }
+
+  bool _canStartMomentNow({
+    required FamilyMoment moment,
+    required MomentInstance? activeInstance,
+  }) {
+    if (!_familyContext!.isAdult ||
+        activeInstance != null ||
+        _isStartingMoment) {
+      return false;
+    }
+
+    if (moment.status == MomentStatus.cancelled ||
+        moment.status == MomentStatus.completed ||
+        moment.status == MomentStatus.missed) {
+      return false;
+    }
+
+    if (moment.expectedParticipantIds.length < 2) {
+      return false;
+    }
+
+    return moment.category != MomentCategory.responsibility &&
+        moment.category != MomentCategory.memory;
+  }
+
+  Future<void> _startMomentNow(FamilyMoment moment) async {
+    if (_isStartingMoment) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Start this Moment now?'),
+          content: Text(
+            '“${moment.title}” will become live. '
+            'You will be checked in automatically, '
+            'and the shared timer will begin.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Not Now'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Start Moment'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _isStartingMoment = true;
+    });
+
+    try {
+      final instance = await AppDependencies.momentInstanceRepository
+          .startMomentNow(
+            moment: moment,
+            startedBy: _familyContext!.userId,
+            source: MomentInstanceSource.calendar,
+          );
+
+      if (!mounted) return;
+
+      await _openLiveMoment(instance);
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error is StateError
+                ? error.message.toString()
+                : 'We could not start this Moment.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isStartingMoment = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openLiveMoment(MomentInstance instance) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LiveMomentScreen(
+          familyId: instance.familyId,
+          instanceId: instance.id,
+        ),
+      ),
     );
   }
 
@@ -599,36 +729,51 @@ class _CalendarScreenState extends State<CalendarScreen> {
     ).push(MaterialPageRoute(builder: (_) => const AllMemoriesScreen()));
   }
 
-  Future<void> _openRecommendationDialog(
-    CalendarRecommendation recommendation,
-  ) async {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) {
-        return AiRecommendationDialog(
-          recommendation: recommendation,
-          canSchedule: _familyContext!.isAdult,
-          onScheduleReminder: () {
-            return _scheduleReminder(recommendation);
-          },
-        );
-      },
-    );
-  }
+  Future<void> _scheduleInsightReminder(FamilyInsightItem insight) async {
+    if (_isSavingInsightReminder) {
+      return;
+    }
 
-  Future<void> _scheduleReminder(CalendarRecommendation recommendation) async {
+    if (insight.relatedReminderId != null) {
+      await _openMyRemindersPage();
+      return;
+    }
+
+    final recommendedTime = insight.recommendedReminderAt;
+
+    if (recommendedTime == null) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No reminder time is available for this recommendation.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
     final familyContext = _familyContext!;
     final now = DateTime.now().toUtc();
 
+    final dueAt = recommendedTime.isAfter(DateTime.now())
+        ? recommendedTime
+        : DateTime.now().add(const Duration(minutes: 30));
+
     final action = CareAction(
-      id: 'care_${familyContext.userId}_${DateTime.now().microsecondsSinceEpoch}',
+      id:
+          'care_${familyContext.userId}_'
+          '${DateTime.now().microsecondsSinceEpoch}',
       familyId: familyContext.familyId,
-      momentId: recommendation.moment.id,
-      title: 'Prepare for ${recommendation.moment.title}',
-      reason: recommendation.preparationSteps.join(' '),
+      momentId: insight.relatedMomentId,
+      title: insight.suggestedActions.isEmpty
+          ? insight.headline
+          : insight.suggestedActions.first,
+      reason: <String>[insight.summary, ...insight.reasons].join('\n'),
       assignedMemberId: familyContext.userId,
-      dueAt: recommendation.recommendedReminderAt.toUtc(),
+      dueAt: dueAt.toUtc(),
       status: CareActionStatus.pending,
       source: CareActionSource.calendar,
       evidenceType: EvidenceType.scheduledOnly,
@@ -636,70 +781,43 @@ class _CalendarScreenState extends State<CalendarScreen> {
       updatedAt: now,
     );
 
-    await AppDependencies.careActionRepository.createCareAction(action);
+    setState(() {
+      _isSavingInsightReminder = true;
+    });
 
-    final notificationService = AppDependencies.reminderNotificationService;
+    try {
+      await AppDependencies.careActionRepository.createCareAction(action);
 
-    final notificationScheduled = await notificationService.scheduleReminder(
-      action,
-      requestPermission: true,
-    );
+      final notificationService = AppDependencies.reminderNotificationService;
 
-    if (!mounted) return;
+      final notificationScheduled = await notificationService.scheduleReminder(
+        action,
+        requestPermission: true,
+      );
 
-    final message = !notificationService.supportsScheduling
-        ? 'Reminder added to My Reminders. '
-              'Notification delivery must be '
-              'tested on Android.'
-        : notificationScheduled
-        ? 'Reminder added and notification scheduled.'
-        : 'Reminder added to My Reminders. '
-              'Notifications are currently disabled.';
+      if (!mounted) return;
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-}
+      final message = !notificationService.supportsScheduling
+          ? 'Reminder added to My Reminders.'
+          : notificationScheduled
+          ? 'Reminder added and notification scheduled.'
+          : 'Reminder added to My Reminders. Notifications are disabled.';
 
-class _NoNoticeCard extends StatelessWidget {
-  const _NoNoticeCard({required this.onManageMoments});
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      if (!mounted) return;
 
-  final VoidCallback onManageMoments;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: CalendarPalette.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: CalendarPalette.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'No urgent action right now',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: CalendarPalette.ink,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Sakan will surface an upcoming milestone, care need, or drifting rhythm when the current data supports it.',
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: CalendarPalette.inkSoft),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          OutlinedButton(
-            onPressed: onManageMoments,
-            child: const Text('Manage Moments'),
-          ),
-        ],
-      ),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('We could not add this reminder.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingInsightReminder = false;
+        });
+      }
+    }
   }
 }
