@@ -17,6 +17,9 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
     required this.currentUserId,
     required this.canEdit,
     required this.onEditMoment,
+    this.liveActionLabel,
+    this.onLiveAction,
+    this.liveActionHint,
     this.onAddMemory,
     this.onViewMemory,
     this.onEditMemory,
@@ -31,16 +34,29 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
   final bool canEdit;
 
   final VoidCallback onEditMoment;
+
+  /// `Start This Now` or `Join Active Moment`.
+  final String? liveActionLabel;
+  final VoidCallback? onLiveAction;
+
+  /// Explains why the live action is unavailable.
+  final String? liveActionHint;
+
   final VoidCallback? onAddMemory;
   final VoidCallback? onViewMemory;
   final VoidCallback? onEditMemory;
 
-  bool get _isCompleted => moment.status == MomentStatus.completed;
+  bool get _isLegacyCompleted {
+    return moment.status == MomentStatus.completed;
+  }
+
+  bool get _isJoiningLiveMoment {
+    return liveActionLabel == 'Join Active Moment';
+  }
 
   @override
   Widget build(BuildContext context) {
     final localStart = moment.startAt.toLocal();
-
     final localEnd = moment.endAt?.toLocal();
 
     final style = calendarMomentStyle(moment, currentUserId: currentUserId);
@@ -65,9 +81,7 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
                   ),
                   child: Icon(style.icon, color: style.color, size: 21),
                 ),
-
                 const SizedBox(width: AppSpacing.md),
-
                 Expanded(
                   child: Text(
                     moment.title,
@@ -76,7 +90,6 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
                     ),
                   ),
                 ),
-
                 IconButton(
                   onPressed: () {
                     Navigator.of(context).pop();
@@ -164,27 +177,74 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
                 value: moment.notes!,
               ),
 
-            if (_isCompleted) ...[
+            if (liveActionLabel != null && onLiveAction != null) ...[
               const SizedBox(height: AppSpacing.sm),
-
-              _MemoryStatusCard(memory: memory),
-
-              const SizedBox(height: AppSpacing.lg),
+              FilledButton.icon(
+                onPressed: onLiveAction,
+                icon: Icon(
+                  _isJoiningLiveMoment
+                      ? Icons.login_rounded
+                      : Icons.play_arrow_rounded,
+                ),
+                label: Text(liveActionLabel!),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                _isJoiningLiveMoment
+                    ? 'Open the live session and check in from this phone.'
+                    : 'Starting creates a live occurrence, checks you in, and begins the shared timer.',
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: CalendarPalette.inkSoft),
+              ),
+            ] else if (liveActionHint != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: CalendarPalette.surfaceSoft,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: CalendarPalette.border),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      color: CalendarPalette.inkSoft,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        liveActionHint!,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
 
-            if (canEdit)
-              FilledButton.icon(
+            if (_isLegacyCompleted) ...[
+              const SizedBox(height: AppSpacing.lg),
+              _MemoryStatusCard(memory: memory),
+            ],
+
+            if (canEdit) ...[
+              const SizedBox(height: AppSpacing.lg),
+              OutlinedButton.icon(
                 onPressed: onEditMoment,
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('Edit Moment'),
               ),
+            ],
 
-            if (_isCompleted &&
+            if (_isLegacyCompleted &&
                 memory == null &&
                 canEdit &&
                 onAddMemory != null) ...[
               const SizedBox(height: AppSpacing.sm),
-
               OutlinedButton.icon(
                 onPressed: onAddMemory,
                 icon: const Icon(Icons.bookmark_add_outlined),
@@ -192,9 +252,10 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
               ),
             ],
 
-            if (_isCompleted && memory != null && onViewMemory != null) ...[
+            if (_isLegacyCompleted &&
+                memory != null &&
+                onViewMemory != null) ...[
               const SizedBox(height: AppSpacing.sm),
-
               OutlinedButton.icon(
                 onPressed: onViewMemory,
                 icon: const Icon(Icons.auto_stories_outlined),
@@ -202,12 +263,11 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
               ),
             ],
 
-            if (_isCompleted &&
+            if (_isLegacyCompleted &&
                 memory != null &&
                 canEdit &&
                 onEditMemory != null) ...[
               const SizedBox(height: AppSpacing.xs),
-
               TextButton.icon(
                 onPressed: onEditMemory,
                 icon: const Icon(Icons.edit_note_outlined),
@@ -215,9 +275,8 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
               ),
             ],
 
-            if (!canEdit) ...[
-              const SizedBox(height: AppSpacing.sm),
-
+            if (!canEdit && liveActionLabel == null) ...[
+              const SizedBox(height: AppSpacing.lg),
               FilledButton(
                 onPressed: () {
                   Navigator.of(context).pop();
@@ -265,9 +324,7 @@ class _MemoryStatusCard extends StatelessWidget {
                 ? CalendarPalette.forestDark
                 : CalendarPalette.inkSoft,
           ),
-
           const SizedBox(width: AppSpacing.md),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -278,17 +335,11 @@ class _MemoryStatusCard extends StatelessWidget {
                     context,
                   ).textTheme.titleMedium?.copyWith(color: CalendarPalette.ink),
                 ),
-
                 const SizedBox(height: 4),
-
                 Text(
                   hasMemory
-                      ? 'A family note has been '
-                            'preserved for this '
-                            'completed Moment.'
-                      : 'Preserve a family note '
-                            'after this completed '
-                            'Moment.',
+                      ? 'A family note has been preserved for this completed Moment.'
+                      : 'Preserve a family note after this completed Moment.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: CalendarPalette.inkSoft,
                   ),
@@ -321,9 +372,7 @@ class _DetailRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 21, color: CalendarPalette.forest),
-
           const SizedBox(width: AppSpacing.md),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -334,9 +383,7 @@ class _DetailRow extends StatelessWidget {
                     color: CalendarPalette.inkSoft,
                   ),
                 ),
-
                 const SizedBox(height: 3),
-
                 Text(
                   value,
                   style: Theme.of(
