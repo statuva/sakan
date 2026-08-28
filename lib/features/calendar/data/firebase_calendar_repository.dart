@@ -33,6 +33,7 @@ class FirebaseCalendarRepository implements CalendarRepository {
           .toList();
 
       moments.sort((first, second) => first.startAt.compareTo(second.startAt));
+
       return moments;
     });
   }
@@ -47,13 +48,31 @@ class FirebaseCalendarRepository implements CalendarRepository {
       rhythms.sort(
         (first, second) => first.momentId.compareTo(second.momentId),
       );
+
       return rhythms;
     });
   }
 
   @override
+  Future<FamilyMoment?> getMoment({
+    required String familyId,
+    required String momentId,
+  }) async {
+    final snapshot = await _moments(familyId).doc(momentId).get();
+
+    final data = snapshot.data();
+
+    if (!snapshot.exists || data == null) {
+      return null;
+    }
+
+    return FamilyMoment.fromMap(snapshot.id, data);
+  }
+
+  @override
   Future<void> saveMoment(FamilyMoment moment) async {
     final momentReference = _moments(moment.familyId).doc(moment.id);
+
     final rhythmReference = _rhythms(moment.familyId).doc(moment.id);
 
     await _firestore.runTransaction<void>((transaction) async {
@@ -111,8 +130,11 @@ class FirebaseCalendarRepository implements CalendarRepository {
     required String momentId,
   }) async {
     final batch = _firestore.batch();
+
     batch.delete(_moments(familyId).doc(momentId));
+
     batch.delete(_rhythms(familyId).doc(momentId));
+
     await batch.commit();
   }
 }

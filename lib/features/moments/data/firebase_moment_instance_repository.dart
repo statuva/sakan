@@ -750,6 +750,308 @@ class FirebaseMomentInstanceRepository implements MomentInstanceRepository {
   }
 
   @override
+  Future<MomentInstance> completeFromTodayReview({
+    required String familyId,
+    required String instanceId,
+    required String reviewedBy,
+    required DateTime actualStartAt,
+    required int durationMinutes,
+    required List<String> reportedParticipantIds,
+    String? note,
+    bool isPartial = false,
+  }) async {
+    _verifyCurrentUser(reviewedBy);
+
+    if (durationMinutes < 0) {
+      throw ArgumentError('Duration cannot be negative.');
+    }
+
+    final instance = await _requiredInstance(
+      familyId: familyId,
+      instanceId: instanceId,
+    );
+
+    if (instance.status == MomentInstanceStatus.active) {
+      throw StateError('End the active Moment from its live screen.');
+    }
+
+    if (instance.isFinished) {
+      return instance;
+    }
+
+    final now = DateTime.now().toUtc();
+    final start = actualStartAt.toUtc();
+    final end = start.add(Duration(minutes: durationMinutes));
+
+    if (end.isAfter(now.add(const Duration(minutes: 5)))) {
+      throw ArgumentError('The reported Moment cannot end in the future.');
+    }
+
+    final reportedIds =
+        reportedParticipantIds
+            .where((memberId) => memberId.trim().isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+
+    final evidence = instance.evidenceSignals.toSet()
+      ..add(MomentEvidenceSignal.todayReview);
+
+    if (durationMinutes > 0) {
+      evidence.add(MomentEvidenceSignal.durationRecorded);
+    }
+
+    final selfConfirmedIds = <String>{
+      ...instance.confirmedParticipantIds,
+      if (reportedIds.contains(reviewedBy)) reviewedBy,
+    }.toList()..sort();
+
+    final confirmation = reportedIds.length >= 2 && durationMinutes >= 15
+        ? MomentConfirmationLevel.medium
+        : MomentConfirmationLevel.low;
+
+    final updated = instance.copyWith(
+      source: MomentInstanceSource.todayReview,
+      status: MomentInstanceStatus.completed,
+      actualStartAt: start,
+      actualEndAt: end,
+      actualDurationMinutes: durationMinutes,
+      endedBy: reviewedBy,
+      confirmedParticipantIds: selfConfirmedIds,
+      reportedParticipantIds: reportedIds,
+      evidenceSignals: evidence.toList(),
+      confirmationLevel: confirmation,
+      reviewNote: note == null || note.trim().isEmpty ? null : note.trim(),
+      reviewedBy: reviewedBy,
+      reviewedAt: now,
+      isPartial: isPartial,
+      updatedAt: now,
+    );
+
+    final batch = _firestore.batch();
+
+    batch.set(
+      _instanceReference(familyId: familyId, instanceId: instanceId),
+      updated.toMap(),
+      SetOptions(merge: true),
+    );
+
+    if (reportedIds.contains(reviewedBy)) {
+      final participant =
+          MomentParticipant.checkedIn(
+            familyId: familyId,
+            instanceId: instanceId,
+            memberId: reviewedBy,
+            method: MomentCheckInMethod.todayReview,
+            now: now,
+          ).copyWith(
+            checkedInAt: start,
+            checkedOutAt: end,
+            confirmedAt: now,
+            updatedAt: now,
+          );
+
+      batch.set(
+        _participants(
+          familyId: familyId,
+          instanceId: instanceId,
+        ).doc(reviewedBy),
+        participant.toMap(),
+        SetOptions(merge: true),
+      );
+    }
+
+    await batch.commit();
+
+    return updated;
+  }
+
+  @override
+  Future<MomentInstance> createCompletedUnplannedInstance({
+    required FamilyMoment moment,
+    required String reportedBy,
+    required DateTime actualStartAt,
+    required int durationMinutes,
+    required List<String> reportedParticipantIds,
+    String? note,
+  }) async {
+    _verifyCurrentUser(reportedBy);
+    _validateMoment(moment);
+
+    if (durationMinutes < 0) {
+      throw ArgumentError('Duration cannot be negative.');
+    }
+
+    final now = DateTime.now().toUtc();
+    final start = actualStartAt.toUtc();
+    final end = start.add(Duration(minutes: durationMinutes));
+
+    if (end.isAfter(now.add(const Duration(minutes: 5)))) {
+      throw ArgumentError('The unplanned Moment cannot end in the future.');
+    }
+
+    final reportedIds =
+        reportedParticipantIds
+            .where((memberId) => memberId.trim().isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+
+    final evidence = <MomentEvidenceSignal>{
+      MomentEvidenceSignal.todayReview,
+      if (durationMinutes > 0) MomentEvidenceSignal.durationRecorded,
+    };
+
+    final instanceId =
+        'instance_${moment.id}_'
+        '${DateTime.now().microsecondsSinceEpoch}';
+
+    final confirmation = reportedIds.length >= 2 && durationMinutes >= 15
+        ? MomentConfirmationLevel.medium
+        : MomentConfirmationLevel.low;
+
+    final instance = MomentInstance(
+      id: instanceId,
+      familyId: moment.familyId,
+      momentId: moment.id,
+      titleSnapshot: moment.title,
+      typeSnapshot: moment.type,
+      categorySnapshot: moment.category,
+      importanceLevelSnapshot: moment.importanceLevel,
+      locationSnapshot: moment.location,
+      expectedParticipantIds: moment.expectedParticipantIds,
+      source: MomentInstanceSource.spontaneous,
+      status: MomentInstanceStatus.completed,
+      scheduledStartAt: start,
+      scheduledEndAt: end,
+      actualStartAt: start,
+      actualEndAt: end,
+      actualDurationMinutes: durationMinutes,
+      startedBy: reportedBy,
+      endedBy: reportedBy,
+      confirmedParticipantIds: reportedIds.contains(reportedBy)
+          ? <String>[reportedBy]
+          : const <String>[],
+      reportedParticipantIds: reportedIds,
+      evidenceSignals: evidence.toList(),
+      confirmationLevel: confirmation,
+      reviewNote: note == null || note.trim().isEmpty ? null : note.trim(),
+      reviewedBy: reportedBy,
+      reviewedAt: now,
+      createdBy: reportedBy,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    final batch = _firestore.batch();
+
+    batch.set(
+      _instanceReference(familyId: moment.familyId, instanceId: instance.id),
+      instance.toMap(),
+    );
+
+    if (reportedIds.contains(reportedBy)) {
+      final participant =
+          MomentParticipant.checkedIn(
+            familyId: moment.familyId,
+            instanceId: instance.id,
+            memberId: reportedBy,
+            method: MomentCheckInMethod.todayReview,
+            now: now,
+          ).copyWith(
+            checkedInAt: start,
+            checkedOutAt: end,
+            confirmedAt: now,
+            updatedAt: now,
+          );
+
+      batch.set(
+        _participants(
+          familyId: moment.familyId,
+          instanceId: instance.id,
+        ).doc(reportedBy),
+        participant.toMap(),
+      );
+    }
+
+    await batch.commit();
+
+    return instance;
+  }
+
+  @override
+  Future<MomentInstance> rescheduleInstance({
+    required String familyId,
+    required String instanceId,
+    required String updatedBy,
+    required DateTime scheduledStartAt,
+    DateTime? scheduledEndAt,
+  }) async {
+    _verifyCurrentUser(updatedBy);
+
+    final instance = await _requiredInstance(
+      familyId: familyId,
+      instanceId: instanceId,
+    );
+
+    if (instance.isFinished || instance.isActive) {
+      throw StateError('Only an open, inactive occurrence can be rescheduled.');
+    }
+
+    final start = scheduledStartAt.toUtc();
+    final end = scheduledEndAt?.toUtc();
+
+    if (end != null && !end.isAfter(start)) {
+      throw ArgumentError('The end time must be after the start time.');
+    }
+
+    final updated = instance.copyWith(
+      status: MomentInstanceStatus.scheduled,
+      scheduledStartAt: start,
+      scheduledEndAt: end,
+      source: MomentInstanceSource.manual,
+      reviewedBy: updatedBy,
+      reviewedAt: DateTime.now().toUtc(),
+      updatedAt: DateTime.now().toUtc(),
+    );
+
+    await _instanceReference(
+      familyId: familyId,
+      instanceId: instanceId,
+    ).set(updated.toMap(), SetOptions(merge: true));
+
+    return updated;
+  }
+
+  @override
+  Future<void> addEvidenceSignals({
+    required String familyId,
+    required String instanceId,
+    required List<MomentEvidenceSignal> signals,
+  }) async {
+    if (signals.isEmpty) {
+      return;
+    }
+
+    final instance = await _requiredInstance(
+      familyId: familyId,
+      instanceId: instanceId,
+    );
+
+    final evidence = instance.evidenceSignals.toSet()..addAll(signals);
+
+    await _instanceReference(familyId: familyId, instanceId: instanceId).set(
+      instance
+          .copyWith(
+            evidenceSignals: evidence.toList(),
+            updatedAt: DateTime.now().toUtc(),
+          )
+          .toMap(),
+      SetOptions(merge: true),
+    );
+  }
+
+  @override
   Future<MomentInstance> cancelInstance({
     required String familyId,
     required String instanceId,

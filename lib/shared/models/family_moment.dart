@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'model_enums.dart';
 
 class FamilyMoment {
@@ -22,6 +23,8 @@ class FamilyMoment {
     this.notes,
   });
 
+  static const Object _unset = Object();
+
   final String id;
   final String familyId;
   final String title;
@@ -30,12 +33,10 @@ class FamilyMoment {
   final MomentCategory category;
 
   final int importanceLevel;
-
   final List<String> expectedParticipantIds;
 
   final DateTime startAt;
   final DateTime? endAt;
-
   final int? expectedIntervalDays;
 
   final String? location;
@@ -45,7 +46,6 @@ class FamilyMoment {
   final MomentStatus status;
 
   final String createdBy;
-
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -58,7 +58,7 @@ class FamilyMoment {
       category: MomentCategory.values.byName(map['category'] as String),
       importanceLevel: map['importanceLevel'] as int,
       expectedParticipantIds: List<String>.from(
-        map['expectedParticipantIds'] ?? [],
+        map['expectedParticipantIds'] ?? const <String>[],
       ),
       startAt: (map['startAt'] as Timestamp).toDate(),
       endAt: map['endAt'] == null ? null : (map['endAt'] as Timestamp).toDate(),
@@ -74,7 +74,7 @@ class FamilyMoment {
   }
 
   Map<String, dynamic> toMap() {
-    return {
+    return <String, dynamic>{
       'familyId': familyId,
       'title': title,
       'type': type.name,
@@ -92,5 +92,46 @@ class FamilyMoment {
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
     };
+  }
+
+  FamilyMoment copyWith({
+    String? title,
+    MomentType? type,
+    MomentCategory? category,
+    int? importanceLevel,
+    List<String>? expectedParticipantIds,
+    DateTime? startAt,
+    Object? endAt = _unset,
+    Object? expectedIntervalDays = _unset,
+    Object? location = _unset,
+    Object? notes = _unset,
+    EvidenceType? evidenceType,
+    MomentStatus? status,
+    DateTime? updatedAt,
+  }) {
+    return FamilyMoment(
+      id: id,
+      familyId: familyId,
+      title: title ?? this.title,
+      type: type ?? this.type,
+      category: category ?? this.category,
+      importanceLevel: importanceLevel ?? this.importanceLevel,
+      expectedParticipantIds:
+          expectedParticipantIds ?? this.expectedParticipantIds,
+      startAt: startAt ?? this.startAt,
+      endAt: identical(endAt, _unset) ? this.endAt : endAt as DateTime?,
+      expectedIntervalDays: identical(expectedIntervalDays, _unset)
+          ? this.expectedIntervalDays
+          : expectedIntervalDays as int?,
+      location: identical(location, _unset)
+          ? this.location
+          : location as String?,
+      notes: identical(notes, _unset) ? this.notes : notes as String?,
+      evidenceType: evidenceType ?? this.evidenceType,
+      status: status ?? this.status,
+      createdBy: createdBy,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
   }
 }

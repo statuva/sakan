@@ -1,7 +1,8 @@
-import 'package:sakan/shared/models/rhythm_record.dart';
+import '../models/rhythm_record.dart';
 
 abstract interface class RhythmRepository {
   Stream<List<RhythmRecord>> watchRhythms(String familyId);
+
   Stream<RhythmRecord?> watchRhythm({
     required String familyId,
     required String momentId,

@@ -224,7 +224,7 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
     });
 
     try {
-      await AppDependencies.momentInstanceRepository.endInstance(
+      await AppDependencies.momentOutcomeService.endLiveMoment(
         familyId: widget.familyId,
         instanceId: widget.instanceId,
         endedBy: contextData.userId,

@@ -192,14 +192,29 @@ service cloud.firestore {
     && request.resource.data.momentId is string
     && request.resource.data.titleSnapshot is string
     && request.resource.data.expectedParticipantIds is list
+    && request.resource.data.confirmedParticipantIds is list
+    && request.resource.data.reportedParticipantIds is list
+    && request.resource.data.evidenceSignals is list
     && request.resource.data.scheduledStartAt is timestamp
     && request.resource.data.createdBy == request.auth.uid
-    && request.resource.data.status in [
-      'proposed',
-      'scheduled',
-      'inviting',
-      'active'
-    ];
+    && (
+      request.resource.data.status in [
+        'proposed',
+        'scheduled',
+        'inviting',
+        'active'
+      ]
+      ||
+      (
+        request.resource.data.status == 'completed'
+        && request.resource.data.source in [
+          'spontaneous',
+          'todayReview'
+        ]
+        && request.resource.data.reviewedBy
+          == request.auth.uid
+      )
+    );
 
   allow update: if isAdultOrAdmin(familyId)
     && request.resource.data.familyId
@@ -272,6 +287,27 @@ service cloud.firestore {
       );
   }
 }
+
+match /dailyReviews/{reviewId} {
+  allow read: if isFamilyMember(familyId);
+
+  allow create: if isAdultOrAdmin(familyId)
+    && request.resource.data.familyId == familyId
+    && request.resource.data.reviewedBy == request.auth.uid
+    && request.resource.data.dateKey is string
+    && request.resource.data.reviewDate is timestamp
+    && request.resource.data.resolvedInstanceIds is list
+    && request.resource.data.loggedInstanceIds is list;
+
+  allow update: if isAdultOrAdmin(familyId)
+    && request.resource.data.familyId == resource.data.familyId
+    && request.resource.data.reviewedBy == request.auth.uid
+    && request.resource.data.dateKey == resource.data.dateKey
+    && request.resource.data.reviewDate == resource.data.reviewDate;
+
+  allow delete: if isFamilyAdmin(familyId);
+}
+
 
 
       match /careActions/{actionId} {

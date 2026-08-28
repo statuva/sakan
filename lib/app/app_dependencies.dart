@@ -10,6 +10,10 @@ import 'package:sakan/features/profile/data/firebase_schedule_repository.dart';
 import 'package:sakan/shared/services/current_family_service.dart';
 import 'package:sakan/shared/services/reminder_notification_service.dart';
 import 'package:sakan/shared/services/family_insight_service.dart';
+import 'package:sakan/features/daily_review/data/firebase_daily_review_repository.dart';
+import 'package:sakan/features/rhythm/data/firebase_rhythm_repository.dart';
+import 'package:sakan/shared/services/moment_outcome_service.dart';
+import 'package:sakan/shared/services/rhythm_update_service.dart';
 
 abstract final class AppDependencies {
   static final FirebaseAuthRepository authRepository = FirebaseAuthRepository();
@@ -41,6 +45,27 @@ abstract final class AppDependencies {
   static final CurrentFamilyService currentFamilyService =
       CurrentFamilyService();
 
+  static final FirebaseRhythmRepository rhythmRepository =
+      FirebaseRhythmRepository();
+
+  static final FirebaseDailyReviewRepository dailyReviewRepository =
+      FirebaseDailyReviewRepository();
+
+  static final ReminderNotificationService reminderNotificationService =
+      ReminderNotificationService.instance;
+
+  static final RhythmUpdateService rhythmUpdateService = RhythmUpdateService(
+    calendarRepository: calendarRepository,
+    momentInstanceRepository: momentInstanceRepository,
+    rhythmRepository: rhythmRepository,
+  );
+
+  static final MomentOutcomeService momentOutcomeService = MomentOutcomeService(
+    calendarRepository: calendarRepository,
+    momentInstanceRepository: momentInstanceRepository,
+    rhythmUpdateService: rhythmUpdateService,
+  );
+
   static final FamilyInsightService familyInsightService = FamilyInsightService(
     currentFamilyService: currentFamilyService,
     calendarRepository: calendarRepository,
@@ -48,6 +73,4 @@ abstract final class AppDependencies {
     careActionRepository: careActionRepository,
     memoryRepository: memoryRepository,
   );
-  static final ReminderNotificationService reminderNotificationService =
-      ReminderNotificationService.instance;
 }

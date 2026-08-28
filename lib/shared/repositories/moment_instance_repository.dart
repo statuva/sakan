@@ -42,16 +42,12 @@ abstract interface class MomentInstanceRepository {
     required String instanceId,
   });
 
-  /// Creates the first/next scheduled occurrence for a Moment,
-  /// or updates its existing open scheduled occurrence.
   Future<MomentInstance?> syncScheduledInstanceFromMoment({
     required FamilyMoment moment,
     required String createdBy,
     MomentInstanceSource source = MomentInstanceSource.calendar,
   });
 
-  /// Cancels proposed/scheduled/inviting/active occurrences
-  /// belonging to a deleted or cancelled Moment definition.
   Future<int> cancelOpenInstancesForMoment({
     required String familyId,
     required String momentId,
@@ -82,6 +78,40 @@ abstract interface class MomentInstanceRepository {
     required String familyId,
     required String instanceId,
     required String endedBy,
+  });
+
+  Future<MomentInstance> completeFromTodayReview({
+    required String familyId,
+    required String instanceId,
+    required String reviewedBy,
+    required DateTime actualStartAt,
+    required int durationMinutes,
+    required List<String> reportedParticipantIds,
+    String? note,
+    bool isPartial = false,
+  });
+
+  Future<MomentInstance> createCompletedUnplannedInstance({
+    required FamilyMoment moment,
+    required String reportedBy,
+    required DateTime actualStartAt,
+    required int durationMinutes,
+    required List<String> reportedParticipantIds,
+    String? note,
+  });
+
+  Future<MomentInstance> rescheduleInstance({
+    required String familyId,
+    required String instanceId,
+    required String updatedBy,
+    required DateTime scheduledStartAt,
+    DateTime? scheduledEndAt,
+  });
+
+  Future<void> addEvidenceSignals({
+    required String familyId,
+    required String instanceId,
+    required List<MomentEvidenceSignal> signals,
   });
 
   Future<MomentInstance> cancelInstance({

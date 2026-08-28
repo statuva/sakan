@@ -17,6 +17,7 @@ class MomentInstance {
     required this.status,
     required this.scheduledStartAt,
     required List<String> confirmedParticipantIds,
+    required List<String> reportedParticipantIds,
     required List<MomentEvidenceSignal> evidenceSignals,
     required this.confirmationLevel,
     required this.createdBy,
@@ -29,12 +30,18 @@ class MomentInstance {
     this.actualDurationMinutes,
     this.startedBy,
     this.endedBy,
+    this.reviewNote,
+    this.reviewedBy,
+    this.reviewedAt,
     this.isPartial = false,
   }) : expectedParticipantIds = List<String>.unmodifiable(
          expectedParticipantIds,
        ),
        confirmedParticipantIds = List<String>.unmodifiable(
          confirmedParticipantIds,
+       ),
+       reportedParticipantIds = List<String>.unmodifiable(
+         reportedParticipantIds,
        ),
        evidenceSignals = List<MomentEvidenceSignal>.unmodifiable(
          evidenceSignals,
@@ -44,12 +51,8 @@ class MomentInstance {
 
   final String id;
   final String familyId;
-
-  /// The reusable Moment definition this occurrence belongs to.
   final String momentId;
 
-  /// Snapshots preserve historical meaning even when the
-  /// Moment definition is edited later.
   final String titleSnapshot;
   final MomentType typeSnapshot;
   final MomentCategory categorySnapshot;
@@ -71,11 +74,21 @@ class MomentInstance {
   final String? startedBy;
   final String? endedBy;
 
+  /// Self-confirmed participation, normally created through
+  /// the Live Moment check-in flow.
   final List<String> confirmedParticipantIds;
+
+  /// Participants reported by an adult during Today Review.
+  /// These are lower-confidence than self check-ins.
+  final List<String> reportedParticipantIds;
+
   final List<MomentEvidenceSignal> evidenceSignals;
   final MomentConfirmationLevel confirmationLevel;
 
-  /// Reserved for the later Today Review flow.
+  final String? reviewNote;
+  final String? reviewedBy;
+  final DateTime? reviewedAt;
+
   final bool isPartial;
 
   final String createdBy;
@@ -96,9 +109,7 @@ class MomentInstance {
         status == MomentInstanceStatus.cancelled;
   }
 
-  bool get isOpen {
-    return !isFinished;
-  }
+  bool get isOpen => !isFinished;
 
   DateTime get effectiveStartAt {
     return actualStartAt ?? scheduledStartAt;
@@ -106,6 +117,15 @@ class MomentInstance {
 
   DateTime? get effectiveEndAt {
     return actualEndAt ?? scheduledEndAt;
+  }
+
+  List<String> get allRecordedParticipantIds {
+    final result = <String>{
+      ...confirmedParticipantIds,
+      ...reportedParticipantIds,
+    }.toList()..sort();
+
+    return result;
   }
 
   factory MomentInstance.scheduledFromMoment({
@@ -134,6 +154,7 @@ class MomentInstance {
       scheduledStartAt: (scheduledStartAt ?? moment.startAt).toUtc(),
       scheduledEndAt: (scheduledEndAt ?? moment.endAt)?.toUtc(),
       confirmedParticipantIds: const <String>[],
+      reportedParticipantIds: const <String>[],
       evidenceSignals: const <MomentEvidenceSignal>[
         MomentEvidenceSignal.scheduled,
       ],
@@ -181,6 +202,7 @@ class MomentInstance {
       startedBy: map['startedBy'] as String?,
       endedBy: map['endedBy'] as String?,
       confirmedParticipantIds: _stringList(map['confirmedParticipantIds']),
+      reportedParticipantIds: _stringList(map['reportedParticipantIds']),
       evidenceSignals: _enumList(
         MomentEvidenceSignal.values,
         map['evidenceSignals'],
@@ -190,6 +212,9 @@ class MomentInstance {
         map['confirmationLevel'],
         MomentConfirmationLevel.low,
       ),
+      reviewNote: map['reviewNote'] as String?,
+      reviewedBy: map['reviewedBy'] as String?,
+      reviewedAt: _optionalDate(map['reviewedAt']),
       isPartial: map['isPartial'] as bool? ?? false,
       createdBy: map['createdBy'] as String,
       createdAt: (map['createdAt'] as Timestamp).toDate(),
@@ -223,8 +248,12 @@ class MomentInstance {
       'startedBy': startedBy,
       'endedBy': endedBy,
       'confirmedParticipantIds': confirmedParticipantIds,
+      'reportedParticipantIds': reportedParticipantIds,
       'evidenceSignals': evidenceSignals.map((item) => item.name).toList(),
       'confirmationLevel': confirmationLevel.name,
+      'reviewNote': reviewNote,
+      'reviewedBy': reviewedBy,
+      'reviewedAt': reviewedAt == null ? null : Timestamp.fromDate(reviewedAt!),
       'isPartial': isPartial,
       'createdBy': createdBy,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -249,8 +278,12 @@ class MomentInstance {
     Object? startedBy = _unset,
     Object? endedBy = _unset,
     List<String>? confirmedParticipantIds,
+    List<String>? reportedParticipantIds,
     List<MomentEvidenceSignal>? evidenceSignals,
     MomentConfirmationLevel? confirmationLevel,
+    Object? reviewNote = _unset,
+    Object? reviewedBy = _unset,
+    Object? reviewedAt = _unset,
     bool? isPartial,
     DateTime? updatedAt,
   }) {
@@ -289,8 +322,19 @@ class MomentInstance {
       endedBy: identical(endedBy, _unset) ? this.endedBy : endedBy as String?,
       confirmedParticipantIds:
           confirmedParticipantIds ?? this.confirmedParticipantIds,
+      reportedParticipantIds:
+          reportedParticipantIds ?? this.reportedParticipantIds,
       evidenceSignals: evidenceSignals ?? this.evidenceSignals,
       confirmationLevel: confirmationLevel ?? this.confirmationLevel,
+      reviewNote: identical(reviewNote, _unset)
+          ? this.reviewNote
+          : reviewNote as String?,
+      reviewedBy: identical(reviewedBy, _unset)
+          ? this.reviewedBy
+          : reviewedBy as String?,
+      reviewedAt: identical(reviewedAt, _unset)
+          ? this.reviewedAt
+          : reviewedAt as DateTime?,
       isPartial: isPartial ?? this.isPartial,
       createdBy: createdBy,
       createdAt: createdAt,
