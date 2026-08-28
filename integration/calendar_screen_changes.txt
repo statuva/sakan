@@ -1,0 +1,31 @@
+1. ADD THIS IMPORT:
+
+import '../../daily_review/presentation/today_review_screen.dart';
+
+2. ADD THIS BUTTON INSIDE THE APPBAR actions, BEFORE MANAGE MOMENTS:
+
+IconButton(
+  tooltip: 'Review Today',
+  onPressed: _openTodayReview,
+  icon: const Icon(
+    Icons.fact_check_outlined,
+  ),
+),
+
+3. ADD THIS METHOD INSIDE _CalendarScreenState:
+
+Future<void> _openTodayReview() async {
+  final saved = await Navigator.of(context).push<bool>(
+    MaterialPageRoute(
+      builder: (_) => const TodayReviewScreen(),
+    ),
+  );
+
+  if (saved == true && mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Today Review saved.'),
+      ),
+    );
+  }
+}

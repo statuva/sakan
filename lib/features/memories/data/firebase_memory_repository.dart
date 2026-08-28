@@ -20,7 +20,14 @@ class FirebaseMemoryRepository implements MemoryRepository {
     required String familyId,
     required String momentId,
   }) {
-    return _memories(familyId).where('momentId', isEqualTo: momentId).limit(1);
+    return _memories(familyId).where('momentId', isEqualTo: momentId);
+  }
+
+  Query<Map<String, dynamic>> _memoryForInstanceQuery({
+    required String familyId,
+    required String instanceId,
+  }) {
+    return _memories(familyId).where('instanceId', isEqualTo: instanceId);
   }
 
   @override
@@ -47,13 +54,20 @@ class FirebaseMemoryRepository implements MemoryRepository {
       familyId: familyId,
       momentId: momentId,
     ).snapshots().map((snapshot) {
-      if (snapshot.docs.isEmpty) {
-        return null;
-      }
+      return _newestMemory(snapshot.docs);
+    });
+  }
 
-      final document = snapshot.docs.first;
-
-      return FamilyMemory.fromMap(document.id, document.data());
+  @override
+  Stream<FamilyMemory?> watchMemoryForInstance({
+    required String familyId,
+    required String instanceId,
+  }) {
+    return _memoryForInstanceQuery(
+      familyId: familyId,
+      instanceId: instanceId,
+    ).snapshots().map((snapshot) {
+      return _newestMemory(snapshot.docs);
     });
   }
 
@@ -67,38 +81,48 @@ class FirebaseMemoryRepository implements MemoryRepository {
       momentId: momentId,
     ).get();
 
-    if (snapshot.docs.isEmpty) {
-      return null;
-    }
+    return _newestMemory(snapshot.docs);
+  }
 
-    final document = snapshot.docs.first;
+  @override
+  Future<FamilyMemory?> getMemoryForInstance({
+    required String familyId,
+    required String instanceId,
+  }) async {
+    final snapshot = await _memoryForInstanceQuery(
+      familyId: familyId,
+      instanceId: instanceId,
+    ).get();
 
-    return FamilyMemory.fromMap(document.id, document.data());
+    return _newestMemory(snapshot.docs);
   }
 
   @override
   Future<void> saveMemory(FamilyMemory memory) async {
     _validateMemory(memory);
 
-    final existingSnapshot = await _memoryForMomentQuery(
-      familyId: memory.familyId,
-      momentId: memory.momentId,
-    ).get();
+    final QuerySnapshot<Map<String, dynamic>> existingSnapshot;
+
+    if (memory.instanceId != null && memory.instanceId!.trim().isNotEmpty) {
+      existingSnapshot = await _memoryForInstanceQuery(
+        familyId: memory.familyId,
+        instanceId: memory.instanceId!,
+      ).get();
+    } else {
+      existingSnapshot = await _memoryForMomentQuery(
+        familyId: memory.familyId,
+        momentId: memory.momentId,
+      ).get();
+    }
 
     final DocumentReference<Map<String, dynamic>> reference;
 
     if (existingSnapshot.docs.isNotEmpty) {
-      // Reuse the existing document when this
-      // Moment already has a Memory.
-      //
-      // This changes Add Memory into Edit Memory
-      // rather than creating a duplicate.
       reference = existingSnapshot.docs.first.reference;
     } else {
-      // For new Memories, the Moment ID is used as
-      // the document ID. This naturally supports
-      // one Memory per Moment.
-      reference = _memories(memory.familyId).doc(memory.momentId);
+      reference = _memories(
+        memory.familyId,
+      ).doc(memory.instanceId ?? memory.momentId);
     }
 
     await reference.set(memory.toMap(), SetOptions(merge: true));
@@ -110,6 +134,26 @@ class FirebaseMemoryRepository implements MemoryRepository {
     required String memoryId,
   }) {
     return _memories(familyId).doc(memoryId).delete();
+  }
+
+  FamilyMemory? _newestMemory(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
+  ) {
+    if (documents.isEmpty) {
+      return null;
+    }
+
+    final memories =
+        documents
+            .map(
+              (document) => FamilyMemory.fromMap(document.id, document.data()),
+            )
+            .toList()
+          ..sort(
+            (first, second) => second.occurredAt.compareTo(first.occurredAt),
+          );
+
+    return memories.first;
   }
 
   void _validateMemory(FamilyMemory memory) {

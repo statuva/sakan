@@ -7,20 +7,17 @@ import '../../../shared/models/current_family_context.dart';
 import '../../../shared/models/family_memory.dart';
 import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/model_enums.dart';
+import '../../../shared/models/moment_instance.dart';
 import '../../../shared/widgets/buttons/app_primary_button.dart';
 import '../../../shared/widgets/cards/app_card.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 
 class AddMemoryScreen extends StatefulWidget {
-  const AddMemoryScreen({this.initialMoment, super.key});
+  const AddMemoryScreen({this.initialMoment, this.initialInstance, super.key});
 
-  /// When this screen opens from a completed Moment,
-  /// that Moment remains selected.
-  ///
-  /// When null, the user can choose from all completed
-  /// Moments that belong to the current family.
   final FamilyMoment? initialMoment;
+  final MomentInstance? initialInstance;
 
   @override
   State<AddMemoryScreen> createState() => _AddMemoryScreenState();
@@ -28,13 +25,15 @@ class AddMemoryScreen extends StatefulWidget {
 
 class _AddMemoryScreenState extends State<AddMemoryScreen> {
   final _formKey = GlobalKey<FormState>();
-
   final _noteController = TextEditingController();
 
   CurrentFamilyContext? _familyContext;
 
-  List<FamilyMoment> _completedMoments = <FamilyMoment>[];
+  List<MomentInstance> _completedInstances = <MomentInstance>[];
 
+  Map<String, FamilyMoment> _momentsById = <String, FamilyMoment>{};
+
+  MomentInstance? _selectedInstance;
   FamilyMoment? _selectedMoment;
   FamilyMemory? _existingMemory;
 
@@ -43,12 +42,17 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
   bool _isSaving = false;
 
   String? _errorMessage;
-
-  int _memoryLoadRequestId = 0;
+  int _loadRequestId = 0;
 
   bool get _isEditing => _existingMemory != null;
 
-  bool get _momentIsLocked => widget.initialMoment != null;
+  bool get _selectionIsLocked {
+    return widget.initialInstance != null || widget.initialMoment != null;
+  }
+
+  bool get _usesLegacyMomentOnly {
+    return _selectedInstance == null && _selectedMoment != null;
+  }
 
   @override
   void initState() {
@@ -73,51 +77,92 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
 
       if (!familyContext.isAdult) {
         throw StateError(
-          'Only an adult or family admin '
-          'can add or edit a family memory.',
+          'Only an adult or family admin can '
+          'add or edit a family Memory.',
         );
       }
 
-      final initialMoment = widget.initialMoment;
+      final results = await Future.wait<Object>([
+        AppDependencies.calendarRepository
+            .watchMoments(familyId: familyContext.familyId)
+            .first,
+        AppDependencies.momentInstanceRepository
+            .watchInstances(familyId: familyContext.familyId)
+            .first,
+      ]);
 
-      if (initialMoment != null &&
-          initialMoment.status != MomentStatus.completed) {
-        throw StateError(
-          'A Memory can be added only after '
-          'the Moment is marked Completed.',
-        );
-      }
+      final moments = results[0] as List<FamilyMoment>;
+      final instances = results[1] as List<MomentInstance>;
 
-      final moments = await AppDependencies.calendarRepository
-          .watchMoments(familyId: familyContext.familyId)
-          .first;
+      final momentsById = <String, FamilyMoment>{
+        for (final moment in moments) moment.id: moment,
+      };
 
-      final completedMoments = moments
-          .where((moment) => moment.status == MomentStatus.completed)
-          .toList();
+      final completedInstances =
+          instances
+              .where(
+                (instance) => instance.status == MomentInstanceStatus.completed,
+              )
+              .toList()
+            ..sort(
+              (first, second) =>
+                  second.effectiveStartAt.compareTo(first.effectiveStartAt),
+            );
 
-      if (initialMoment != null &&
-          !completedMoments.any((moment) => moment.id == initialMoment.id)) {
-        completedMoments.add(initialMoment);
-      }
-
-      completedMoments.sort(
-        (first, second) => second.startAt.compareTo(first.startAt),
-      );
-
+      MomentInstance? selectedInstance;
       FamilyMoment? selectedMoment;
 
-      if (initialMoment != null) {
-        selectedMoment = _findMoment(completedMoments, initialMoment.id);
-      }
+      final initialInstance = widget.initialInstance;
 
-      if (selectedMoment == null && completedMoments.isNotEmpty) {
-        selectedMoment = completedMoments.first;
+      if (initialInstance != null) {
+        if (initialInstance.familyId != familyContext.familyId) {
+          throw StateError(
+            'This Memory occurrence belongs to '
+            'a different family.',
+          );
+        }
+
+        if (initialInstance.status != MomentInstanceStatus.completed) {
+          throw StateError(
+            'A Memory can be added only after '
+            'the Moment occurrence is completed.',
+          );
+        }
+
+        selectedInstance = initialInstance;
+        selectedMoment =
+            momentsById[initialInstance.momentId] ??
+            _momentSnapshotFromInstance(initialInstance);
+      } else if (widget.initialMoment != null) {
+        final initialMoment = widget.initialMoment!;
+
+        selectedMoment = initialMoment;
+
+        final matching = completedInstances.where(
+          (instance) => instance.momentId == initialMoment.id,
+        );
+
+        if (matching.isNotEmpty) {
+          selectedInstance = matching.first;
+        } else if (initialMoment.status != MomentStatus.completed) {
+          throw StateError('This Moment has no completed occurrence yet.');
+        }
+      } else if (completedInstances.isNotEmpty) {
+        selectedInstance = completedInstances.first;
+        selectedMoment =
+            momentsById[selectedInstance.momentId] ??
+            _momentSnapshotFromInstance(selectedInstance);
       }
 
       FamilyMemory? existingMemory;
 
-      if (selectedMoment != null) {
+      if (selectedInstance != null) {
+        existingMemory = await AppDependencies.memoryRepository
+            .getMemoryForInstance(
+              familyId: familyContext.familyId,
+              instanceId: selectedInstance.id,
+            );
+      } else if (selectedMoment != null) {
         existingMemory = await AppDependencies.memoryRepository
             .getMemoryForMoment(
               familyId: familyContext.familyId,
@@ -131,7 +176,9 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
 
       setState(() {
         _familyContext = familyContext;
-        _completedMoments = completedMoments;
+        _completedInstances = completedInstances;
+        _momentsById = momentsById;
+        _selectedInstance = selectedInstance;
         _selectedMoment = selectedMoment;
         _existingMemory = existingMemory;
         _isLoading = false;
@@ -143,39 +190,57 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
         _isLoading = false;
         _errorMessage = error is StateError
             ? error.message.toString()
-            : 'We could not prepare '
-                  'the Memory screen.';
+            : 'We could not prepare the Memory screen.';
       });
     }
   }
 
-  FamilyMoment? _findMoment(List<FamilyMoment> moments, String momentId) {
-    for (final moment in moments) {
-      if (moment.id == momentId) {
-        return moment;
-      }
-    }
-
-    return null;
+  FamilyMoment _momentSnapshotFromInstance(MomentInstance instance) {
+    return FamilyMoment(
+      id: instance.momentId,
+      familyId: instance.familyId,
+      title: instance.titleSnapshot,
+      type: instance.typeSnapshot,
+      category: instance.categorySnapshot,
+      importanceLevel: instance.importanceLevelSnapshot,
+      expectedParticipantIds: instance.expectedParticipantIds,
+      startAt: instance.effectiveStartAt,
+      endAt: instance.effectiveEndAt,
+      evidenceType: EvidenceType.userConfirmed,
+      status: MomentStatus.completed,
+      createdBy: instance.createdBy,
+      createdAt: instance.createdAt,
+      updatedAt: instance.updatedAt,
+    );
   }
 
-  Future<void> _selectMoment(String momentId) async {
+  Future<void> _selectInstance(String instanceId) async {
     final familyContext = _familyContext;
 
     if (familyContext == null || _isSaving) {
       return;
     }
 
-    final selectedMoment = _findMoment(_completedMoments, momentId);
+    MomentInstance? selected;
 
-    if (selectedMoment == null) {
+    for (final instance in _completedInstances) {
+      if (instance.id == instanceId) {
+        selected = instance;
+        break;
+      }
+    }
+
+    if (selected == null) {
       return;
     }
 
-    final requestId = ++_memoryLoadRequestId;
+    final requestId = ++_loadRequestId;
 
     setState(() {
-      _selectedMoment = selectedMoment;
+      _selectedInstance = selected;
+      _selectedMoment =
+          _momentsById[selected!.momentId] ??
+          _momentSnapshotFromInstance(selected);
       _existingMemory = null;
       _isLoadingExistingMemory = true;
       _errorMessage = null;
@@ -184,32 +249,30 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
     _noteController.clear();
 
     try {
-      final existingMemory = await AppDependencies.memoryRepository
-          .getMemoryForMoment(
+      final existing = await AppDependencies.memoryRepository
+          .getMemoryForInstance(
             familyId: familyContext.familyId,
-            momentId: selectedMoment.id,
+            instanceId: selected.id,
           );
 
-      if (!mounted || requestId != _memoryLoadRequestId) {
+      if (!mounted || requestId != _loadRequestId) {
         return;
       }
 
-      _noteController.text = existingMemory?.note ?? '';
+      _noteController.text = existing?.note ?? '';
 
       setState(() {
-        _existingMemory = existingMemory;
+        _existingMemory = existing;
         _isLoadingExistingMemory = false;
       });
     } catch (_) {
-      if (!mounted || requestId != _memoryLoadRequestId) {
+      if (!mounted || requestId != _loadRequestId) {
         return;
       }
 
       setState(() {
         _isLoadingExistingMemory = false;
-        _errorMessage =
-            'We could not check whether '
-            'this Moment already has a Memory.';
+        _errorMessage = 'We could not check for an existing Memory.';
       });
     }
   }
@@ -220,8 +283,8 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
     }
 
     final familyContext = _familyContext;
-
     final selectedMoment = _selectedMoment;
+    final selectedInstance = _selectedInstance;
 
     if (familyContext == null ||
         selectedMoment == null ||
@@ -237,41 +300,45 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
 
     try {
       final now = DateTime.now().toUtc();
+      final existing = _existingMemory;
 
-      final existingMemory = _existingMemory;
+      final recordedParticipants =
+          selectedInstance?.allRecordedParticipantIds ?? const <String>[];
+
+      final participantIds = recordedParticipants.isNotEmpty
+          ? recordedParticipants
+          : selectedInstance?.expectedParticipantIds ??
+                selectedMoment.expectedParticipantIds;
 
       final memory = FamilyMemory(
-        // New Memories use the Moment ID.
-        // Existing Memories preserve their
-        // current Firestore document ID.
-        id: existingMemory?.id ?? selectedMoment.id,
-
+        id: existing?.id ?? selectedInstance?.id ?? selectedMoment.id,
         familyId: familyContext.familyId,
-
         momentId: selectedMoment.id,
-
-        title: selectedMoment.title,
-
-        occurredAt: selectedMoment.startAt.toUtc(),
-
-        // Preserve future photo data when an
-        // existing Memory is edited.
-        photoUrls: existingMemory?.photoUrls ?? const <String>[],
-
-        participantIds: selectedMoment.expectedParticipantIds,
-
+        instanceId: selectedInstance?.id,
+        title: selectedInstance?.titleSnapshot ?? selectedMoment.title,
+        occurredAt:
+            selectedInstance?.effectiveStartAt.toUtc() ??
+            selectedMoment.startAt.toUtc(),
+        photoUrls: existing?.photoUrls ?? const <String>[],
+        participantIds: participantIds,
         note: _noteController.text.trim(),
-
-        // Preserve any future AI reflection.
-        // The app does not generate one yet.
-        aiReflection: existingMemory?.aiReflection,
-
-        createdAt: existingMemory?.createdAt ?? now,
-
+        aiReflection: existing?.aiReflection,
+        createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       );
 
       await AppDependencies.memoryRepository.saveMemory(memory);
+
+      if (selectedInstance != null) {
+        await AppDependencies.momentInstanceRepository.addEvidenceSignals(
+          familyId: familyContext.familyId,
+          instanceId: selectedInstance.id,
+          signals: const <MomentEvidenceSignal>[
+            MomentEvidenceSignal.familyNote,
+            MomentEvidenceSignal.memoryCreated,
+          ],
+        );
+      }
 
       if (!mounted) return;
 
@@ -281,9 +348,8 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
 
       setState(() {
         _errorMessage = error is ArgumentError
-            ? error.message.toString()
-            : 'We could not save this '
-                  'family Memory. Please try again.';
+            ? error.message?.toString()
+            : 'We could not save this family Memory.';
       });
     } finally {
       if (mounted) {
@@ -309,17 +375,14 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
         appBar: AppBar(title: const Text('Family Memory')),
         body: SafeArea(
           child: AppErrorState(
-            message:
-                _errorMessage ??
-                'The Memory screen '
-                    'is unavailable.',
+            message: _errorMessage ?? 'The Memory screen is unavailable.',
             onRetry: _loadMemoryData,
           ),
         ),
       );
     }
 
-    if (_completedMoments.isEmpty) {
+    if (_selectedMoment == null && _completedInstances.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('Add Family Memory')),
         body: SafeArea(
@@ -330,23 +393,20 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
                 child: Column(
                   children: [
                     Icon(
-                      Icons.history_rounded,
+                      Icons.auto_stories_outlined,
                       size: 58,
                       color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     Text(
-                      'No completed Moments yet',
+                      'No completed occurrences yet',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     Text(
-                      'Mark a family Moment as '
-                      'Completed first. You can '
-                      'then preserve its date, '
-                      'participants, and family '
-                      'note as a Memory.',
+                      'Complete a Live Moment or confirm '
+                      'one through Today Review first.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
@@ -359,7 +419,8 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
       );
     }
 
-    final selectedMoment = _selectedMoment;
+    final selectedInstance = _selectedInstance;
+    final selectedMoment = _selectedMoment!;
 
     return Scaffold(
       appBar: AppBar(
@@ -374,42 +435,31 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
               Text(
                 _isEditing
                     ? 'Update this Memory'
-                    : 'Preserve a completed Moment',
+                    : 'Preserve a completed occurrence',
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
-
               const SizedBox(height: AppSpacing.xs),
-
               Text(
-                _isEditing
-                    ? 'This Moment already has a '
-                          'Memory. Saving will update '
-                          'its family note instead of '
-                          'creating a duplicate.'
-                    : 'Choose a completed family '
-                          'Moment and write what your '
-                          'family would like to remember.',
+                'A Memory now belongs to the specific '
+                'occurrence, so recurring traditions can '
+                'have more than one Memory over time.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
-
               const SizedBox(height: AppSpacing.xl),
-
-              if (_momentIsLocked && selectedMoment != null)
-                _SelectedMomentCard(moment: selectedMoment)
-              else
+              if (!_selectionIsLocked && _completedInstances.isNotEmpty)
                 DropdownButtonFormField<String>(
-                  key: ValueKey(selectedMoment?.id),
-                  initialValue: selectedMoment?.id,
+                  initialValue: selectedInstance?.id,
                   decoration: const InputDecoration(
-                    labelText: 'Completed Moment',
+                    labelText: 'Completed occurrence',
                     prefixIcon: Icon(Icons.check_circle_outline),
                   ),
-                  items: _completedMoments
+                  items: _completedInstances
                       .map(
-                        (moment) => DropdownMenuItem<String>(
-                          value: moment.id,
+                        (instance) => DropdownMenuItem<String>(
+                          value: instance.id,
                           child: Text(
-                            moment.title,
+                            '${instance.titleSnapshot} · '
+                            '${DateFormat('d MMM y').format(instance.effectiveStartAt.toLocal())}',
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -417,33 +467,23 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
                       .toList(),
                   onChanged: _isSaving || _isLoadingExistingMemory
                       ? null
-                      : (momentId) {
-                          if (momentId == null) {
-                            return;
+                      : (value) {
+                          if (value != null) {
+                            _selectInstance(value);
                           }
-
-                          _selectMoment(momentId);
                         },
                 ),
-
-              if (!_momentIsLocked && selectedMoment != null) ...[
-                const SizedBox(height: AppSpacing.md),
-
-                _SelectedMomentCard(moment: selectedMoment),
-              ],
-
+              if (!_selectionIsLocked) const SizedBox(height: AppSpacing.md),
+              _MemorySourceCard(
+                moment: selectedMoment,
+                instance: selectedInstance,
+                isLegacy: _usesLegacyMomentOnly,
+              ),
               if (_isLoadingExistingMemory) ...[
                 const SizedBox(height: AppSpacing.md),
                 const LinearProgressIndicator(),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  'Checking for an existing Memory…',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
               ],
-
               const SizedBox(height: AppSpacing.xl),
-
               TextFormField(
                 controller: _noteController,
                 enabled: !_isSaving && !_isLoadingExistingMemory,
@@ -452,28 +492,17 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
                 textCapitalization: TextCapitalization.sentences,
                 decoration: const InputDecoration(
                   labelText: 'Family Note',
-                  hintText:
-                      'What happened, and what '
-                      'would your family like '
-                      'to remember?',
+                  hintText: 'What would your family like to remember?',
                   alignLabelWithHint: true,
-                  prefixIcon: Icon(Icons.notes_outlined),
                 ),
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
+                  if (value == null || value.trim().length < 3) {
                     return 'Write a short family note.';
                   }
-
-                  if (value.trim().length < 3) {
-                    return 'The note is too short.';
-                  }
-
                   return null;
                 },
               ),
-
               const SizedBox(height: AppSpacing.lg),
-
               AppCard(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -485,19 +514,15 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: Text(
-                        'Photo upload is not '
-                        'connected in this MVP. '
-                        'This Memory preserves '
-                        'the completed Moment, '
-                        'date, participants, and '
-                        'family note.',
+                        'Photo upload is not connected in '
+                        'this MVP. The occurrence, date, '
+                        'participants, and family note are saved.',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
                   ],
                 ),
               ),
-
               if (_errorMessage != null) ...[
                 const SizedBox(height: AppSpacing.md),
                 Text(
@@ -505,9 +530,7 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
-
               const SizedBox(height: AppSpacing.xxl),
-
               AppPrimaryButton(
                 label: _isEditing ? 'Update Memory' : 'Save Memory',
                 icon: _isEditing
@@ -526,13 +549,28 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
   }
 }
 
-class _SelectedMomentCard extends StatelessWidget {
-  const _SelectedMomentCard({required this.moment});
+class _MemorySourceCard extends StatelessWidget {
+  const _MemorySourceCard({
+    required this.moment,
+    required this.instance,
+    required this.isLegacy,
+  });
 
   final FamilyMoment moment;
+  final MomentInstance? instance;
+  final bool isLegacy;
 
   @override
   Widget build(BuildContext context) {
+    final date =
+        instance?.effectiveStartAt.toLocal() ?? moment.startAt.toLocal();
+
+    final participantCount =
+        instance?.allRecordedParticipantIds.isNotEmpty == true
+        ? instance!.allRecordedParticipantIds.length
+        : instance?.expectedParticipantIds.length ??
+              moment.expectedParticipantIds.length;
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -546,35 +584,26 @@ class _SelectedMomentCard extends StatelessWidget {
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
-                  moment.title,
+                  instance?.titleSnapshot ?? moment.title,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
             ],
           ),
-
           const SizedBox(height: 8),
-
-          Text(
-            DateFormat('EEEE, d MMMM y').format(moment.startAt.toLocal()),
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-
+          Text(DateFormat('EEEE, d MMMM y').format(date)),
           const SizedBox(height: 6),
-
           Text(
-            '${moment.expectedParticipantIds.length} '
-            'expected '
-            '${moment.expectedParticipantIds.length == 1 ? 'participant' : 'participants'}',
-            style: Theme.of(context).textTheme.bodyMedium,
+            '$participantCount recorded or expected '
+            '${participantCount == 1 ? 'participant' : 'participants'}',
           ),
-
-          const SizedBox(height: 6),
-
-          Text(
-            'Status: Completed',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
+          if (isLegacy) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Legacy Memory source: no occurrence ID.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
         ],
       ),
     );

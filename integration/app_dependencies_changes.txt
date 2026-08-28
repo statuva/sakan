@@ -1,0 +1,41 @@
+ADD THESE IMPORTS:
+
+import 'package:sakan/features/daily_review/data/firebase_daily_review_repository.dart';
+import 'package:sakan/features/rhythm/data/firebase_rhythm_repository.dart';
+import 'package:sakan/shared/services/moment_outcome_service.dart';
+import 'package:sakan/shared/services/rhythm_update_service.dart';
+
+KEEP THIS AUGUST 26 IMPORT:
+
+import 'package:sakan/features/moments/data/firebase_moment_instance_repository.dart';
+
+ADD THESE REPOSITORIES AFTER THE EXISTING DATA REPOSITORIES:
+
+static final FirebaseRhythmRepository
+    rhythmRepository =
+    FirebaseRhythmRepository();
+
+static final FirebaseDailyReviewRepository
+    dailyReviewRepository =
+    FirebaseDailyReviewRepository();
+
+ADD THESE SERVICES AFTER calendarRepository, momentInstanceRepository,
+AND rhythmRepository HAVE BEEN DECLARED:
+
+static final RhythmUpdateService
+    rhythmUpdateService =
+    RhythmUpdateService(
+  calendarRepository: calendarRepository,
+  momentInstanceRepository:
+      momentInstanceRepository,
+  rhythmRepository: rhythmRepository,
+);
+
+static final MomentOutcomeService
+    momentOutcomeService =
+    MomentOutcomeService(
+  calendarRepository: calendarRepository,
+  momentInstanceRepository:
+      momentInstanceRepository,
+  rhythmUpdateService: rhythmUpdateService,
+);

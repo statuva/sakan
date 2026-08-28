@@ -3,12 +3,17 @@ import 'package:intl/intl.dart';
 
 import '../../../app/app_dependencies.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../shared/models/current_family_context.dart';
+import '../../../shared/models/family_memory.dart';
+import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/member.dart';
 import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/moment_instance.dart';
 import '../../../shared/models/moment_participant.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
+import '../../memories/presentation/add_memory_screen.dart';
+import '../../memories/presentation/memory_details_screen.dart';
 
 class MomentSessionSummaryScreen extends StatefulWidget {
   const MomentSessionSummaryScreen({
@@ -27,11 +32,16 @@ class MomentSessionSummaryScreen extends StatefulWidget {
 
 class _MomentSessionSummaryScreenState
     extends State<MomentSessionSummaryScreen> {
+  CurrentFamilyContext? _familyContext;
+  FamilyMoment? _moment;
+  FamilyMemory? _memory;
+
   Stream<MomentInstance?>? _instanceStream;
   Stream<List<MomentParticipant>>? _participantsStream;
   Stream<List<Member>>? _membersStream;
 
   bool _isLoading = true;
+  bool _isOpeningMemory = false;
   String? _errorMessage;
 
   @override
@@ -53,9 +63,34 @@ class _MomentSessionSummaryScreenState
         throw StateError('This Moment belongs to a different family.');
       }
 
+      final instance = await AppDependencies.momentInstanceRepository
+          .getInstance(
+            familyId: widget.familyId,
+            instanceId: widget.instanceId,
+          );
+
+      if (instance == null) {
+        throw StateError('This Moment occurrence could not be found.');
+      }
+
+      final results = await Future.wait<Object?>([
+        AppDependencies.calendarRepository.getMoment(
+          familyId: widget.familyId,
+          momentId: instance.momentId,
+        ),
+        AppDependencies.memoryRepository.getMemoryForInstance(
+          familyId: widget.familyId,
+          instanceId: widget.instanceId,
+        ),
+      ]);
+
       if (!mounted) return;
 
       setState(() {
+        _familyContext = familyContext;
+        _moment = results[0] as FamilyMoment?;
+        _memory = results[1] as FamilyMemory?;
+
         _instanceStream = AppDependencies.momentInstanceRepository
             .watchInstance(
               familyId: widget.familyId,
@@ -82,6 +117,62 @@ class _MomentSessionSummaryScreenState
             ? error.message.toString()
             : 'We could not load the Moment summary.';
       });
+    }
+  }
+
+  Future<void> _openMemory(MomentInstance instance) async {
+    if (_isOpeningMemory) return;
+
+    final memory = _memory;
+
+    if (memory != null) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => MemoryDetailsScreen(memory: memory)),
+      );
+      return;
+    }
+
+    final moment = _moment;
+
+    if (_familyContext?.isAdult != true) {
+      return;
+    }
+
+    setState(() {
+      _isOpeningMemory = true;
+    });
+
+    try {
+      final saved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) =>
+              AddMemoryScreen(initialMoment: moment, initialInstance: instance),
+        ),
+      );
+
+      if (saved == true && mounted) {
+        final savedMemory = await AppDependencies.memoryRepository
+            .getMemoryForInstance(
+              familyId: widget.familyId,
+              instanceId: widget.instanceId,
+            );
+
+        if (!mounted) return;
+
+        setState(() {
+          _memory = savedMemory;
+        });
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Family Memory saved.')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isOpeningMemory = false;
+        });
+      }
     }
   }
 
@@ -147,7 +238,6 @@ class _MomentSessionSummaryScreenState
                     participantSnapshot.data ?? <MomentParticipant>[];
 
                 return _buildSummary(
-                  context: context,
                   instance: instance,
                   participants: participants,
                   membersById: membersById,
@@ -161,7 +251,6 @@ class _MomentSessionSummaryScreenState
   }
 
   Scaffold _buildSummary({
-    required BuildContext context,
     required MomentInstance instance,
     required List<MomentParticipant> participants,
     required Map<String, Member> membersById,
@@ -174,6 +263,14 @@ class _MomentSessionSummaryScreenState
 
     final checkedInParticipants = participants
         .where((participant) => participant.checkedInAt != null)
+        .toList();
+
+    final checkedInIds = checkedInParticipants
+        .map((participant) => participant.memberId)
+        .toSet();
+
+    final reportedOnlyIds = instance.reportedParticipantIds
+        .where((memberId) => !checkedInIds.contains(memberId))
         .toList();
 
     return Scaffold(
@@ -243,9 +340,9 @@ class _MomentSessionSummaryScreenState
                   icon: Icons.timer_outlined,
                 ),
                 _SummaryItem(
-                  label: 'Confirmed',
+                  label: 'Recorded',
                   value:
-                      '${checkedInParticipants.length} of '
+                      '${instance.allRecordedParticipantIds.length} of '
                       '${instance.expectedParticipantIds.length}',
                   icon: Icons.group_outlined,
                 ),
@@ -255,20 +352,16 @@ class _MomentSessionSummaryScreenState
             const SizedBox(height: AppSpacing.xl),
 
             Text('Confirmation', style: Theme.of(context).textTheme.titleLarge),
-
             const SizedBox(height: AppSpacing.sm),
-
             Container(
               padding: const EdgeInsets.all(AppSpacing.lg),
               decoration: BoxDecoration(
                 color: _confirmationColor(
-                  context,
                   instance.confirmationLevel,
                 ).withAlpha(24),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: _confirmationColor(
-                    context,
                     instance.confirmationLevel,
                   ).withAlpha(80),
                 ),
@@ -277,10 +370,7 @@ class _MomentSessionSummaryScreenState
                 children: [
                   Icon(
                     Icons.verified_outlined,
-                    color: _confirmationColor(
-                      context,
-                      instance.confirmationLevel,
-                    ),
+                    color: _confirmationColor(instance.confirmationLevel),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
@@ -294,9 +384,9 @@ class _MomentSessionSummaryScreenState
                         const SizedBox(height: 4),
                         Text(
                           _confirmationExplanation(
-                            instance,
-                            checkedInParticipants.length,
-                            durationMinutes,
+                            instance: instance,
+                            selfCheckInCount: checkedInParticipants.length,
+                            durationMinutes: durationMinutes,
                           ),
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
@@ -331,17 +421,16 @@ class _MomentSessionSummaryScreenState
             const SizedBox(height: AppSpacing.xl),
 
             Text('Participants', style: Theme.of(context).textTheme.titleLarge),
-
             const SizedBox(height: AppSpacing.sm),
 
-            if (checkedInParticipants.isEmpty)
+            if (checkedInParticipants.isEmpty && reportedOnlyIds.isEmpty)
               const Card(
                 child: Padding(
                   padding: EdgeInsets.all(AppSpacing.lg),
-                  child: Text('No participant check-ins were recorded.'),
+                  child: Text('No participant evidence was recorded.'),
                 ),
               )
-            else
+            else ...[
               ...checkedInParticipants.map(
                 (participant) => Card(
                   margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -354,15 +443,72 @@ class _MomentSessionSummaryScreenState
                           'Family member',
                     ),
                     subtitle: Text(_participantTimeText(participant)),
-                    trailing: const Icon(
-                      Icons.check_circle_rounded,
-                      color: Colors.green,
-                    ),
+                    trailing: const Chip(label: Text('Self check-in')),
                   ),
                 ),
               ),
+              ...reportedOnlyIds.map(
+                (memberId) => Card(
+                  margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.person_outline),
+                    ),
+                    title: Text(
+                      membersById[memberId]?.displayName ?? 'Family member',
+                    ),
+                    subtitle: const Text('Reported during Today Review'),
+                    trailing: const Chip(label: Text('Reported')),
+                  ),
+                ),
+              ),
+            ],
+
+            if (instance.reviewNote?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                'Review Note',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Text(instance.reviewNote!),
+                ),
+              ),
+            ],
 
             const SizedBox(height: AppSpacing.xl),
+
+            if (instance.status == MomentInstanceStatus.completed &&
+                _familyContext?.isAdult == true)
+              FilledButton.tonalIcon(
+                onPressed: _isOpeningMemory
+                    ? null
+                    : () {
+                        _openMemory(instance);
+                      },
+                icon: Icon(
+                  _memory == null
+                      ? Icons.bookmark_add_outlined
+                      : Icons.auto_stories_outlined,
+                ),
+                label: Text(_memory == null ? 'Create Memory' : 'View Memory'),
+              ),
+
+            if (instance.status == MomentInstanceStatus.completed &&
+                _familyContext?.isAdult != true &&
+                _memory != null)
+              FilledButton.tonalIcon(
+                onPressed: () {
+                  _openMemory(instance);
+                },
+                icon: const Icon(Icons.auto_stories_outlined),
+                label: const Text('View Memory'),
+              ),
+
+            const SizedBox(height: AppSpacing.sm),
 
             FilledButton(
               onPressed: () {
@@ -442,10 +588,7 @@ class _MomentSessionSummaryScreenState
     };
   }
 
-  Color _confirmationColor(
-    BuildContext context,
-    MomentConfirmationLevel level,
-  ) {
+  Color _confirmationColor(MomentConfirmationLevel level) {
     return switch (level) {
       MomentConfirmationLevel.low => Theme.of(context).colorScheme.error,
       MomentConfirmationLevel.medium => Colors.orange,
@@ -453,20 +596,26 @@ class _MomentSessionSummaryScreenState
     };
   }
 
-  String _confirmationExplanation(
-    MomentInstance instance,
-    int checkedInCount,
-    int durationMinutes,
-  ) {
+  String _confirmationExplanation({
+    required MomentInstance instance,
+    required int selfCheckInCount,
+    required int durationMinutes,
+  }) {
     if (instance.confirmationLevel == MomentConfirmationLevel.high) {
-      return 'Multiple participant check-ins and '
-          'recorded duration support this occurrence.';
+      return 'Multiple self check-ins and recorded '
+          'duration strongly support this occurrence.';
+    }
+
+    if (instance.evidenceSignals.contains(MomentEvidenceSignal.todayReview)) {
+      return 'This occurrence was reported during '
+          'Today Review. Reported participation is '
+          'useful, but weaker than multiple self check-ins.';
     }
 
     if (instance.confirmationLevel == MomentConfirmationLevel.medium) {
-      return '$checkedInCount participant check-in(s) '
-          'and $durationMinutes recorded minute(s) '
-          'provide partial confirmation.';
+      return '$selfCheckInCount self check-in(s) and '
+          '$durationMinutes recorded minute(s) provide '
+          'partial confirmation.';
     }
 
     return 'This occurrence currently has limited '

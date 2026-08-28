@@ -11,6 +11,7 @@ class FamilyMemory {
     required this.participantIds,
     required this.createdAt,
     required this.updatedAt,
+    this.instanceId,
     this.note,
     this.aiReflection,
   });
@@ -18,6 +19,11 @@ class FamilyMemory {
   final String id;
   final String familyId;
   final String momentId;
+
+  /// New Memories should reference a concrete completed
+  /// Moment occurrence. Null keeps older records valid.
+  final String? instanceId;
+
   final String title;
   final DateTime occurredAt;
   final List<String> photoUrls;
@@ -32,6 +38,7 @@ class FamilyMemory {
       id: id,
       familyId: map['familyId'] as String,
       momentId: map['momentId'] as String,
+      instanceId: map['instanceId'] as String?,
       title: map['title'] as String,
       occurredAt: (map['occurredAt'] as Timestamp).toDate(),
       photoUrls: List<String>.from(map['photoUrls'] ?? const <String>[]),
@@ -46,9 +53,10 @@ class FamilyMemory {
   }
 
   Map<String, dynamic> toMap() {
-    return {
+    return <String, dynamic>{
       'familyId': familyId,
       'momentId': momentId,
+      'instanceId': instanceId,
       'title': title,
       'occurredAt': Timestamp.fromDate(occurredAt),
       'photoUrls': photoUrls,

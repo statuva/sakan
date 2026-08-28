@@ -6,6 +6,11 @@ abstract interface class CalendarRepository {
 
   Stream<List<RhythmRecord>> watchRhythms({required String familyId});
 
+  Future<FamilyMoment?> getMoment({
+    required String familyId,
+    required String momentId,
+  });
+
   Future<void> saveMoment(FamilyMoment moment);
 
   Future<void> deleteMoment({

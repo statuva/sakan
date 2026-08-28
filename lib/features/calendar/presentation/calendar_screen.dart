@@ -32,6 +32,7 @@ import 'widgets/calendar_palette.dart';
 import 'widgets/calendar_support_cards.dart';
 import 'widgets/calendar_week_view.dart';
 import 'widgets/family_insight_section.dart';
+import '../../daily_review/presentation/today_review_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -193,13 +194,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
         backgroundColor: CalendarPalette.background,
         surfaceTintColor: Colors.transparent,
         actions: [
+          IconButton(
+            tooltip: 'Review Today',
+            onPressed: _openTodayReview,
+            icon: const Icon(Icons.fact_check_outlined),
+          ),
+
           TextButton.icon(
-            onPressed: () {
-              _openMomentsPage();
-            },
+            onPressed: _openMomentsPage,
             icon: const Icon(Icons.auto_awesome_motion_outlined, size: 18),
             label: const Text('Manage Moments'),
           ),
+
           const SizedBox(width: 6),
         ],
       ),
@@ -435,6 +441,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return moments.where((moment) {
       return isSameDay(moment.startAt.toLocal(), day);
     }).toList();
+  }
+
+  Future<void> _openTodayReview() async {
+    final saved = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const TodayReviewScreen()));
+
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Today Review saved.')));
+    }
   }
 
   Future<void> _openMomentsPage() async {
