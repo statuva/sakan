@@ -47,8 +47,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
       if (!mounted) return;
 
       setState(() {
-        _reportStream =
-            AppDependencies.familyInsightService.watchReport();
+        _reportStream = AppDependencies.familyInsightService.watchReport();
         _isLoading = false;
       });
     } catch (_) {
@@ -56,8 +55,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
 
       setState(() {
         _isLoading = false;
-        _errorMessage =
-            'We could not load the Family Digital Twin.';
+        _errorMessage = 'We could not load the Family Digital Twin.';
       });
     }
   }
@@ -67,9 +65,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
     if (_isLoading) {
       return const Scaffold(
         body: SafeArea(
-          child: AppLoadingState(
-            message: 'Building the family Moment map...',
-          ),
+          child: AppLoadingState(message: 'Building the family Moment map...'),
         ),
       );
     }
@@ -78,8 +74,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
       return Scaffold(
         body: SafeArea(
           child: AppErrorState(
-            message: _errorMessage ??
-                'The Family Digital Twin is unavailable.',
+            message: _errorMessage ?? 'The Family Digital Twin is unavailable.',
             onRetry: _loadTwin,
           ),
         ),
@@ -93,8 +88,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
           return Scaffold(
             body: SafeArea(
               child: AppErrorState(
-                message:
-                    'We could not update the Family Digital Twin.',
+                message: 'We could not update the Family Digital Twin.',
                 onRetry: _loadTwin,
               ),
             ),
@@ -130,33 +124,32 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
     );
   }
 
-  Widget _buildTwin(
-    BuildContext context,
-    FamilyInsightReport report,
-  ) {
+  Widget _buildTwin(BuildContext context, FamilyInsightReport report) {
     final snapshot = report.snapshot;
 
-    final recurringMoments = snapshot.moments
-        .where((moment) => moment.type == MomentType.recurring)
-        .toList()
-      ..sort((first, second) {
-        final firstRhythm = snapshot.rhythmForMoment(first.id);
-        final secondRhythm = snapshot.rhythmForMoment(second.id);
+    final recurringMoments =
+        snapshot.moments
+            .where((moment) => moment.type == MomentType.recurring)
+            .toList()
+          ..sort((first, second) {
+            final firstRhythm = snapshot.rhythmForMoment(first.id);
+            final secondRhythm = snapshot.rhythmForMoment(second.id);
 
-        final statusResult = _rhythmRank(
-          firstRhythm?.status ?? RhythmStatus.stillLearning,
-        ).compareTo(
-          _rhythmRank(
-            secondRhythm?.status ?? RhythmStatus.stillLearning,
-          ),
-        );
+            final statusResult =
+                _rhythmRank(
+                  firstRhythm?.status ?? RhythmStatus.stillLearning,
+                ).compareTo(
+                  _rhythmRank(
+                    secondRhythm?.status ?? RhythmStatus.stillLearning,
+                  ),
+                );
 
-        if (statusResult != 0) {
-          return statusResult;
-        }
+            if (statusResult != 0) {
+              return statusResult;
+            }
 
-        return first.title.compareTo(second.title);
-      });
+            return first.title.compareTo(second.title);
+          });
 
     final upcomingOneTime = _upcomingOneTimeEntries(report);
 
@@ -174,25 +167,25 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
             Text(
               'Sakan',
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: CalendarPalette.forest,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: CalendarPalette.forest,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 2),
             Text(
               'Digital Twin',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: CalendarPalette.ink,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: CalendarPalette.ink,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 5),
             Text(
               'A visual view of each family Moment, its connections, and its recorded rhythm.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: CalendarPalette.inkSoft,
-                    height: 1.4,
-                  ),
+                color: CalendarPalette.inkSoft,
+                height: 1.4,
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
             FamilyTwinMap(
@@ -227,37 +220,33 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
             const SizedBox(height: AppSpacing.md),
             if (recurringMoments.isEmpty)
               const AppCard(
-                child: Text(
-                  'No recurring family Moments have been added yet.',
-                ),
+                child: Text('No recurring family Moments have been added yet.'),
               )
             else
-              ...recurringMoments.map(
-                (moment) {
-                  final rhythm = snapshot.rhythmForMoment(moment.id);
-                  final instances = snapshot.instancesForMoment(moment.id);
+              ...recurringMoments.map((moment) {
+                final rhythm = snapshot.rhythmForMoment(moment.id);
+                final instances = snapshot.instancesForMoment(moment.id);
 
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                    child: _MomentPatternCard(
-                      moment: moment,
-                      rhythm: rhythm,
-                      instances: instances,
-                      onTap: () {
-                        unawaited(
-                          showFamilyTwinMomentSheet(
-                            context: context,
-                            report: report,
-                            moment: moment,
-                            rhythm: rhythm,
-                            instances: instances,
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                },
-              ),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: _MomentPatternCard(
+                    moment: moment,
+                    rhythm: rhythm,
+                    instances: instances,
+                    onTap: () {
+                      unawaited(
+                        showFamilyTwinMomentSheet(
+                          context: context,
+                          report: report,
+                          moment: moment,
+                          rhythm: rhythm,
+                          instances: instances,
+                        ),
+                      );
+                    },
+                  ),
+                );
+              }),
             if (upcomingOneTime.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.xl),
               const _SectionHeading(
@@ -295,9 +284,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
               _TwinNoticeCard(
                 insight: report.primaryInsight!,
                 onOpen: () {
-                  unawaited(
-                    _showInsightDetails(report.primaryInsight!),
-                  );
+                  unawaited(_showInsightDetails(report.primaryInsight!));
                 },
               ),
             const SizedBox(height: AppSpacing.xl),
@@ -343,8 +330,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
         _UpcomingMomentEntry(
           moment: moment,
           instance: instance,
-          hasReminder:
-              snapshot.activeReminderForMoment(moment.id) != null,
+          hasReminder: snapshot.activeReminderForMoment(moment.id) != null,
         ),
       );
     }
@@ -368,9 +354,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
     };
   }
 
-  Future<void> _showInsightDetails(
-    FamilyInsightItem insight,
-  ) async {
+  Future<void> _showInsightDetails(FamilyInsightItem insight) async {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
@@ -406,10 +390,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
 }
 
 class _SectionHeading extends StatelessWidget {
-  const _SectionHeading({
-    required this.title,
-    required this.subtitle,
-  });
+  const _SectionHeading({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
@@ -422,17 +403,17 @@ class _SectionHeading extends StatelessWidget {
         Text(
           title,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: CalendarPalette.ink,
-                fontWeight: FontWeight.w700,
-              ),
+            color: CalendarPalette.ink,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
           subtitle,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: CalendarPalette.inkSoft,
-                height: 1.4,
-              ),
+            color: CalendarPalette.inkSoft,
+            height: 1.4,
+          ),
         ),
       ],
     );
@@ -454,17 +435,18 @@ class _MomentPatternCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visual = _rhythmVisual(
-      rhythm?.status ?? RhythmStatus.stillLearning,
-    );
+    final visual = _rhythmVisual(rhythm?.status ?? RhythmStatus.stillLearning);
 
-    final completed = instances
-        .where((instance) => instance.status == MomentInstanceStatus.completed)
-        .toList()
-      ..sort(
-        (first, second) =>
-            second.effectiveStartAt.compareTo(first.effectiveStartAt),
-      );
+    final completed =
+        instances
+            .where(
+              (instance) => instance.status == MomentInstanceStatus.completed,
+            )
+            .toList()
+          ..sort(
+            (first, second) =>
+                second.effectiveStartAt.compareTo(first.effectiveStartAt),
+          );
 
     final open = instances.where((instance) => instance.isOpen).toList()
       ..sort(
@@ -474,9 +456,8 @@ class _MomentPatternCard extends StatelessWidget {
 
     final latestCompleted = completed.isEmpty ? null : completed.first;
     final nextOpen = open.isEmpty ? null : open.first;
-    final interval = rhythm?.expectedIntervalDays ??
-        moment.expectedIntervalDays ??
-        7;
+    final interval =
+        rhythm?.expectedIntervalDays ?? moment.expectedIntervalDays ?? 7;
 
     return AppCard(
       onTap: onTap,
@@ -493,11 +474,7 @@ class _MomentPatternCard extends StatelessWidget {
                   color: visual.background,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  Icons.eco_outlined,
-                  size: 19,
-                  color: visual.color,
-                ),
+                child: Icon(Icons.eco_outlined, size: 19, color: visual.color),
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
@@ -506,13 +483,10 @@ class _MomentPatternCard extends StatelessWidget {
                   children: [
                     Text(
                       moment.title,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(
-                            color: CalendarPalette.ink,
-                            fontWeight: FontWeight.w700,
-                          ),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: CalendarPalette.ink,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -521,13 +495,10 @@ class _MomentPatternCard extends StatelessWidget {
                         interval: interval,
                         completedCount: completed.length,
                       ),
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(
-                            color: CalendarPalette.inkSoft,
-                            height: 1.35,
-                          ),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: CalendarPalette.inkSoft,
+                        height: 1.35,
+                      ),
                     ),
                   ],
                 ),
@@ -547,7 +518,8 @@ class _MomentPatternCard extends StatelessWidget {
               ),
               _MetadataPill(
                 icon: Icons.check_circle_outline_rounded,
-                text: '${rhythm?.occurrenceCount ?? completed.length} confirmed',
+                text:
+                    '${rhythm?.occurrenceCount ?? completed.length} confirmed',
               ),
               _MetadataPill(
                 icon: Icons.track_changes_outlined,
@@ -607,10 +579,7 @@ class _MomentPatternCard extends StatelessWidget {
 }
 
 class _UpcomingMomentCard extends StatelessWidget {
-  const _UpcomingMomentCard({
-    required this.entry,
-    required this.onTap,
-  });
+  const _UpcomingMomentCard({required this.entry, required this.onTap});
 
   final _UpcomingMomentEntry entry;
   final VoidCallback onTap;
@@ -632,11 +601,7 @@ class _UpcomingMomentCard extends StatelessWidget {
               color: visual.background,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(
-              visual.icon,
-              color: visual.color,
-              size: 21,
-            ),
+            child: Icon(visual.icon, color: visual.color, size: 21),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -646,24 +611,24 @@ class _UpcomingMomentCard extends StatelessWidget {
                 Text(
                   entry.moment.title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: CalendarPalette.ink,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: CalendarPalette.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '${_relativeDate(local)} - ${DateFormat('h:mm a').format(local)}',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: CalendarPalette.inkSoft,
-                      ),
+                    color: CalendarPalette.inkSoft,
+                  ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   '${_categoryLabel(entry.moment.category)} - importance ${entry.moment.importanceLevel}/5 - '
                   '${entry.moment.expectedParticipantIds.length} expected',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: CalendarPalette.inkSoft,
-                      ),
+                    color: CalendarPalette.inkSoft,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 _MetadataPill(
@@ -699,10 +664,7 @@ class _UpcomingMomentCard extends StatelessWidget {
 }
 
 class _TwinNoticeCard extends StatelessWidget {
-  const _TwinNoticeCard({
-    required this.insight,
-    required this.onOpen,
-  });
+  const _TwinNoticeCard({required this.insight, required this.onOpen});
 
   final FamilyInsightItem insight;
   final VoidCallback onOpen;
@@ -730,11 +692,7 @@ class _TwinNoticeCard extends StatelessWidget {
                   color: visual.background,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  visual.icon,
-                  size: 19,
-                  color: visual.color,
-                ),
+                child: Icon(visual.icon, size: 19, color: visual.color),
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
@@ -743,25 +701,19 @@ class _TwinNoticeCard extends StatelessWidget {
                   children: [
                     Text(
                       'WHAT SAKAN NOTICES',
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelMedium
-                          ?.copyWith(
-                            color: CalendarPalette.inkSoft,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.35,
-                          ),
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: CalendarPalette.inkSoft,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.35,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       visual.label,
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelMedium
-                          ?.copyWith(
-                            color: visual.color,
-                            fontWeight: FontWeight.w700,
-                          ),
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: visual.color,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),
@@ -772,17 +724,17 @@ class _TwinNoticeCard extends StatelessWidget {
           Text(
             insight.headline,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: CalendarPalette.ink,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: CalendarPalette.ink,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
             insight.summary,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: CalendarPalette.inkSoft,
-                  height: 1.45,
-                ),
+              color: CalendarPalette.inkSoft,
+              height: 1.45,
+            ),
           ),
           if (insight.reasons.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
@@ -791,12 +743,7 @@ class _TwinNoticeCard extends StatelessWidget {
               runSpacing: AppSpacing.xs,
               children: insight.reasons
                   .take(2)
-                  .map(
-                    (reason) => _FactPill(
-                      text: reason,
-                      color: visual.color,
-                    ),
-                  )
+                  .map((reason) => _FactPill(text: reason, color: visual.color))
                   .toList(),
             ),
           ],
@@ -825,19 +772,11 @@ class _TwinInsightDialog extends StatelessWidget {
     final visual = _insightVisual(insight.kind);
 
     return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(
-        horizontal: 22,
-        vertical: 28,
-      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
       contentPadding: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       content: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: 520,
-          maxHeight: 660,
-        ),
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 660),
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.xl),
           child: Column(
@@ -853,10 +792,7 @@ class _TwinInsightDialog extends StatelessWidget {
                       color: visual.background,
                       borderRadius: BorderRadius.circular(13),
                     ),
-                    child: Icon(
-                      visual.icon,
-                      color: visual.color,
-                    ),
+                    child: Icon(visual.icon, color: visual.color),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
@@ -865,9 +801,7 @@ class _TwinInsightDialog extends StatelessWidget {
                       children: [
                         Text(
                           'What Sakan Notices',
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelLarge
+                          style: Theme.of(context).textTheme.labelLarge
                               ?.copyWith(
                                 color: visual.color,
                                 fontWeight: FontWeight.w700,
@@ -876,9 +810,7 @@ class _TwinInsightDialog extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           insight.headline,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
+                          style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(color: CalendarPalette.ink),
                         ),
                       ],
@@ -897,18 +829,18 @@ class _TwinInsightDialog extends StatelessWidget {
               Text(
                 insight.summary,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: CalendarPalette.inkSoft,
-                      height: 1.5,
-                    ),
+                  color: CalendarPalette.inkSoft,
+                  height: 1.5,
+                ),
               ),
               if (insight.reasons.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.xl),
                 Text(
                   'What this is based on',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: CalendarPalette.ink,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: CalendarPalette.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 ...insight.reasons.map(
@@ -924,9 +856,9 @@ class _TwinInsightDialog extends StatelessWidget {
                 Text(
                   'Possible next steps',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: CalendarPalette.ink,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: CalendarPalette.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 ...List.generate(
@@ -976,9 +908,9 @@ class _InsightBullet extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: CalendarPalette.inkSoft,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: CalendarPalette.inkSoft),
             ),
           ),
         ],
@@ -988,10 +920,7 @@ class _InsightBullet extends StatelessWidget {
 }
 
 class _FactPill extends StatelessWidget {
-  const _FactPill({
-    required this.text,
-    required this.color,
-  });
+  const _FactPill({required this.text, required this.color});
 
   final String text;
   final Color color;
@@ -1010,9 +939,9 @@ class _FactPill extends StatelessWidget {
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -1035,53 +964,53 @@ class _InsightVisual {
 _InsightVisual _insightVisual(FamilyInsightKind kind) {
   return switch (kind) {
     FamilyInsightKind.activeMoment => const _InsightVisual(
-        label: 'Live Family Moment',
-        icon: Icons.play_circle_outline_rounded,
-        color: CalendarPalette.strengthening,
-        background: CalendarPalette.strengtheningSoft,
-      ),
+      label: 'Live Family Moment',
+      icon: Icons.play_circle_outline_rounded,
+      color: CalendarPalette.strengthening,
+      background: CalendarPalette.strengtheningSoft,
+    ),
     FamilyInsightKind.reviewNeeded => const _InsightVisual(
-        label: 'Today Review Needed',
-        icon: Icons.fact_check_outlined,
-        color: CalendarPalette.drifting,
-        background: CalendarPalette.driftingSoft,
-      ),
+      label: 'Today Review Needed',
+      icon: Icons.fact_check_outlined,
+      color: CalendarPalette.drifting,
+      background: CalendarPalette.driftingSoft,
+    ),
     FamilyInsightKind.overdueReminder => const _InsightVisual(
-        label: 'Overdue Reminder',
-        icon: Icons.warning_amber_rounded,
-        color: CalendarPalette.missed,
-        background: CalendarPalette.missedSoft,
-      ),
+      label: 'Overdue Reminder',
+      icon: Icons.warning_amber_rounded,
+      color: CalendarPalette.missed,
+      background: CalendarPalette.missedSoft,
+    ),
     FamilyInsightKind.upcomingMilestone => const _InsightVisual(
-        label: 'Upcoming Milestone',
-        icon: Icons.star_border_rounded,
-        color: CalendarPalette.milestone,
-        background: CalendarPalette.milestoneSoft,
-      ),
+      label: 'Upcoming Milestone',
+      icon: Icons.star_border_rounded,
+      color: CalendarPalette.milestone,
+      background: CalendarPalette.milestoneSoft,
+    ),
     FamilyInsightKind.carePreparation => const _InsightVisual(
-        label: 'Care Preparation',
-        icon: Icons.favorite_border_rounded,
-        color: CalendarPalette.care,
-        background: CalendarPalette.careSoft,
-      ),
+      label: 'Care Preparation',
+      icon: Icons.favorite_border_rounded,
+      color: CalendarPalette.care,
+      background: CalendarPalette.careSoft,
+    ),
     FamilyInsightKind.sharedMomentOpportunity => const _InsightVisual(
-        label: 'Shared Moment Opportunity',
-        icon: Icons.groups_2_outlined,
-        color: CalendarPalette.forest,
-        background: CalendarPalette.forestSoft,
-      ),
+      label: 'Shared Moment Opportunity',
+      icon: Icons.groups_2_outlined,
+      color: CalendarPalette.forest,
+      background: CalendarPalette.forestSoft,
+    ),
     FamilyInsightKind.driftingRhythm => const _InsightVisual(
-        label: 'Drifting Rhythm',
-        icon: Icons.trending_down_rounded,
-        color: CalendarPalette.drifting,
-        background: CalendarPalette.driftingSoft,
-      ),
+      label: 'Drifting Rhythm',
+      icon: Icons.trending_down_rounded,
+      color: CalendarPalette.drifting,
+      background: CalendarPalette.driftingSoft,
+    ),
     FamilyInsightKind.upcomingMoment => const _InsightVisual(
-        label: 'Upcoming Moment',
-        icon: Icons.event_outlined,
-        color: CalendarPalette.upcoming,
-        background: CalendarPalette.upcomingSoft,
-      ),
+      label: 'Upcoming Moment',
+      icon: Icons.event_outlined,
+      color: CalendarPalette.upcoming,
+      background: CalendarPalette.upcomingSoft,
+    ),
   };
 }
 
@@ -1106,16 +1035,16 @@ class _NoInsightCard extends StatelessWidget {
                 Text(
                   'What Sakan Notices',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: CalendarPalette.ink,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: CalendarPalette.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'No recorded Moment needs special attention right now.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: CalendarPalette.inkSoft,
-                      ),
+                    color: CalendarPalette.inkSoft,
+                  ),
                 ),
               ],
             ),
@@ -1142,19 +1071,16 @@ class _SmallStatusChip extends StatelessWidget {
       child: Text(
         visual.label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: visual.color,
-              fontWeight: FontWeight.w700,
-            ),
+          color: visual.color,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
 }
 
 class _MetadataPill extends StatelessWidget {
-  const _MetadataPill({
-    required this.icon,
-    required this.text,
-  });
+  const _MetadataPill({required this.icon, required this.text});
 
   final IconData icon;
   final String text;
@@ -1171,18 +1097,14 @@ class _MetadataPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 14,
-            color: CalendarPalette.inkSoft,
-          ),
+          Icon(icon, size: 14, color: CalendarPalette.inkSoft),
           const SizedBox(width: 5),
           Text(
             text,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: CalendarPalette.inkSoft,
-                  fontWeight: FontWeight.w600,
-                ),
+              color: CalendarPalette.inkSoft,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -1191,10 +1113,7 @@ class _MetadataPill extends StatelessWidget {
 }
 
 class _QuietLine extends StatelessWidget {
-  const _QuietLine({
-    required this.icon,
-    required this.text,
-  });
+  const _QuietLine({required this.icon, required this.text});
 
   final IconData icon;
   final String text;
@@ -1204,18 +1123,14 @@ class _QuietLine extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          icon,
-          size: 16,
-          color: CalendarPalette.inkSoft,
-        ),
+        Icon(icon, size: 16, color: CalendarPalette.inkSoft),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             text,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: CalendarPalette.inkSoft,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: CalendarPalette.inkSoft),
           ),
         ),
       ],
@@ -1262,51 +1177,51 @@ class _CategoryVisual {
 _Visual _rhythmVisual(RhythmStatus status) {
   return switch (status) {
     RhythmStatus.stillLearning => const _Visual(
-        label: 'Still Learning',
-        color: CalendarPalette.slate,
-        background: CalendarPalette.slateSoft,
-      ),
+      label: 'Still Learning',
+      color: CalendarPalette.slate,
+      background: CalendarPalette.slateSoft,
+    ),
     RhythmStatus.stable => const _Visual(
-        label: 'Stable',
-        color: CalendarPalette.stable,
-        background: CalendarPalette.stableSoft,
-      ),
+      label: 'Stable',
+      color: CalendarPalette.stable,
+      background: CalendarPalette.stableSoft,
+    ),
     RhythmStatus.drifting => const _Visual(
-        label: 'Drifting',
-        color: CalendarPalette.drifting,
-        background: CalendarPalette.driftingSoft,
-      ),
+      label: 'Drifting',
+      color: CalendarPalette.drifting,
+      background: CalendarPalette.driftingSoft,
+    ),
     RhythmStatus.recovering => const _Visual(
-        label: 'Recovering',
-        color: CalendarPalette.recovering,
-        background: CalendarPalette.recoveringSoft,
-      ),
+      label: 'Recovering',
+      color: CalendarPalette.recovering,
+      background: CalendarPalette.recoveringSoft,
+    ),
     RhythmStatus.strengthening => const _Visual(
-        label: 'Strengthening',
-        color: CalendarPalette.strengthening,
-        background: CalendarPalette.strengtheningSoft,
-      ),
+      label: 'Strengthening',
+      color: CalendarPalette.strengthening,
+      background: CalendarPalette.strengtheningSoft,
+    ),
   };
 }
 
 _CategoryVisual _categoryVisual(MomentCategory category) {
   return switch (category) {
     MomentCategory.milestone => const _CategoryVisual(
-        icon: Icons.star_border_rounded,
-        color: CalendarPalette.milestone,
-        background: CalendarPalette.milestoneSoft,
-      ),
-    MomentCategory.care || MomentCategory.responsibility =>
-      const _CategoryVisual(
-        icon: Icons.favorite_border_rounded,
-        color: CalendarPalette.care,
-        background: CalendarPalette.careSoft,
-      ),
+      icon: Icons.star_border_rounded,
+      color: CalendarPalette.milestone,
+      background: CalendarPalette.milestoneSoft,
+    ),
+    MomentCategory.care ||
+    MomentCategory.responsibility => const _CategoryVisual(
+      icon: Icons.favorite_border_rounded,
+      color: CalendarPalette.care,
+      background: CalendarPalette.careSoft,
+    ),
     _ => const _CategoryVisual(
-        icon: Icons.event_outlined,
-        color: CalendarPalette.upcoming,
-        background: CalendarPalette.upcomingSoft,
-      ),
+      icon: Icons.event_outlined,
+      color: CalendarPalette.upcoming,
+      background: CalendarPalette.upcomingSoft,
+    ),
   };
 }
 

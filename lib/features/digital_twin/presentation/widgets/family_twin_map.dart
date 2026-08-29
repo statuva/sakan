@@ -11,11 +11,12 @@ import '../../../../shared/models/moment_instance.dart';
 import '../../../../shared/models/rhythm_record.dart';
 import '../../../calendar/presentation/widgets/calendar_palette.dart';
 
-typedef TwinMomentTap = void Function(
-  FamilyMoment moment,
-  RhythmRecord? rhythm,
-  List<MomentInstance> instances,
-);
+typedef TwinMomentTap =
+    void Function(
+      FamilyMoment moment,
+      RhythmRecord? rhythm,
+      List<MomentInstance> instances,
+    );
 
 class FamilyTwinMap extends StatefulWidget {
   const FamilyTwinMap({
@@ -59,10 +60,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
     required Size canvasSize,
   }) {
     final scale = math
-        .max(
-          0.01,
-          _transformationController.value.getMaxScaleOnAxis(),
-        )
+        .max(0.01, _transformationController.value.getMaxScaleOnAxis())
         .toDouble();
 
     final candidate = currentCenter + screenDelta / scale;
@@ -107,9 +105,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                     children: [
                       Text(
                         'Family Moment Map',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
+                        style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(
                               color: CalendarPalette.ink,
                               fontWeight: FontWeight.w700,
@@ -118,10 +114,9 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                       const SizedBox(height: 3),
                       Text(
                         'Drag circles to rearrange, drag the map to move, and pinch to zoom.',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: CalendarPalette.inkSoft),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: CalendarPalette.inkSoft,
+                        ),
                       ),
                     ],
                   ),
@@ -141,10 +136,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                 ? const _EmptyMap()
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      final canvasWidth = math.max(
-                        constraints.maxWidth,
-                        620.0,
-                      );
+                      final canvasWidth = math.max(constraints.maxWidth, 620.0);
 
                       const canvasHeight = 355.0;
 
@@ -159,8 +151,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                           bottom: Radius.circular(21),
                         ),
                         child: InteractiveViewer(
-                          transformationController:
-                              _transformationController,
+                          transformationController: _transformationController,
                           constrained: false,
                           boundaryMargin: const EdgeInsets.all(110),
                           minScale: 0.72,
@@ -245,10 +236,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                   spacing: AppSpacing.md,
                   runSpacing: AppSpacing.xs,
                   children: const [
-                    _LegendDot(
-                      color: CalendarPalette.stable,
-                      label: 'Stable',
-                    ),
+                    _LegendDot(color: CalendarPalette.stable, label: 'Stable'),
                     _LegendDot(
                       color: CalendarPalette.drifting,
                       label: 'Drifting',
@@ -269,28 +257,23 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                       color: CalendarPalette.upcoming,
                       label: 'Upcoming',
                     ),
-                    _LegendDot(
-                      color: CalendarPalette.missed,
-                      label: 'Missed',
-                    ),
+                    _LegendDot(color: CalendarPalette.missed, label: 'Missed'),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
                   'Solid lines show expected participation. Dashed lines mark a drifting recurring Moment.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: CalendarPalette.inkSoft),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: CalendarPalette.inkSoft,
+                  ),
                 ),
                 if (snapshot.moments.length > moments.length) ...[
                   const SizedBox(height: 3),
                   Text(
                     'Showing ${moments.length} of ${snapshot.moments.length} Moments to keep the map readable.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: CalendarPalette.inkSoft),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: CalendarPalette.inkSoft,
+                    ),
                   ),
                 ],
               ],
@@ -301,52 +284,47 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
     );
   }
 
-  List<FamilyMoment> _visibleMoments(
-    FamilyInsightReport report,
-  ) {
+  List<FamilyMoment> _visibleMoments(FamilyInsightReport report) {
     final snapshot = report.snapshot;
 
-    final recurring = snapshot.moments
-        .where((moment) => moment.type == MomentType.recurring)
-        .toList()
-      ..sort((first, second) {
-        final firstRhythm = snapshot.rhythmForMoment(first.id);
-        final secondRhythm = snapshot.rhythmForMoment(second.id);
+    final recurring =
+        snapshot.moments
+            .where((moment) => moment.type == MomentType.recurring)
+            .toList()
+          ..sort((first, second) {
+            final firstRhythm = snapshot.rhythmForMoment(first.id);
+            final secondRhythm = snapshot.rhythmForMoment(second.id);
 
-        final statusResult = _rhythmRank(
-          firstRhythm?.status ?? RhythmStatus.stillLearning,
-        ).compareTo(
-          _rhythmRank(
-            secondRhythm?.status ?? RhythmStatus.stillLearning,
-          ),
-        );
+            final statusResult =
+                _rhythmRank(
+                  firstRhythm?.status ?? RhythmStatus.stillLearning,
+                ).compareTo(
+                  _rhythmRank(
+                    secondRhythm?.status ?? RhythmStatus.stillLearning,
+                  ),
+                );
 
-        if (statusResult != 0) {
-          return statusResult;
-        }
+            if (statusResult != 0) {
+              return statusResult;
+            }
 
-        return first.title.compareTo(second.title);
-      });
+            return first.title.compareTo(second.title);
+          });
 
-    final oneTime = snapshot.moments
-        .where((moment) => moment.type == MomentType.singular)
-        .toList()
-      ..sort((first, second) {
-        final firstInstance = _nearestInstanceForMoment(
-          report,
-          first.id,
-        );
-        final secondInstance = _nearestInstanceForMoment(
-          report,
-          second.id,
-        );
+    final oneTime =
+        snapshot.moments
+            .where((moment) => moment.type == MomentType.singular)
+            .toList()
+          ..sort((first, second) {
+            final firstInstance = _nearestInstanceForMoment(report, first.id);
+            final secondInstance = _nearestInstanceForMoment(report, second.id);
 
-        final firstDate = firstInstance?.effectiveStartAt ?? first.startAt;
-        final secondDate =
-            secondInstance?.effectiveStartAt ?? second.startAt;
+            final firstDate = firstInstance?.effectiveStartAt ?? first.startAt;
+            final secondDate =
+                secondInstance?.effectiveStartAt ?? second.startAt;
 
-        return firstDate.compareTo(secondDate);
-      });
+            return firstDate.compareTo(secondDate);
+          });
 
     return <FamilyMoment>[
       ...recurring,
@@ -416,8 +394,8 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
     final memberRadiusY = size.height * 0.34;
 
     for (var index = 0; index < members.length; index++) {
-      final angle = -math.pi / 2 +
-          (2 * math.pi * index / math.max(1, members.length));
+      final angle =
+          -math.pi / 2 + (2 * math.pi * index / math.max(1, members.length));
 
       final defaultPosition = Offset(
         center.dx + math.cos(angle) * memberRadiusX,
@@ -425,8 +403,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
       );
 
       final position =
-          _positionOverrides['member:${members[index].id}'] ??
-          defaultPosition;
+          _positionOverrides['member:${members[index].id}'] ?? defaultPosition;
 
       memberNodes.add(
         _MemberNode(
@@ -445,7 +422,8 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
       final ringIndex = isInner ? index : index - innerCount;
       final ringCount = isInner ? innerCount : outerCount;
       final angleOffset = isInner ? 0.35 : 0.05;
-      final angle = -math.pi / 2 +
+      final angle =
+          -math.pi / 2 +
           angleOffset +
           (2 * math.pi * ringIndex / math.max(1, ringCount));
 
@@ -471,8 +449,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
           moment: moment,
           rhythm: rhythm,
           instances: instances,
-          center:
-              _positionOverrides['moment:${moment.id}'] ?? defaultPosition,
+          center: _positionOverrides['moment:${moment.id}'] ?? defaultPosition,
           visual: visual,
         ),
       );
@@ -531,20 +508,20 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
     if (moment.type == MomentType.recurring) {
       return switch (rhythm?.status ?? RhythmStatus.stillLearning) {
         RhythmStatus.stillLearning => const _MomentVisual(
-            color: CalendarPalette.slate,
-          ),
+          color: CalendarPalette.slate,
+        ),
         RhythmStatus.stable => const _MomentVisual(
-            color: CalendarPalette.stable,
-          ),
+          color: CalendarPalette.stable,
+        ),
         RhythmStatus.drifting => const _MomentVisual(
-            color: CalendarPalette.drifting,
-          ),
+          color: CalendarPalette.drifting,
+        ),
         RhythmStatus.recovering => const _MomentVisual(
-            color: CalendarPalette.recovering,
-          ),
+          color: CalendarPalette.recovering,
+        ),
         RhythmStatus.strengthening => const _MomentVisual(
-            color: CalendarPalette.strengthening,
-          ),
+          color: CalendarPalette.strengthening,
+        ),
       };
     }
 
@@ -560,17 +537,15 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
 
     return switch (status) {
       MomentInstanceStatus.active => const _MomentVisual(
-          color: CalendarPalette.strengthening,
-        ),
+        color: CalendarPalette.strengthening,
+      ),
       MomentInstanceStatus.completed => const _MomentVisual(
-          color: CalendarPalette.stable,
-        ),
+        color: CalendarPalette.stable,
+      ),
       MomentInstanceStatus.missed => const _MomentVisual(
-          color: CalendarPalette.missed,
-        ),
-      _ => const _MomentVisual(
-          color: CalendarPalette.upcoming,
-        ),
+        color: CalendarPalette.missed,
+      ),
+      _ => const _MomentVisual(color: CalendarPalette.upcoming),
     };
   }
 }
@@ -586,10 +561,9 @@ class _EmptyMap extends StatelessWidget {
         child: Text(
           'Add family members and Moments to build the map.',
           textAlign: TextAlign.center,
-          style: Theme.of(context)
-              .textTheme
-              .bodyMedium
-              ?.copyWith(color: CalendarPalette.inkSoft),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: CalendarPalette.inkSoft),
         ),
       ),
     );
@@ -632,10 +606,7 @@ class _MemberNodeWidget extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: node.color,
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: CalendarPalette.surface,
-                    width: 3,
-                  ),
+                  border: Border.all(color: CalendarPalette.surface, width: 3),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withAlpha(25),
@@ -646,13 +617,10 @@ class _MemberNodeWidget extends StatelessWidget {
                 ),
                 child: Text(
                   _initial(node.member.displayName),
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                      ),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
               const SizedBox(height: 3),
@@ -661,14 +629,11 @@ class _MemberNodeWidget extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: Theme.of(context)
-                    .textTheme
-                    .labelSmall
-                    ?.copyWith(
-                      color: CalendarPalette.ink,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 9.5,
-                    ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: CalendarPalette.ink,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 9.5,
+                ),
               ),
             ],
           ),
@@ -736,15 +701,12 @@ class _MomentNodeWidget extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: Theme.of(context)
-                    .textTheme
-                    .labelSmall
-                    ?.copyWith(
-                      color: CalendarPalette.ink,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 9,
-                      height: 1.1,
-                    ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: CalendarPalette.ink,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 9,
+                  height: 1.1,
+                ),
               ),
             ],
           ),
@@ -766,10 +728,7 @@ class _MomentNodeWidget extends StatelessWidget {
 }
 
 class _LegendDot extends StatelessWidget {
-  const _LegendDot({
-    required this.color,
-    required this.label,
-  });
+  const _LegendDot({required this.color, required this.label});
 
   final Color color;
   final String label;
@@ -782,18 +741,14 @@ class _LegendDot extends StatelessWidget {
         Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 4),
         Text(
           label,
-          style: Theme.of(context)
-              .textTheme
-              .labelSmall
-              ?.copyWith(color: CalendarPalette.inkSoft),
+          style: Theme.of(
+            context,
+          ).textTheme.labelSmall?.copyWith(color: CalendarPalette.inkSoft),
         ),
       ],
     );
@@ -826,12 +781,7 @@ class _TwinGraphPainter extends CustomPainter {
         ..style = PaintingStyle.stroke;
 
       if (edge.dashed) {
-        _drawDashedLine(
-          canvas: canvas,
-          start: start,
-          end: end,
-          paint: paint,
-        );
+        _drawDashedLine(canvas: canvas, start: start, end: end, paint: paint);
       } else {
         canvas.drawLine(start, end, paint);
       }
@@ -858,12 +808,7 @@ class _TwinGraphPainter extends CustomPainter {
     var travelled = 0.0;
 
     while (travelled < distance) {
-      final dashEnd = math
-          .min(
-            travelled + dashLength,
-            distance,
-          )
-          .toDouble();
+      final dashEnd = math.min(travelled + dashLength, distance).toDouble();
 
       canvas.drawLine(
         start + direction * travelled,
