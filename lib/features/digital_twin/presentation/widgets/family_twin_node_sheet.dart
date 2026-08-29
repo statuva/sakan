@@ -49,10 +49,7 @@ Future<void> showFamilyTwinMemberSheet({
     builder: (sheetContext) {
       return FractionallySizedBox(
         heightFactor: 0.82,
-        child: _TwinMemberSheet(
-          report: report,
-          member: member,
-        ),
+        child: _TwinMemberSheet(report: report, member: member),
       );
     },
   );
@@ -92,9 +89,11 @@ class _TwinMomentSheet extends StatelessWidget {
       instances: orderedInstances,
     );
 
-    final participantNames = moment.expectedParticipantIds.map((memberId) {
-      return membersById[memberId]?.displayName ?? 'Family member';
-    }).toList(growable: false);
+    final participantNames = moment.expectedParticipantIds
+        .map((memberId) {
+          return membersById[memberId]?.displayName ?? 'Family member';
+        })
+        .toList(growable: false);
 
     final evidence = latestCompleted == null
         ? const <String>[]
@@ -132,19 +131,17 @@ class _TwinMomentSheet extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           Text(
             'Expected participants',
-            style: Theme.of(context)
-                .textTheme
-                .labelLarge
-                ?.copyWith(color: CalendarPalette.inkSoft),
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: CalendarPalette.inkSoft),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (participantNames.isEmpty)
             Text(
               'No expected participants are recorded.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: CalendarPalette.inkSoft),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: CalendarPalette.inkSoft),
             )
           else
             Wrap(
@@ -158,9 +155,9 @@ class _TwinMomentSheet extends StatelessWidget {
           Text(
             'What Sakan knows',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: CalendarPalette.ink,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: CalendarPalette.ink,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.sm),
           _InformationPanel(
@@ -195,16 +192,17 @@ class _TwinMomentSheet extends StatelessWidget {
           Text(
             'Recorded evidence',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: CalendarPalette.ink,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: CalendarPalette.ink,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (evidence.isEmpty)
             _InformationPanel(
               children: const [
                 _EvidenceRow(
-                  text: 'No confirmed occurrence evidence has been recorded yet.',
+                  text:
+                      'No confirmed occurrence evidence has been recorded yet.',
                   positive: false,
                 ),
               ],
@@ -212,9 +210,7 @@ class _TwinMomentSheet extends StatelessWidget {
           else
             _InformationPanel(
               children: [
-                ...evidence.map(
-                  (label) => _EvidenceRow(text: label),
-                ),
+                ...evidence.map((label) => _EvidenceRow(text: label)),
                 _EvidenceRow(
                   text:
                       '${_confirmationLevelLabel(latestCompleted!.confirmationLevel)} confirmation level',
@@ -227,12 +223,14 @@ class _TwinMomentSheet extends StatelessWidget {
             Text(
               'Recent occurrence record',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: CalendarPalette.ink,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: CalendarPalette.ink,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: AppSpacing.sm),
-            ...orderedInstances.take(4).map(
+            ...orderedInstances
+                .take(4)
+                .map(
                   (instance) => Padding(
                     padding: const EdgeInsets.only(bottom: AppSpacing.xs),
                     child: _OccurrenceRow(instance: instance),
@@ -244,9 +242,7 @@ class _TwinMomentSheet extends StatelessWidget {
     );
   }
 
-  MomentInstance? _nextOpenInstance(
-    List<MomentInstance> instances,
-  ) {
+  MomentInstance? _nextOpenInstance(List<MomentInstance> instances) {
     final open = instances.where((instance) => instance.isOpen).toList()
       ..sort(
         (first, second) =>
@@ -288,10 +284,7 @@ class _TwinMomentSheet extends StatelessWidget {
 }
 
 class _TwinMemberSheet extends StatelessWidget {
-  const _TwinMemberSheet({
-    required this.report,
-    required this.member,
-  });
+  const _TwinMemberSheet({required this.report, required this.member});
 
   final FamilyInsightReport report;
   final Member member;
@@ -299,26 +292,31 @@ class _TwinMemberSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final snapshot = report.snapshot;
-    final connectedMoments = snapshot.moments
-        .where(
-          (moment) => moment.expectedParticipantIds.contains(member.id),
-        )
-        .toList()
-      ..sort((first, second) {
-        if (first.type != second.type) {
-          return first.type == MomentType.recurring ? -1 : 1;
-        }
+    final connectedMoments =
+        snapshot.moments
+            .where(
+              (moment) => moment.expectedParticipantIds.contains(member.id),
+            )
+            .toList()
+          ..sort((first, second) {
+            if (first.type != second.type) {
+              return first.type == MomentType.recurring ? -1 : 1;
+            }
 
-        return first.title.compareTo(second.title);
-      });
+            return first.title.compareTo(second.title);
+          });
 
-    final recordedSessions = snapshot.completedInstances.where((instance) {
-      return instance.allRecordedParticipantIds.contains(member.id);
-    }).toList(growable: false);
+    final recordedSessions = snapshot.completedInstances
+        .where((instance) {
+          return instance.allRecordedParticipantIds.contains(member.id);
+        })
+        .toList(growable: false);
 
-    final upcomingConnected = snapshot.upcomingInstances.where((instance) {
-      return instance.expectedParticipantIds.contains(member.id);
-    }).toList(growable: false);
+    final upcomingConnected = snapshot.upcomingInstances
+        .where((instance) {
+          return instance.expectedParticipantIds.contains(member.id);
+        })
+        .toList(growable: false);
 
     return _SheetSurface(
       title: member.displayName,
@@ -364,81 +362,76 @@ class _TwinMemberSheet extends StatelessWidget {
           Text(
             'Connected Moments',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: CalendarPalette.ink,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: CalendarPalette.ink,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (connectedMoments.isEmpty)
             _InformationPanel(
               children: const [
                 _EvidenceRow(
-                  text: 'This member is not connected to a recorded Moment yet.',
+                  text:
+                      'This member is not connected to a recorded Moment yet.',
                   positive: false,
                 ),
               ],
             )
           else
-            ...connectedMoments.map(
-              (moment) {
-                final rhythm = snapshot.rhythmForMoment(moment.id);
-                final status = _momentStatus(
-                  moment: moment,
-                  rhythm: rhythm,
-                  instances: snapshot.instancesForMoment(moment.id),
-                );
+            ...connectedMoments.map((moment) {
+              final rhythm = snapshot.rhythmForMoment(moment.id);
+              final status = _momentStatus(
+                moment: moment,
+                rhythm: rhythm,
+                instances: snapshot.instancesForMoment(moment.id),
+              );
 
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-                  child: Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: CalendarPalette.surfaceSoft,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: CalendarPalette.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 9,
-                          height: 9,
-                          decoration: BoxDecoration(
-                            color: status.color,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                moment.title,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(
-                                      color: CalendarPalette.ink,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${_typeLabel(moment.type)} - ${status.label}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(color: CalendarPalette.inkSoft),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+              return Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                child: Container(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: CalendarPalette.surfaceSoft,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: CalendarPalette.border),
                   ),
-                );
-              },
-            ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: status.color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              moment.title,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(
+                                    color: CalendarPalette.ink,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${_typeLabel(moment.type)} - ${status.label}',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: CalendarPalette.inkSoft),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -446,11 +439,7 @@ class _TwinMemberSheet extends StatelessWidget {
 }
 
 class _SheetSurface extends StatelessWidget {
-  const _SheetSurface({
-    required this.title,
-    required this.child,
-    this.leading,
-  });
+  const _SheetSurface({required this.title, required this.child, this.leading});
 
   final String title;
   final Widget child;
@@ -460,9 +449,7 @@ class _SheetSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: CalendarPalette.background,
-      borderRadius: const BorderRadius.vertical(
-        top: Radius.circular(26),
-      ),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
@@ -475,9 +462,7 @@ class _SheetSurface extends StatelessWidget {
             ),
             decoration: const BoxDecoration(
               color: CalendarPalette.surface,
-              border: Border(
-                bottom: BorderSide(color: CalendarPalette.border),
-              ),
+              border: Border(bottom: BorderSide(color: CalendarPalette.border)),
             ),
             child: Row(
               children: [
@@ -490,13 +475,10 @@ class _SheetSurface extends StatelessWidget {
                     title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(
-                          color: CalendarPalette.ink,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: CalendarPalette.ink,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -542,18 +524,17 @@ class _PatternSummary extends StatelessWidget {
       child: Text(
         text,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: CalendarPalette.inkSoft,
-              height: 1.45,
-            ),
+          color: CalendarPalette.inkSoft,
+          height: 1.45,
+        ),
       ),
     );
   }
 
   String _recurringText() {
     final record = rhythm;
-    final interval = record?.expectedIntervalDays ??
-        moment.expectedIntervalDays ??
-        7;
+    final interval =
+        record?.expectedIntervalDays ?? moment.expectedIntervalDays ?? 7;
 
     if (record == null || record.lastOccurrenceAt == null) {
       return 'No confirmed session yet - usual $interval days - '
@@ -613,11 +594,7 @@ class _InformationRow extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                icon,
-                size: 20,
-                color: CalendarPalette.forest,
-              ),
+              Icon(icon, size: 20, color: CalendarPalette.forest),
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Column(
@@ -625,18 +602,16 @@ class _InformationRow extends StatelessWidget {
                   children: [
                     Text(
                       label,
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelMedium
-                          ?.copyWith(color: CalendarPalette.inkSoft),
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: CalendarPalette.inkSoft,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       value,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: CalendarPalette.ink),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: CalendarPalette.ink,
+                      ),
                     ),
                   ],
                 ),
@@ -682,10 +657,9 @@ class _EvidenceRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   text,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: CalendarPalette.inkSoft),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: CalendarPalette.inkSoft,
+                  ),
                 ),
               ),
             ],
@@ -732,18 +706,16 @@ class _OccurrenceRow extends StatelessWidget {
               children: [
                 Text(
                   DateFormat('EEE, d MMM y - h:mm a').format(local),
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(color: CalendarPalette.ink),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(color: CalendarPalette.ink),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   _occurrenceSubtitle(instance),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: CalendarPalette.inkSoft),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: CalendarPalette.inkSoft,
+                  ),
                 ),
               ],
             ),
@@ -810,9 +782,9 @@ class _NeutralChip extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: CalendarPalette.inkSoft,
-              fontWeight: FontWeight.w600,
-            ),
+          color: CalendarPalette.inkSoft,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -840,9 +812,9 @@ class _StatusChip extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -880,30 +852,30 @@ _TwinStatusVisual _momentStatus({
   if (moment.type == MomentType.recurring) {
     return switch (rhythm?.status ?? RhythmStatus.stillLearning) {
       RhythmStatus.stillLearning => const _TwinStatusVisual(
-          label: 'Still Learning',
-          color: CalendarPalette.slate,
-          background: CalendarPalette.slateSoft,
-        ),
+        label: 'Still Learning',
+        color: CalendarPalette.slate,
+        background: CalendarPalette.slateSoft,
+      ),
       RhythmStatus.stable => const _TwinStatusVisual(
-          label: 'Stable',
-          color: CalendarPalette.stable,
-          background: CalendarPalette.stableSoft,
-        ),
+        label: 'Stable',
+        color: CalendarPalette.stable,
+        background: CalendarPalette.stableSoft,
+      ),
       RhythmStatus.drifting => const _TwinStatusVisual(
-          label: 'Drifting',
-          color: CalendarPalette.drifting,
-          background: CalendarPalette.driftingSoft,
-        ),
+        label: 'Drifting',
+        color: CalendarPalette.drifting,
+        background: CalendarPalette.driftingSoft,
+      ),
       RhythmStatus.recovering => const _TwinStatusVisual(
-          label: 'Recovering',
-          color: CalendarPalette.recovering,
-          background: CalendarPalette.recoveringSoft,
-        ),
+        label: 'Recovering',
+        color: CalendarPalette.recovering,
+        background: CalendarPalette.recoveringSoft,
+      ),
       RhythmStatus.strengthening => const _TwinStatusVisual(
-          label: 'Strengthening',
-          color: CalendarPalette.strengthening,
-          background: CalendarPalette.strengtheningSoft,
-        ),
+        label: 'Strengthening',
+        color: CalendarPalette.strengthening,
+        background: CalendarPalette.strengtheningSoft,
+      ),
     };
   }
 
@@ -927,50 +899,55 @@ _TwinStatusVisual _momentStatus({
 _TwinStatusVisual _instanceStatus(MomentInstanceStatus status) {
   return switch (status) {
     MomentInstanceStatus.active => const _TwinStatusVisual(
-        label: 'Active',
-        color: CalendarPalette.strengthening,
-        background: CalendarPalette.strengtheningSoft,
-      ),
+      label: 'Active',
+      color: CalendarPalette.strengthening,
+      background: CalendarPalette.strengtheningSoft,
+    ),
     MomentInstanceStatus.completed => const _TwinStatusVisual(
-        label: 'Completed',
-        color: CalendarPalette.stable,
-        background: CalendarPalette.stableSoft,
-      ),
+      label: 'Completed',
+      color: CalendarPalette.stable,
+      background: CalendarPalette.stableSoft,
+    ),
     MomentInstanceStatus.missed => const _TwinStatusVisual(
-        label: 'Missed',
-        color: CalendarPalette.missed,
-        background: CalendarPalette.missedSoft,
-      ),
+      label: 'Missed',
+      color: CalendarPalette.missed,
+      background: CalendarPalette.missedSoft,
+    ),
     MomentInstanceStatus.cancelled => const _TwinStatusVisual(
-        label: 'Cancelled',
-        color: CalendarPalette.slate,
-        background: CalendarPalette.slateSoft,
-      ),
+      label: 'Cancelled',
+      color: CalendarPalette.slate,
+      background: CalendarPalette.slateSoft,
+    ),
     _ => const _TwinStatusVisual(
-        label: 'Upcoming',
-        color: CalendarPalette.upcoming,
-        background: CalendarPalette.upcomingSoft,
-      ),
+      label: 'Upcoming',
+      color: CalendarPalette.upcoming,
+      background: CalendarPalette.upcomingSoft,
+    ),
   };
 }
 
-List<String> _evidenceLabels(
-  List<MomentEvidenceSignal> signals,
-) {
-  return signals.map((signal) {
-    return switch (signal) {
-      MomentEvidenceSignal.scheduled => 'Scheduled occurrence recorded',
-      MomentEvidenceSignal.hostStarted => 'Session started in Sakan',
-      MomentEvidenceSignal.manualCheckIn => 'Manual member check-in recorded',
-      MomentEvidenceSignal.multipleCheckIns => 'Multiple member check-ins recorded',
-      MomentEvidenceSignal.durationRecorded => 'Session duration recorded',
-      MomentEvidenceSignal.bluetoothNearby => 'Bluetooth nearby evidence recorded',
-      MomentEvidenceSignal.qrCheckIn => 'QR check-in recorded',
-      MomentEvidenceSignal.todayReview => 'Confirmed through Today Review',
-      MomentEvidenceSignal.familyNote => 'Family note recorded',
-      MomentEvidenceSignal.memoryCreated => 'Memory linked to the occurrence',
-    };
-  }).toSet().toList(growable: false);
+List<String> _evidenceLabels(List<MomentEvidenceSignal> signals) {
+  return signals
+      .map((signal) {
+        return switch (signal) {
+          MomentEvidenceSignal.scheduled => 'Scheduled occurrence recorded',
+          MomentEvidenceSignal.hostStarted => 'Session started in Sakan',
+          MomentEvidenceSignal.manualCheckIn =>
+            'Manual member check-in recorded',
+          MomentEvidenceSignal.multipleCheckIns =>
+            'Multiple member check-ins recorded',
+          MomentEvidenceSignal.durationRecorded => 'Session duration recorded',
+          MomentEvidenceSignal.bluetoothNearby =>
+            'Bluetooth nearby evidence recorded',
+          MomentEvidenceSignal.qrCheckIn => 'QR check-in recorded',
+          MomentEvidenceSignal.todayReview => 'Confirmed through Today Review',
+          MomentEvidenceSignal.familyNote => 'Family note recorded',
+          MomentEvidenceSignal.memoryCreated =>
+            'Memory linked to the occurrence',
+        };
+      })
+      .toSet()
+      .toList(growable: false);
 }
 
 String _instanceStatusLabel(MomentInstanceStatus status) {

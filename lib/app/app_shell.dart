@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import 'package:sakan/core/theme/app_radius.dart';
 
 class AppShell extends StatelessWidget {
@@ -20,10 +21,12 @@ class AppShell extends StatelessWidget {
       extendBody: true,
       body: navigationShell,
       bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppRadius.navigation),
           child: NavigationBar(
+            height: 72,
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
             selectedIndex: navigationShell.currentIndex,
             onDestinationSelected: _openBranch,
             destinations: const [
@@ -35,17 +38,22 @@ class AppShell extends StatelessWidget {
               NavigationDestination(
                 icon: Icon(Icons.account_tree_outlined),
                 selectedIcon: Icon(Icons.account_tree_rounded),
-                label: 'Digital Twin',
+                label: 'Twin',
               ),
               NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person_rounded),
-                label: 'Profile',
+                icon: Icon(Icons.auto_awesome_motion_outlined),
+                selectedIcon: Icon(Icons.auto_awesome_motion_rounded),
+                label: 'Moments',
               ),
               NavigationDestination(
                 icon: Icon(Icons.calendar_month_outlined),
                 selectedIcon: Icon(Icons.calendar_month_rounded),
                 label: 'Calendar',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person_rounded),
+                label: 'Profile',
               ),
             ],
           ),

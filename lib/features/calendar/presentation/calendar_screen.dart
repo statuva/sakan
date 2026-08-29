@@ -205,19 +205,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
         title: const Text('Family Calendar'),
         backgroundColor: CalendarPalette.background,
         surfaceTintColor: Colors.transparent,
-        actions: [
-          IconButton(
-            tooltip: 'Review Today',
-            onPressed: _openTodayReview,
-            icon: const Icon(Icons.fact_check_outlined),
-          ),
-          TextButton.icon(
-            onPressed: _openMomentsPage,
-            icon: const Icon(Icons.auto_awesome_motion_outlined, size: 18),
-            label: const Text('Manage Moments'),
-          ),
-          const SizedBox(width: 6),
-        ],
       ),
       body: SafeArea(
         child: ListView(

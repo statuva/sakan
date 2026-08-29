@@ -1,5 +1,5 @@
-import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:sakan/app/app_shell.dart';
 import 'package:sakan/features/authentication/presentation/forgot_password_screen.dart';
@@ -14,8 +14,9 @@ import 'package:sakan/features/family_setup/presentation/family_created_screen.d
 import 'package:sakan/features/family_setup/presentation/family_setup_screen.dart';
 import 'package:sakan/features/family_setup/presentation/join_family_screen.dart';
 import 'package:sakan/features/home/presentation/home_screen.dart';
-import 'package:sakan/features/profile/presentation/profile_screen.dart';
+import 'package:sakan/features/moments/presentation/moments_screen.dart';
 import 'package:sakan/features/profile/presentation/my_reminders_screen.dart';
+import 'package:sakan/features/profile/presentation/profile_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -51,6 +52,7 @@ final GoRouter appRouter = GoRouter(
       path: '/family-created',
       builder: (context, state) {
         final code = state.uri.queryParameters['code'] ?? '';
+
         return FamilyCreatedScreen(invitationCode: code);
       },
     ),
@@ -65,9 +67,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/my-reminders',
       name: 'myReminders',
-      builder: (context, state) {
-        return const MyRemindersScreen();
-      },
+      builder: (context, state) => const MyRemindersScreen(),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
@@ -95,9 +95,9 @@ final GoRouter appRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/profile',
-              name: 'profile',
-              builder: (context, state) => const ProfileScreen(),
+              path: '/moments',
+              name: 'moments',
+              builder: (context, state) => const MomentsScreen(),
             ),
           ],
         ),
@@ -107,6 +107,15 @@ final GoRouter appRouter = GoRouter(
               path: '/calendar',
               name: 'calendar',
               builder: (context, state) => const CalendarScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/profile',
+              name: 'profile',
+              builder: (context, state) => const ProfileScreen(),
             ),
           ],
         ),
