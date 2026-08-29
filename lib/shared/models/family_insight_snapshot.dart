@@ -4,6 +4,7 @@ import 'family_memory.dart';
 import 'family_moment.dart';
 import 'member.dart';
 import 'model_enums.dart';
+import 'moment_instance.dart';
 import 'rhythm_record.dart';
 
 class FamilyInsightSnapshot {
@@ -13,12 +14,14 @@ class FamilyInsightSnapshot {
     required this.generatedAt,
     required List<Member> members,
     required List<FamilyMoment> moments,
+    required List<MomentInstance> instances,
     required List<RhythmRecord> rhythms,
     required List<AvailabilityBlock> availability,
     required List<CareAction> reminders,
     required List<FamilyMemory> memories,
   }) : members = List<Member>.unmodifiable(members),
        moments = List<FamilyMoment>.unmodifiable(moments),
+       instances = List<MomentInstance>.unmodifiable(instances),
        rhythms = List<RhythmRecord>.unmodifiable(rhythms),
        availability = List<AvailabilityBlock>.unmodifiable(availability),
        reminders = List<CareAction>.unmodifiable(reminders),
@@ -27,13 +30,12 @@ class FamilyInsightSnapshot {
   final String familyId;
   final String currentUserId;
 
-  /// The instant at which all derived facts are evaluated.
-  ///
-  /// Store this value in UTC. Derived date comparisons use local time.
+  /// Store this in UTC. User-facing date calculations use local time.
   final DateTime generatedAt;
 
   final List<Member> members;
   final List<FamilyMoment> moments;
+  final List<MomentInstance> instances;
   final List<RhythmRecord> rhythms;
   final List<AvailabilityBlock> availability;
   final List<CareAction> reminders;
@@ -43,8 +45,29 @@ class FamilyInsightSnapshot {
     return members.where((member) => member.isActive).toList(growable: false);
   }
 
+  Member? get currentMember {
+    return membersById[currentUserId];
+  }
+
+  bool get currentUserCanManageSharedMoments {
+    final role = currentMember?.role;
+    return role == FamilyRole.admin || role == FamilyRole.adult;
+  }
+
   Map<String, Member> get membersById {
     return <String, Member>{for (final member in members) member.id: member};
+  }
+
+  Map<String, FamilyMoment> get momentsById {
+    return <String, FamilyMoment>{
+      for (final moment in moments) moment.id: moment,
+    };
+  }
+
+  Map<String, MomentInstance> get instancesById {
+    return <String, MomentInstance>{
+      for (final instance in instances) instance.id: instance,
+    };
   }
 
   Map<String, RhythmRecord> get rhythmsByMomentId {
@@ -53,7 +76,14 @@ class FamilyInsightSnapshot {
     };
   }
 
-  Map<String, FamilyMemory> get memoriesByMomentId {
+  Map<String, FamilyMemory> get memoriesByInstanceId {
+    return <String, FamilyMemory>{
+      for (final memory in memories)
+        if (memory.instanceId != null) memory.instanceId!: memory,
+    };
+  }
+
+  Map<String, FamilyMemory> get latestMemoriesByMomentId {
     final result = <String, FamilyMemory>{};
 
     final newestFirst = List<FamilyMemory>.from(memories)
@@ -66,48 +96,106 @@ class FamilyInsightSnapshot {
     return result;
   }
 
-  List<FamilyMoment> get upcomingMoments {
+  MomentInstance? get activeInstance {
+    final active =
+        instances
+            .where((instance) => instance.status == MomentInstanceStatus.active)
+            .toList()
+          ..sort(
+            (first, second) =>
+                first.effectiveStartAt.compareTo(second.effectiveStartAt),
+          );
+
+    return active.isEmpty ? null : active.first;
+  }
+
+  List<MomentInstance> get upcomingInstances {
     final reference = generatedAt.toLocal();
 
-    final result = moments.where((moment) {
-      if (moment.status == MomentStatus.cancelled ||
-          moment.status == MomentStatus.completed ||
-          moment.status == MomentStatus.missed) {
+    final result = instances.where((instance) {
+      final isPlanned =
+          instance.status == MomentInstanceStatus.proposed ||
+          instance.status == MomentInstanceStatus.scheduled ||
+          instance.status == MomentInstanceStatus.inviting;
+
+      if (!isPlanned) {
         return false;
       }
 
-      if (moment.status == MomentStatus.active) {
-        return true;
-      }
-
-      return !moment.startAt.toLocal().isBefore(reference);
+      return !instance.scheduledStartAt.toLocal().isBefore(reference);
     }).toList();
 
-    result.sort((first, second) {
-      if (first.status == MomentStatus.active &&
-          second.status != MomentStatus.active) {
-        return -1;
-      }
-
-      if (second.status == MomentStatus.active &&
-          first.status != MomentStatus.active) {
-        return 1;
-      }
-
-      return first.startAt.compareTo(second.startAt);
-    });
+    result.sort(
+      (first, second) =>
+          first.scheduledStartAt.compareTo(second.scheduledStartAt),
+    );
 
     return result;
   }
 
-  List<FamilyMoment> get completedMoments {
-    final result = moments
-        .where((moment) => moment.status == MomentStatus.completed)
+  List<MomentInstance> get completedInstances {
+    final result = instances
+        .where((instance) => instance.status == MomentInstanceStatus.completed)
         .toList();
 
-    result.sort((first, second) => second.startAt.compareTo(first.startAt));
+    result.sort(
+      (first, second) =>
+          second.effectiveStartAt.compareTo(first.effectiveStartAt),
+    );
 
     return result;
+  }
+
+  List<MomentInstance> get missedInstances {
+    final result = instances
+        .where((instance) => instance.status == MomentInstanceStatus.missed)
+        .toList();
+
+    result.sort(
+      (first, second) =>
+          second.scheduledStartAt.compareTo(first.scheduledStartAt),
+    );
+
+    return result;
+  }
+
+  /// Planned occurrences from today or yesterday whose expected time
+  /// has passed but which have no completed, missed, or cancelled outcome.
+  List<MomentInstance> get reviewableInstances {
+    final now = generatedAt.toLocal();
+    final earliest = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 1));
+
+    final result = instances.where((instance) {
+      final isPlanned =
+          instance.status == MomentInstanceStatus.proposed ||
+          instance.status == MomentInstanceStatus.scheduled ||
+          instance.status == MomentInstanceStatus.inviting;
+
+      if (!isPlanned) {
+        return false;
+      }
+
+      final localStart = instance.scheduledStartAt.toLocal();
+      final localEnd = instance.scheduledEndAt?.toLocal() ?? localStart;
+
+      return !localStart.isBefore(earliest) && !localEnd.isAfter(now);
+    }).toList();
+
+    result.sort(
+      (first, second) =>
+          first.scheduledStartAt.compareTo(second.scheduledStartAt),
+    );
+
+    return result;
+  }
+
+  MomentInstance? get nextInstance {
+    final upcoming = upcomingInstances;
+    return upcoming.isEmpty ? null : upcoming.first;
   }
 
   List<CareAction> get currentUserReminders {
@@ -170,12 +258,6 @@ class FamilyInsightSnapshot {
     return result;
   }
 
-  List<RhythmRecord> get lowConfidenceRhythms {
-    return rhythms
-        .where((rhythm) => rhythm.confidence == ConfidenceLevel.low)
-        .toList(growable: false);
-  }
-
   FamilyMemory? get latestMemory {
     if (memories.isEmpty) {
       return null;
@@ -188,21 +270,56 @@ class FamilyInsightSnapshot {
   }
 
   FamilyMoment? momentById(String momentId) {
-    for (final moment in moments) {
-      if (moment.id == momentId) {
-        return moment;
-      }
-    }
+    return momentsById[momentId];
+  }
 
-    return null;
+  MomentInstance? instanceById(String instanceId) {
+    return instancesById[instanceId];
   }
 
   RhythmRecord? rhythmForMoment(String momentId) {
     return rhythmsByMomentId[momentId];
   }
 
-  FamilyMemory? memoryForMoment(String momentId) {
-    return memoriesByMomentId[momentId];
+  FamilyMemory? memoryForInstance(String instanceId) {
+    return memoriesByInstanceId[instanceId];
+  }
+
+  FamilyMemory? latestMemoryForMoment(String momentId) {
+    return latestMemoriesByMomentId[momentId];
+  }
+
+  List<MomentInstance> instancesForMoment(String momentId) {
+    final result = instances
+        .where((instance) => instance.momentId == momentId)
+        .toList();
+
+    result.sort(
+      (first, second) =>
+          first.effectiveStartAt.compareTo(second.effectiveStartAt),
+    );
+
+    return result;
+  }
+
+  MomentInstance? openInstanceForMoment(String momentId) {
+    final result = instancesForMoment(momentId).where((instance) {
+      return instance.status == MomentInstanceStatus.proposed ||
+          instance.status == MomentInstanceStatus.scheduled ||
+          instance.status == MomentInstanceStatus.inviting ||
+          instance.status == MomentInstanceStatus.active;
+    }).toList();
+
+    if (result.isEmpty) {
+      return null;
+    }
+
+    result.sort(
+      (first, second) =>
+          first.effectiveStartAt.compareTo(second.effectiveStartAt),
+    );
+
+    return result.first;
   }
 
   CareAction? activeReminderForMoment(String momentId) {
@@ -213,5 +330,9 @@ class FamilyInsightSnapshot {
     }
 
     return null;
+  }
+
+  bool currentUserIsExpected(MomentInstance instance) {
+    return instance.expectedParticipantIds.contains(currentUserId);
   }
 }

@@ -8,17 +8,17 @@ import 'calendar_palette.dart';
 class FamilyInsightDialog extends StatelessWidget {
   const FamilyInsightDialog({
     required this.insight,
-    required this.primaryActionLabel,
     required this.onPrimaryAction,
     super.key,
   });
 
   final FamilyInsightItem insight;
-  final String? primaryActionLabel;
   final VoidCallback? onPrimaryAction;
 
   @override
   Widget build(BuildContext context) {
+    final actionLabel = insight.primaryActionLabel;
+
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
       contentPadding: EdgeInsets.zero,
@@ -40,8 +40,8 @@ class FamilyInsightDialog extends StatelessWidget {
                       color: CalendarPalette.forestSoft,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(
-                      Icons.auto_awesome_outlined,
+                    child: Icon(
+                      _actionIcon(),
                       color: CalendarPalette.forestDark,
                     ),
                   ),
@@ -113,7 +113,7 @@ class FamilyInsightDialog extends StatelessWidget {
                   ),
                 ),
               ],
-              if (insight.recommendedReminderAt != null) ...[
+              if (insight.recommendedActionAt != null) ...[
                 const SizedBox(height: AppSpacing.lg),
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.md),
@@ -123,32 +123,28 @@ class FamilyInsightDialog extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.notifications_active_outlined,
-                        color: CalendarPalette.forestDark,
-                      ),
+                      Icon(_actionIcon(), color: CalendarPalette.forestDark),
                       const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Recommended reminder',
+                              _timingLabel(),
                               style: Theme.of(context).textTheme.labelLarge
                                   ?.copyWith(color: CalendarPalette.forestDark),
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              DateFormat('EEEE, d MMMM y · h:mm a').format(
-                                insight.recommendedReminderAt!.toLocal(),
-                              ),
+                              DateFormat(
+                                'EEEE, d MMMM y · h:mm a',
+                              ).format(insight.recommendedActionAt!.toLocal()),
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
-                            if (insight
-                                .recommendedReminderUsesAvailability) ...[
+                            if (insight.recommendedActionUsesAvailability) ...[
                               const SizedBox(height: 3),
                               Text(
-                                'This time avoids your recorded busy periods.',
+                                'This time avoids recorded schedule conflicts.',
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ],
@@ -167,9 +163,9 @@ class FamilyInsightDialog extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
-                  'This recommendation is currently rule-based and '
-                  'comes from Sakan’s stored family data. External AI '
-                  'wording has not been connected yet.',
+                  'This recommendation is currently rule-based and comes '
+                  'from Sakan’s recorded family data. External AI wording '
+                  'has not been connected yet.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: CalendarPalette.inkSoft,
                     height: 1.4,
@@ -187,13 +183,12 @@ class FamilyInsightDialog extends StatelessWidget {
                       child: const Text('Not Now'),
                     ),
                   ),
-                  if (primaryActionLabel != null &&
-                      onPrimaryAction != null) ...[
+                  if (actionLabel != null && onPrimaryAction != null) ...[
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: FilledButton(
                         onPressed: onPrimaryAction,
-                        child: Text(primaryActionLabel!),
+                        child: Text(actionLabel),
                       ),
                     ),
                   ],
@@ -204,6 +199,33 @@ class FamilyInsightDialog extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _timingLabel() {
+    return switch (insight.actionType) {
+      FamilyInsightActionType.addReminder => 'Recommended reminder',
+      FamilyInsightActionType.scheduleMoment => 'Planned occurrence',
+      FamilyInsightActionType.startMomentNow => 'Recommended start',
+      FamilyInsightActionType.joinActiveMoment => 'Session started',
+      FamilyInsightActionType.reviewToday => 'Review reference time',
+      FamilyInsightActionType.openReminders => 'Reminder due time',
+      FamilyInsightActionType.manageMoments => 'Suggested timing',
+      FamilyInsightActionType.none => 'Suggested timing',
+    };
+  }
+
+  IconData _actionIcon() {
+    return switch (insight.actionType) {
+      FamilyInsightActionType.joinActiveMoment => Icons.login_rounded,
+      FamilyInsightActionType.reviewToday => Icons.fact_check_outlined,
+      FamilyInsightActionType.openReminders => Icons.checklist_rounded,
+      FamilyInsightActionType.addReminder => Icons.add_alert_outlined,
+      FamilyInsightActionType.startMomentNow => Icons.play_arrow_rounded,
+      FamilyInsightActionType.scheduleMoment => Icons.event_available_outlined,
+      FamilyInsightActionType.manageMoments =>
+        Icons.auto_awesome_motion_outlined,
+      FamilyInsightActionType.none => Icons.auto_awesome_outlined,
+    };
   }
 }
 

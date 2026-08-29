@@ -1,12 +1,28 @@
 import 'family_insight_snapshot.dart';
 import 'model_enums.dart';
 
+/// What Sakan noticed.
 enum FamilyInsightKind {
+  activeMoment,
+  reviewNeeded,
   overdueReminder,
   upcomingMilestone,
   carePreparation,
+  sharedMomentOpportunity,
   driftingRhythm,
   upcomingMoment,
+}
+
+/// The exact product action that should follow the insight.
+enum FamilyInsightActionType {
+  joinActiveMoment,
+  reviewToday,
+  openReminders,
+  addReminder,
+  startMomentNow,
+  scheduleMoment,
+  manageMoments,
+  none,
 }
 
 enum FamilyOverallState {
@@ -21,6 +37,7 @@ class FamilyInsightItem {
   FamilyInsightItem({
     required this.id,
     required this.kind,
+    required this.actionType,
     required this.priority,
     required this.headline,
     required this.summary,
@@ -28,35 +45,53 @@ class FamilyInsightItem {
     required List<String> suggestedActions,
     required this.confidence,
     this.relatedMomentId,
+    this.relatedInstanceId,
     this.relatedReminderId,
-    this.recommendedReminderAt,
-    this.recommendedReminderUsesAvailability = false,
+    this.recommendedActionAt,
+    this.recommendedActionUsesAvailability = false,
   }) : reasons = List<String>.unmodifiable(reasons),
        suggestedActions = List<String>.unmodifiable(suggestedActions);
 
   final String id;
   final FamilyInsightKind kind;
+  final FamilyInsightActionType actionType;
 
   /// Lower values are more urgent.
   final int priority;
 
   final String headline;
   final String summary;
-
-  /// Factual statements calculated by Sakan.
   final List<String> reasons;
-
-  /// Deterministic suggestions. External AI may improve
-  /// their wording later, but must not replace the facts.
   final List<String> suggestedActions;
-
   final ConfidenceLevel confidence;
 
   final String? relatedMomentId;
+  final String? relatedInstanceId;
   final String? relatedReminderId;
 
-  final DateTime? recommendedReminderAt;
-  final bool recommendedReminderUsesAvailability;
+  final DateTime? recommendedActionAt;
+  final bool recommendedActionUsesAvailability;
+
+  /// Compatibility getter for older Calendar code.
+  DateTime? get recommendedReminderAt => recommendedActionAt;
+
+  /// Compatibility getter for older Calendar code.
+  bool get recommendedReminderUsesAvailability {
+    return recommendedActionUsesAvailability;
+  }
+
+  String? get primaryActionLabel {
+    return switch (actionType) {
+      FamilyInsightActionType.joinActiveMoment => 'Join Moment',
+      FamilyInsightActionType.reviewToday => 'Review Today',
+      FamilyInsightActionType.openReminders => 'Open My Reminders',
+      FamilyInsightActionType.addReminder => 'Add Reminder',
+      FamilyInsightActionType.startMomentNow => 'Start This Now',
+      FamilyInsightActionType.scheduleMoment => 'Schedule Moment',
+      FamilyInsightActionType.manageMoments => 'Manage Moments',
+      FamilyInsightActionType.none => null,
+    };
+  }
 }
 
 class FamilyAvailabilityWindow {
@@ -75,10 +110,6 @@ class FamilyAvailabilityWindow {
 
   final int availableMemberCount;
   final int totalMemberCount;
-
-  /// Number of active members who have at least one
-  /// recorded schedule block. A low value means Sakan
-  /// has incomplete schedule coverage.
   final int membersWithScheduleDataCount;
 
   DateTime get startAt {
@@ -114,8 +145,11 @@ class FamilyAvailabilityWindow {
 class FamilyInsightMetrics {
   const FamilyInsightMetrics({
     required this.activeMemberCount,
-    required this.upcomingMomentCount,
-    required this.completedMomentCount,
+    required this.activeInstanceCount,
+    required this.upcomingInstanceCount,
+    required this.completedInstanceCount,
+    required this.missedInstanceCount,
+    required this.reviewNeededCount,
     required this.driftingRhythmCount,
     required this.pendingReminderCount,
     required this.completedReminderCount,
@@ -124,8 +158,11 @@ class FamilyInsightMetrics {
   });
 
   final int activeMemberCount;
-  final int upcomingMomentCount;
-  final int completedMomentCount;
+  final int activeInstanceCount;
+  final int upcomingInstanceCount;
+  final int completedInstanceCount;
+  final int missedInstanceCount;
+  final int reviewNeededCount;
   final int driftingRhythmCount;
   final int pendingReminderCount;
   final int completedReminderCount;
@@ -147,21 +184,23 @@ class FamilyInsightReport {
 
   final FamilyInsightSnapshot snapshot;
 
-  /// Describes the current learning/rhythm state of the
-  /// model. It is not a diagnosis of family well-being.
+  /// A status of the recorded rhythm model, not a diagnosis of
+  /// family happiness or emotional well-being.
   final FamilyOverallState overallState;
   final ConfidenceLevel overallConfidence;
 
   final FamilyInsightItem? primaryInsight;
   final List<FamilyInsightItem> secondaryInsights;
-
   final FamilyAvailabilityWindow? bestSharedWindow;
 
   FamilyInsightMetrics get metrics {
     return FamilyInsightMetrics(
       activeMemberCount: snapshot.activeMembers.length,
-      upcomingMomentCount: snapshot.upcomingMoments.length,
-      completedMomentCount: snapshot.completedMoments.length,
+      activeInstanceCount: snapshot.activeInstance == null ? 0 : 1,
+      upcomingInstanceCount: snapshot.upcomingInstances.length,
+      completedInstanceCount: snapshot.completedInstances.length,
+      missedInstanceCount: snapshot.missedInstances.length,
+      reviewNeededCount: snapshot.reviewableInstances.length,
       driftingRhythmCount: snapshot.driftingRhythms.length,
       pendingReminderCount: snapshot.pendingCurrentUserReminders.length,
       completedReminderCount: snapshot.completedCurrentUserReminders.length,
@@ -170,16 +209,16 @@ class FamilyInsightReport {
     );
   }
 
-  /// Produces a privacy-minimized payload for the future
-  /// remote AI integration.
-  ///
-  /// Titles are excluded by default. Sakan can restore
-  /// visible names locally after receiving the response.
+  /// Privacy-minimized payload for the later remote AI layer.
+  /// Titles remain excluded unless explicitly requested.
   Map<String, dynamic> toAiPayload({bool includeTitles = false}) {
     final insight = primaryInsight;
     final relatedMoment = insight?.relatedMomentId == null
         ? null
         : snapshot.momentById(insight!.relatedMomentId!);
+    final relatedInstance = insight?.relatedInstanceId == null
+        ? null
+        : snapshot.instanceById(insight!.relatedInstanceId!);
     final relatedRhythm = relatedMoment == null
         ? null
         : snapshot.rhythmForMoment(relatedMoment.id);
@@ -190,8 +229,11 @@ class FamilyInsightReport {
       'overallConfidence': overallConfidence.name,
       'metrics': <String, dynamic>{
         'activeMembers': metrics.activeMemberCount,
-        'upcomingMoments': metrics.upcomingMomentCount,
-        'completedMoments': metrics.completedMomentCount,
+        'activeInstances': metrics.activeInstanceCount,
+        'upcomingInstances': metrics.upcomingInstanceCount,
+        'completedInstances': metrics.completedInstanceCount,
+        'missedInstances': metrics.missedInstanceCount,
+        'reviewNeeded': metrics.reviewNeededCount,
         'driftingRhythms': metrics.driftingRhythmCount,
         'pendingReminders': metrics.pendingReminderCount,
         'overdueReminders': metrics.overdueReminderCount,
@@ -201,15 +243,16 @@ class FamilyInsightReport {
           ? null
           : <String, dynamic>{
               'kind': insight.kind.name,
+              'actionType': insight.actionType.name,
               'headline': includeTitles ? insight.headline : null,
               'summary': insight.summary,
               'reasons': insight.reasons,
               'suggestedActions': insight.suggestedActions,
               'confidence': insight.confidence.name,
-              'recommendedReminderAt': insight.recommendedReminderAt
+              'recommendedActionAt': insight.recommendedActionAt
                   ?.toIso8601String(),
-              'recommendedReminderUsesAvailability':
-                  insight.recommendedReminderUsesAvailability,
+              'recommendedActionUsesAvailability':
+                  insight.recommendedActionUsesAvailability,
             },
       'relatedMoment': relatedMoment == null
           ? null
@@ -220,10 +263,24 @@ class FamilyInsightReport {
               'importance': relatedMoment.importanceLevel,
               'expectedParticipantCount':
                   relatedMoment.expectedParticipantIds.length,
-              'startAt': relatedMoment.startAt.toIso8601String(),
-              'status': relatedMoment.status.name,
+              'expectedIntervalDays': relatedMoment.expectedIntervalDays,
               'rhythmStatus': relatedRhythm?.status.name,
               'rhythmConfidence': relatedRhythm?.confidence.name,
+            },
+      'relatedInstance': relatedInstance == null
+          ? null
+          : <String, dynamic>{
+              'status': relatedInstance.status.name,
+              'source': relatedInstance.source.name,
+              'scheduledStartAt': relatedInstance.scheduledStartAt
+                  .toIso8601String(),
+              'actualStartAt': relatedInstance.actualStartAt?.toIso8601String(),
+              'actualDurationMinutes': relatedInstance.actualDurationMinutes,
+              'expectedParticipantCount':
+                  relatedInstance.expectedParticipantIds.length,
+              'recordedParticipantCount':
+                  relatedInstance.allRecordedParticipantIds.length,
+              'confirmationLevel': relatedInstance.confirmationLevel.name,
             },
       'bestSharedWindow': bestSharedWindow == null
           ? null

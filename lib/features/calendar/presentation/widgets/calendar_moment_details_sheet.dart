@@ -5,6 +5,7 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/models/family_memory.dart';
 import '../../../../shared/models/family_moment.dart';
 import '../../../../shared/models/model_enums.dart';
+import '../../../../shared/models/moment_instance.dart';
 import '../../../../shared/models/rhythm_record.dart';
 import 'calendar_moment_style.dart';
 import 'calendar_palette.dart';
@@ -12,52 +13,53 @@ import 'calendar_palette.dart';
 class CalendarMomentDetailsSheet extends StatelessWidget {
   const CalendarMomentDetailsSheet({
     required this.moment,
+    required this.instance,
     required this.rhythm,
     required this.memory,
     required this.currentUserId,
-    required this.canEdit,
-    required this.onEditMoment,
-    this.liveActionLabel,
-    this.onLiveAction,
-    this.liveActionHint,
+    required this.canEditDefinition,
+    this.primaryActionLabel,
+    this.primaryActionIcon,
+    this.onPrimaryAction,
+    this.primaryActionHint,
+    this.onViewSummary,
+    this.onEditMoment,
     this.onAddMemory,
     this.onViewMemory,
     this.onEditMemory,
     super.key,
   });
 
+  /// Calendar projection of the concrete occurrence.
   final FamilyMoment moment;
+  final MomentInstance instance;
   final RhythmRecord? rhythm;
   final FamilyMemory? memory;
 
   final String currentUserId;
-  final bool canEdit;
+  final bool canEditDefinition;
 
-  final VoidCallback onEditMoment;
+  final String? primaryActionLabel;
+  final IconData? primaryActionIcon;
+  final VoidCallback? onPrimaryAction;
+  final String? primaryActionHint;
 
-  /// `Start This Now` or `Join Active Moment`.
-  final String? liveActionLabel;
-  final VoidCallback? onLiveAction;
-
-  /// Explains why the live action is unavailable.
-  final String? liveActionHint;
-
+  final VoidCallback? onViewSummary;
+  final VoidCallback? onEditMoment;
   final VoidCallback? onAddMemory;
   final VoidCallback? onViewMemory;
   final VoidCallback? onEditMemory;
 
-  bool get _isLegacyCompleted {
-    return moment.status == MomentStatus.completed;
-  }
-
-  bool get _isJoiningLiveMoment {
-    return liveActionLabel == 'Join Active Moment';
+  bool get _isCompleted {
+    return instance.status == MomentInstanceStatus.completed;
   }
 
   @override
   Widget build(BuildContext context) {
-    final localStart = moment.startAt.toLocal();
-    final localEnd = moment.endAt?.toLocal();
+    final scheduledStart = instance.scheduledStartAt.toLocal();
+    final scheduledEnd = instance.scheduledEndAt?.toLocal();
+    final actualStart = instance.actualStartAt?.toLocal();
+    final actualEnd = instance.actualEndAt?.toLocal();
 
     final style = calendarMomentStyle(moment, currentUserId: currentUserId);
 
@@ -83,11 +85,22 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
                 ),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
-                  child: Text(
-                    moment.title,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: CalendarPalette.ink,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        moment.title,
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(color: CalendarPalette.ink),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'One concrete family occurrence',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: CalendarPalette.inkSoft,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 IconButton(
@@ -126,23 +139,43 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
 
             _DetailRow(
               icon: Icons.calendar_today_outlined,
-              title: 'Date',
-              value: DateFormat('EEEE, d MMMM y').format(localStart),
+              title: 'Planned Date',
+              value: DateFormat('EEEE, d MMMM y').format(scheduledStart),
             ),
 
             _DetailRow(
               icon: Icons.access_time_outlined,
-              title: 'Time',
-              value: localEnd == null
-                  ? DateFormat('h:mm a').format(localStart)
-                  : '${DateFormat('h:mm a').format(localStart)}'
-                        '–'
-                        '${DateFormat('h:mm a').format(localEnd)}',
+              title: 'Planned Time',
+              value: scheduledEnd == null
+                  ? DateFormat('h:mm a').format(scheduledStart)
+                  : '${DateFormat('h:mm a').format(scheduledStart)}–'
+                        '${DateFormat('h:mm a').format(scheduledEnd)}',
             ),
+
+            if (actualStart != null)
+              _DetailRow(
+                icon: Icons.play_circle_outline_rounded,
+                title: 'Actual Start',
+                value: DateFormat('EEEE, d MMM y · h:mm a').format(actualStart),
+              ),
+
+            if (actualEnd != null)
+              _DetailRow(
+                icon: Icons.stop_circle_outlined,
+                title: 'Actual End',
+                value: DateFormat('EEEE, d MMM y · h:mm a').format(actualEnd),
+              ),
+
+            if (instance.actualDurationMinutes != null)
+              _DetailRow(
+                icon: Icons.timer_outlined,
+                title: 'Recorded Duration',
+                value: _durationLabel(instance.actualDurationMinutes!),
+              ),
 
             _DetailRow(
               icon: Icons.repeat_rounded,
-              title: 'Type',
+              title: 'Definition',
               value: moment.type == MomentType.recurring
                   ? 'Recurring every '
                         '${moment.expectedIntervalDays ?? rhythm?.expectedIntervalDays ?? 7} days'
@@ -153,15 +186,18 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
 
             _DetailRow(
               icon: Icons.group_outlined,
-              title: 'Expected Participants',
-              value: '${moment.expectedParticipantIds.length}',
+              title: 'Participation',
+              value:
+                  '${instance.allRecordedParticipantIds.length} recorded · '
+                  '${instance.expectedParticipantIds.length} expected',
             ),
 
-            _DetailRow(
-              icon: Icons.priority_high_rounded,
-              title: 'Importance',
-              value: '${moment.importanceLevel}/5',
-            ),
+            if (_isCompleted)
+              _DetailRow(
+                icon: Icons.verified_outlined,
+                title: 'Evidence Confidence',
+                value: _confirmationLabel(instance.confirmationLevel),
+              ),
 
             if (moment.location?.trim().isNotEmpty == true)
               _DetailRow(
@@ -177,84 +213,50 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
                 value: moment.notes!,
               ),
 
-            if (liveActionLabel != null && onLiveAction != null) ...[
+            if (primaryActionLabel != null && onPrimaryAction != null) ...[
               const SizedBox(height: AppSpacing.sm),
               FilledButton.icon(
-                onPressed: onLiveAction,
-                icon: Icon(
-                  _isJoiningLiveMoment
-                      ? Icons.login_rounded
-                      : Icons.play_arrow_rounded,
-                ),
-                label: Text(liveActionLabel!),
+                onPressed: onPrimaryAction,
+                icon: Icon(primaryActionIcon ?? Icons.arrow_forward_rounded),
+                label: Text(primaryActionLabel!),
               ),
+            ],
+
+            if (primaryActionHint != null) ...[
               const SizedBox(height: AppSpacing.sm),
               Text(
-                _isJoiningLiveMoment
-                    ? 'Open the live session and check in from this phone.'
-                    : 'Starting creates a live occurrence, checks you in, and begins the shared timer.',
+                primaryActionHint!,
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: CalendarPalette.inkSoft),
               ),
-            ] else if (liveActionHint != null) ...[
+            ],
+
+            if (_isCompleted && onViewSummary != null) ...[
               const SizedBox(height: AppSpacing.sm),
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: CalendarPalette.surfaceSoft,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: CalendarPalette.border),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(
-                      Icons.info_outline_rounded,
-                      color: CalendarPalette.inkSoft,
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        liveActionHint!,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                  ],
-                ),
+              OutlinedButton.icon(
+                onPressed: onViewSummary,
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('View Session Summary'),
               ),
             ],
 
-            if (_isLegacyCompleted) ...[
+            if (_isCompleted) ...[
               const SizedBox(height: AppSpacing.lg),
               _MemoryStatusCard(memory: memory),
             ],
 
-            if (canEdit) ...[
-              const SizedBox(height: AppSpacing.lg),
-              OutlinedButton.icon(
-                onPressed: onEditMoment,
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Edit Moment'),
-              ),
-            ],
-
-            if (_isLegacyCompleted &&
-                memory == null &&
-                canEdit &&
-                onAddMemory != null) ...[
+            if (_isCompleted && memory == null && onAddMemory != null) ...[
               const SizedBox(height: AppSpacing.sm),
               OutlinedButton.icon(
                 onPressed: onAddMemory,
                 icon: const Icon(Icons.bookmark_add_outlined),
-                label: const Text('Add Memory'),
+                label: const Text('Create Memory'),
               ),
             ],
 
-            if (_isLegacyCompleted &&
-                memory != null &&
-                onViewMemory != null) ...[
+            if (_isCompleted && memory != null && onViewMemory != null) ...[
               const SizedBox(height: AppSpacing.sm),
               OutlinedButton.icon(
                 onPressed: onViewMemory,
@@ -263,10 +265,7 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
               ),
             ],
 
-            if (_isLegacyCompleted &&
-                memory != null &&
-                canEdit &&
-                onEditMemory != null) ...[
+            if (_isCompleted && memory != null && onEditMemory != null) ...[
               const SizedBox(height: AppSpacing.xs),
               TextButton.icon(
                 onPressed: onEditMemory,
@@ -275,19 +274,41 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
               ),
             ],
 
-            if (!canEdit && liveActionLabel == null) ...[
+            if (canEditDefinition && onEditMoment != null) ...[
               const SizedBox(height: AppSpacing.lg),
-              FilledButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                child: const Text('Done'),
+              TextButton.icon(
+                onPressed: onEditMoment,
+                icon: const Icon(Icons.tune_rounded),
+                label: const Text('Edit Moment Definition'),
               ),
             ],
           ],
         ),
       ),
     );
+  }
+
+  String _durationLabel(int minutes) {
+    if (minutes < 60) {
+      return '$minutes minutes';
+    }
+
+    final hours = minutes ~/ 60;
+    final remaining = minutes % 60;
+
+    if (remaining == 0) {
+      return hours == 1 ? '1 hour' : '$hours hours';
+    }
+
+    return '$hours h $remaining min';
+  }
+
+  String _confirmationLabel(MomentConfirmationLevel level) {
+    return switch (level) {
+      MomentConfirmationLevel.low => 'Low evidence',
+      MomentConfirmationLevel.medium => 'Medium evidence',
+      MomentConfirmationLevel.high => 'High evidence',
+    };
   }
 }
 
@@ -330,7 +351,9 @@ class _MemoryStatusCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  hasMemory ? 'Memory saved' : 'No Memory saved yet',
+                  hasMemory
+                      ? 'Memory saved for this occurrence'
+                      : 'No Memory saved for this occurrence',
                   style: Theme.of(
                     context,
                   ).textTheme.titleMedium?.copyWith(color: CalendarPalette.ink),
@@ -338,8 +361,8 @@ class _MemoryStatusCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   hasMemory
-                      ? 'A family note has been preserved for this completed Moment.'
-                      : 'Preserve a family note after this completed Moment.',
+                      ? 'The note is linked to this exact completed session.'
+                      : 'Preserve a family note from this completed session.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: CalendarPalette.inkSoft,
                   ),
