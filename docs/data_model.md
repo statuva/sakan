@@ -1,378 +1,289 @@
 # Sakan Data Model
 
-## purpose
-This document defines the core data architecture of Sakan.
+## Purpose
 
-Sakan is built around a **Family Digital Twin**, which models meaningful family moments, recurring traditions, participation history, and important one-time events.
+Sakan stores observable, scheduled, or user-confirmed information about meaningful family Moments. The data model separates reusable definitions from concrete occurrences so the Digital Twin can distinguish planning from what actually happened.
 
-The system only stores **observable or user-confirmed information**.
-
-The Digital Twin must never infer emotions, relationship strength, or psychological states directly. Instead, it analyzes measurable family behavior over time.
-
----
-
-# System Architecture
-```
-User
-        │
-        ▼
-Family Member
-        │
-        ▼
+```text
 Family
-        │
-        ├───────────────┐
-        │               │
-        ▼               ▼
-Family Moment      Family Session
-        │               │
-        │               ▼
-        │        NFC Check-in / Check-out
-        │
-        ├───────────────┐
-        ▼               ▼
-Rhythm Record      Care Actions
-        │               │
-        └───────┬───────┘
-                ▼
-        Family Digital Twin
-                │
-                ▼
- Recommendations
- Weekly Reports
- What-if Simulation
- ```
---- 
-# Core Entities
-
-# User
-## Purpose
-Represents one authenticated account.
-
-Authentication information belongs here.
-
-## Fields
-| Field | Description |
-|--------|-------------|
-| userId | Unique account identifier |
-| email | Login email |
-| displayName | User display name |
-| profileImage | Profile picture |
-| createdAt | Account creation date |
-| lastLogin | Last login |
-| notificationSettings | User notification preferences |
-
-## Relationships
-- One User belongs to one Family.
-- One User owns one Family Member profile.
-
----
-
-# Family
-## Purpose
-Represents one family inside Sakan.
-
-Everything else belongs to a Family.
-
-## Fields
-| Field | Description |
-|--------|-------------|
-| familyId | Unique family identifier |
-| familyName | Family name |
-| country | Country |
-| city | City |
-| language | Preferred language |
-| adminId | Family owner |
-| createdAt | Creation date |
-
-
-## Relationships
-A Family contains:
-
-- Family Members
-- Family Moments
-- Family Sessions
-- Rhythm Records
-- Care Actions
-- Weekly Reports
-- One Sakan Hub
-
----
-
-# Family Member
-## Purpose
-Represents one member inside a family.
-
-## Fields
-
-| Field | Description |
-|--------|-------------|
-| memberId | Unique member ID |
-| userId | Linked User |
-| familyId | Parent family |
-| name | Display name |
-| role | Parent / Child / Grandparent |
-| avatar | Profile image |
-| preferredTimes | Preferred family activity times |
-| interests | Selected interests |
-
-## Relationships
-A Family Member:
-
-- Participates in Family Moments
-- Completes Care Actions
-- Checks into Sessions
-- Appears in the Family Moment Graph
-
----
-
-# Family Moment
-## Purpose
-Represents one meaningful family moment.
-
-A Family Moment can be:
-
-- Recurring
-- One-time
-
-## Fields
-| Field | Description |
-|--------|-------------|
-| momentId | Unique identifier |
-| familyId | Parent family |
-| title | Moment title |
-| type | Recurring / Singular |
-| category | Tradition / Milestone / Care / Responsibility |
-| importance | Low / Medium / High |
-| expectedParticipants | Expected family members |
-| recurrencePattern | Weekly / Monthly / None |
-| scheduledDate | Planned date |
-| location | Optional |
-| notes | Optional |
-
-## Relationships
-A Family Moment:
-
-- Has many Moment Instances
-- Can generate Care Actions
-- Can generate Rhythm Records
-- Appears in the Family Moment Graph
-
----
-
-
-# Moment Instance
-## Purpose
-Represents one occurrence of a Family Moment.
-
-Example:
-
-Friday Lunch is recurring.
-
-Each Friday Lunch is one Moment Instance.
-
-## Fields
-
-| Field | Description |
-|--------|-------------|
-| instanceId | Unique identifier |
-| momentId | Parent moment |
-| scheduledAt | Planned time |
-| startedAt | Actual start |
-| endedAt | Actual end |
-| duration | Total duration |
-| participants | Actual participants |
-| evidenceType | NFC / User Confirmation / Photo |
-| status | Completed / Missed |
-
-## Relationships
-Belongs to one Family Moment.
-
-Updates the Rhythm Engine.
-
----
-
-
-# Family Session
-## Purpose
-Represents an active family activity.
-
-Usually started using the Sakan Hub.
-
-## Fields
-| Field : Description |
-| Field | Description |
-|--------|-------------|
-| sessionId | Unique identifier |
-| familyId | Parent family |
-| momentId | Related Family Moment |
-| startedAt | Session start |
-| endedAt | Session end |
-| duration | Total time |
-| participantIds | Members present |
-| checkInEvidence | NFC records |
-| checkOutEvidence | NFC records |
-
-## Relationships
-Creates a Moment Instance.
-
-Updates Rhythm Records.
-
-Updates the Digital Twin.
-
----
-
-# Care Action
-## Purpose
-Represents one meaningful preparation task.
-
-## Example
-Ali's Graduation
-↓
-Prepare gift
-Leave work early
-Bring camera
-
-## Fields
-| Field | Description |
-|--------|-------------|
-| actionId | Unique identifier |
-| momentId | Related moment |
-| assignedTo | Family member |
-| title | Action title |
-| dueDate | Deadline |
-| status | Pending / Completed |
-| evidence | Optional proof |
-
-## Relationships
-Belongs to one Family Moment.
-
-Displayed inside Calendar and Digital Twin.
-
----
-
-# Rhythm Record
-## Purpose
-Tracks recurring family traditions.
-
-## Fields
-| Field | Description |
-|--------|-------------|
-| rhythmId | Unique identifier |
-| momentId | Related recurring moment |
-| expectedInterval | Expected frequency |
-| currentGap | Days since last occurrence |
-| confidence | Low / Medium / High |
-| status | Stable / Drifting / Recovering / Strengthening / Still Learning |
-| history | Previous occurrences |
-
-## Relationships
-Generated from Moment Instances.
-
-Displayed inside the Digital Twin.
-
----
-
-# Sakan Hub
-## Purpose
-Represents the shared NFC Hub.
-
-The Hub records intentional participation in home-based family activities.
-
-## Fields
-| Field | Description |
-|--------|-------------|
-| hubId | Unique hub ID |
-| familyId | Linked family |
-| location | Dining room / Majlis / Living room |
-| registeredAt | Registration date |
-| status | Active / Inactive |
-
-## Relationships
-Verifies:
-
-- Check-in
-- Check-out
-- Family Sessions
-
----
-
-# Recommendation
-## Purpose
-Represents one AI recommendation.
-
-Recommendations are generated only from:
-
-1. Rhythm Drift
-2. Upcoming Significant Moment
-3. Family Priority
-
-## Fields
-| Field | Description |
-|--------|-------------|
-| recommendationId | Unique identifier |
-| familyId | Parent family |
-| title | Recommendation |
-| reason | Explanation |
-| trigger | Rhythm / Care / Priority |
-| createdAt | Generation time |
-| completed | Yes / No |
-
----
-
-# Weekly Report
-## Purpose
-Summarizes one week of family activity.
-
-## Fields
-| Field | Description |
-|--------|-------------|
-| reportId | Unique identifier |
-| familyId | Parent family |
-| weekStart | Start date |
-| weekEnd | End date |
-| stableRhythms | List |
-| driftingRhythms | List |
-| careCompleted | List |
-| nextBestAction | Recommendation |
-
-
----
-
-# Notification
-## Purpose
-Stores all app notifications.
-
-## Types
-- Rhythm Alert
-- Care Reminder
-- Upcoming Moment
-- Family Session
-- Weekly Report
-
----
-
-# Evidence Types
-Every completed moment must specify its evidence source.
-
-Possible values:
-
-- NFC Verified
-- User Confirmed
-- Photo Attached
-- Scheduled Only
-
-This allows the Digital Twin to distinguish between verified and self-reported participation.
-
----
-
-# Data Principles
-
-1. Never infer emotions.
-2. Never calculate fake relationship scores.
-3. Every AI insight must reference measurable data.
-4. Every recommendation must explain its reasoning.
-5. Recurring moments are handled by the Rhythm Engine.
-6. One-time moments are handled by the Care Engine.
-7. The Family Digital Twin combines all entities into one behavioral model.
-
+├── Members
+├── Moment Definitions
+│   └── Moment Instances
+│       └── Participant Records
+├── Rhythm Records
+├── Care Actions
+├── Memories
+├── Schedules and Availability
+└── Daily Reviews
+```
+
+Computed Family Insights read from these records but are not the source of truth.
+
+## Core Principles
+
+1. A Calendar entry is not proof that an activity happened.
+2. A recurring Moment definition remains reusable after one occurrence finishes.
+3. Each member confirms only their own participation.
+4. Rhythm state is derived from occurrence history.
+5. Private schedule labels are not exposed through family availability.
+6. The Digital Twin reports recorded patterns, not emotions or relationship quality.
+7. External AI may interpret verified facts but may not determine factual state.
+
+## User
+
+Represents one Firebase Authentication account.
+
+Account-level Firestore data may include:
+
+| Field | Purpose |
+|---|---|
+| `email` | Sign-in/contact identifier |
+| `displayName` | Account display name |
+| `photoUrl` | Optional profile image reference |
+| `familyIds` | Families linked to the account |
+| `currentFamilyId` | Currently selected family |
+| `createdAt`, `updatedAt` | Audit timestamps |
+
+## Family
+
+Represents one shared family space.
+
+| Field | Purpose |
+|---|---|
+| `name` | Family name |
+| `createdBy` | Creating account |
+| `setupComplete` | Whether the baseline setup is complete |
+| `baselineCreatedAt` | When initial rhythm setup was saved |
+| `baselineCreatedBy` | Admin who completed setup |
+| `createdAt`, `updatedAt` | Audit timestamps |
+
+A Family contains members, Moment definitions, occurrences, reminders, rhythms, Memories, schedules, and reviews.
+
+## Member
+
+Represents one authenticated user inside one family.
+
+| Field | Purpose |
+|---|---|
+| `id` | Member document ID, normally matching the user's UID |
+| `familyId` | Parent family |
+| `displayName` | Name visible inside the family |
+| `role` | `admin`, `adult`, or `child` |
+| `ageGroup` | Member age category |
+| `relationship` | Parent, child, sibling, grandparent, and related values |
+| `interests` | Selected interests |
+| `preferredDays` | Preferred family-time days |
+| `preferredStartMinutes`, `preferredEndMinutes` | Preferred time range |
+| `isActive` | Whether the membership is active |
+| `joinedAt`, `updatedAt` | Audit timestamps |
+
+## Schedule Block
+
+Stores one member's private schedule item.
+
+Two forms are supported:
+
+```text
+Weekly routine
+One-time unavailable period
+```
+
+A weekly routine may repeat on multiple selected weekdays. A one-time item stops affecting availability after it expires.
+
+Private labels belong to the owning member.
+
+## Availability Block
+
+A label-free family-level representation of busy time.
+
+It contains enough information to calculate overlap while avoiding exposure of private labels such as school, work, or medical appointments.
+
+## Family Moment
+
+A reusable definition of something meaningful to the family.
+
+| Field | Purpose |
+|---|---|
+| `id` | Moment identifier |
+| `familyId` | Parent family |
+| `title` | Moment name |
+| `type` | `recurring` or `singular` |
+| `category` | Tradition, milestone, responsibility, care, family time, or memory |
+| `importanceLevel` | Integer from 1 to 5 |
+| `expectedParticipantIds` | Normally associated family members |
+| `startAt`, `endAt` | Current/default planned timing |
+| `expectedIntervalDays` | Recurring interval |
+| `location` | Optional location |
+| `notes` | Description |
+| `evidenceType` | Configured evidence approach |
+| `status` | Compatibility/planning status |
+| `createdBy`, `createdAt`, `updatedAt` | Ownership and audit fields |
+
+For recurring Moments, the definition does not become permanently completed after one occurrence.
+
+## Moment Instance
+
+Represents one planned or actual occurrence of a Family Moment.
+
+| Field | Purpose |
+|---|---|
+| `id` | Occurrence identifier |
+| `familyId` | Parent family |
+| `momentId` | Reusable Moment definition |
+| `titleSnapshot` | Historical title at the time of the occurrence |
+| `typeSnapshot`, `categorySnapshot` | Historical type/category |
+| `importanceLevelSnapshot` | Historical importance |
+| `locationSnapshot` | Historical optional location |
+| `expectedParticipantIds` | Expected members for this occurrence |
+| `source` | Calendar, Family Insight, manual, spontaneous, or Today Review |
+| `status` | Proposed, scheduled, inviting, active, completed, missed, or cancelled |
+| `scheduledStartAt`, `scheduledEndAt` | Planned times |
+| `actualStartAt`, `actualEndAt` | Recorded actual times |
+| `actualDurationMinutes` | Recorded duration |
+| `startedBy`, `endedBy` | Accounts controlling the session |
+| `confirmedParticipantIds` | Members with recorded participation evidence |
+| `evidenceSignals` | Evidence collected for this occurrence |
+| `confirmationLevel` | Low, medium, or high evidence confidence |
+| `isPartial` | Whether Today Review recorded partial completion |
+| `createdBy`, `createdAt`, `updatedAt` | Ownership and audit fields |
+
+## Moment Participant
+
+One member's record inside one Moment Instance.
+
+| Field | Purpose |
+|---|---|
+| `familyId` | Parent family |
+| `instanceId` | Parent occurrence |
+| `memberId` | Member represented by this document |
+| `state` | Invited, nearby, checked in, declined, or left |
+| `checkInMethod` | Manual, Bluetooth, QR, or Today Review |
+| `checkedInAt`, `checkedOutAt` | Participation timestamps |
+| `nearbyDetectedAt` | Optional proximity timestamp |
+| `confirmedAt` | Confirmation timestamp |
+| `createdAt`, `updatedAt` | Audit timestamps |
+
+Security Rules should allow a member to create or update only the document whose ID matches their authenticated UID.
+
+## Rhythm Record
+
+Stores the current calculated state of one recurring Moment.
+
+| Field | Purpose |
+|---|---|
+| `momentId` | Recurring Moment |
+| `expectedIntervalDays` | Intended frequency |
+| `lastOccurrenceAt` | Latest confirmed occurrence |
+| `currentGapDays` | Days since the latest confirmed occurrence |
+| `occurrenceCount` | Number of recorded completed occurrences |
+| `status` | Still Learning, Stable, Drifting, Recovering, or Strengthening |
+| `confidence` | Low, medium, or high |
+| `updatedAt` | Recalculation timestamp |
+
+Rhythms are recalculated from completed and missed Moment Instances.
+
+## Care Action
+
+A personal preparation task or reminder.
+
+| Field | Purpose |
+|---|---|
+| `familyId` | Parent family |
+| `momentId` | Optional related Moment |
+| `title` | Action title |
+| `reason` | Supporting note |
+| `assignedMemberId` | Member responsible |
+| `dueAt` | Due date and time |
+| `status` | Pending, in progress, completed, or skipped |
+| `source` | Manual, Calendar, Digital Twin, or Schedule |
+| `evidenceType` | Optional evidence approach |
+| `completedAt` | Completion timestamp |
+| `createdAt`, `updatedAt` | Audit timestamps |
+
+Care Actions are not shared Moment sessions.
+
+## Family Memory
+
+A record connected to one meaningful completed occurrence.
+
+| Field | Purpose |
+|---|---|
+| `familyId` | Parent family |
+| `momentId` | Reusable Moment definition |
+| `instanceId` | Optional exact Moment Instance |
+| `title` | Memory title |
+| `occurredAt` | Occurrence date |
+| `photoUrls` | Optional media references |
+| `participantIds` | Recorded participants |
+| `note` | Family note |
+| `aiReflection` | Optional future AI-written reflection |
+| `createdAt`, `updatedAt` | Audit timestamps |
+
+The current application can preserve separate Memories for separate Moment Instances.
+
+## Daily Review
+
+Stores the family's review of unresolved recent occurrences.
+
+It supports:
+
+```text
+Happened
+Didn't Happen
+Reschedule
+Log an unplanned Moment
+```
+
+Review results update the relevant Moment Instance and may trigger rhythm recalculation or next-occurrence creation.
+
+## Family Insight Snapshot
+
+A computed, read-only snapshot containing the current family context required for insight generation:
+
+```text
+Members
+Moment definitions
+Moment Instances
+Rhythms
+Availability
+Care Actions
+Memories
+Active session
+Upcoming occurrences
+Completed and missed history
+```
+
+## Family Insight Report
+
+A computed result containing:
+
+```text
+Primary insight
+Secondary insights
+Action type
+Best recorded availability
+Per-family metrics
+Confidence
+Privacy-minimized future AI payload
+```
+
+The report is derived data. Firestore entities remain the source of truth.
+
+## Evidence Signals
+
+Possible evidence signals include:
+
+```text
+Scheduled
+Host started
+Manual check-in
+Multiple check-ins
+Duration recorded
+Bluetooth nearby
+QR check-in
+Today Review
+Family note
+Memory created
+```
+
+Bluetooth remains optional and is not currently required by the MVP.

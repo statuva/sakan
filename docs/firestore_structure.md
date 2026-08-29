@@ -1,221 +1,320 @@
+# Sakan Firestore Structure
+
+## Collection Tree
+
+```text
 users/{userId}
 
+invitations/{code}
+
 families/{familyId}
-├── members/{userId}
+├── members/{memberId}
+│   └── scheduleBlocks/{blockId}
+├── availabilityBlocks/{blockId}
 ├── moments/{momentId}
 ├── momentInstances/{instanceId}
-│   └── participants/{userId}
-├── careActions/{careActionId}
+│   └── participants/{memberId}
+├── careActions/{actionId}
 ├── rhythms/{momentId}
-└── hubs/{hubId}
+├── memories/{memoryId}
+├── dailyReviews/{reviewId}
+└── hubs/{hubId}                 # legacy/future optional; not required by MVP
+```
 
+## `users/{userId}`
 
-## users/{userId}
-Stores account-level information for each authenticated user.
-Fields:
+Stores account-level data and the selected family.
 
-- email
-- displayName
-- photoUrl
-- familyIds
-- currentFamilyId
-- createdAt
-- updatedAt
+Typical fields:
 
+```text
+email
+displayName
+photoUrl
+familyIds
+currentFamilyId
+createdAt
+updatedAt
+```
 
-## families/{familyId}
-Stores shared information about one family.
+A signed-in user may access only their own user document.
 
-Fields:
+## `invitations/{code}`
 
-- name
-- createdBy
-- countryCode
-- city
-- preferredLanguage
-- setupComplete
-- createdAt
-- updatedAt
+Stores one temporary family invitation. The invitation code is the document ID so the app can perform a direct lookup without listing invitations.
 
-## families/{familyId}/members/{userId}
-Represents a user inside a specific family.
+Typical fields:
 
-The document ID should match the authenticated user's UID.
+```text
+code
+familyId
+familyName
+createdBy
+isActive
+expiresAt
+createdAt
+```
 
-Fields:
+Invitation collections should not be listable by normal clients.
 
-- familyId
-- displayName
-- role
-- ageGroup
-- photoUrl
-- interests
-- preferredDays
-- preferredStartMinutes
-- preferredEndMinutes
-- isActive
-- joinedAt
-- updatedAt
+## `families/{familyId}`
 
+Stores shared family metadata.
 
-## families/{familyId}/moments/{momentId}
-Stores both recurring traditions and one-time meaningful events.
+Typical fields:
 
-Examples:
+```text
+name
+createdBy
+setupComplete
+baselineCreatedAt
+baselineCreatedBy
+createdAt
+updatedAt
+```
 
-- Friday Lunch
-- Family Majlis
-- Grandparents Visit
-- Ali's Graduation
-- Grandma's Birthday
+## `families/{familyId}/members/{memberId}`
 
-Fields:
+Represents one authenticated account inside the family. The document ID normally matches the user's Firebase Authentication UID.
 
-- title
-- type
-- category
-- importanceLevel
-- expectedParticipantIds
-- startAt
-- endAt
-- expectedIntervalDays
-- location
-- notes
-- evidenceType
-- status
-- createdBy
-- createdAt
-- updatedAt
+Typical fields:
 
+```text
+familyId
+displayName
+role
+ageGroup
+relationship
+photoUrl
+interests
+preferredDays
+preferredStartMinutes
+preferredEndMinutes
+notificationPreferences
+privacyConsent
+isActive
+joinedAt
+updatedAt
+```
 
-## families/{familyId}/momentInstances/{instanceId}
-Stores one real occurrence of a Family Moment.
+## `members/{memberId}/scheduleBlocks/{blockId}`
 
-For example, "Friday Lunch" is a Family Moment, while the Friday Lunch that happened on August 14 is a Moment Instance.
-Fields:
+Stores the member's private schedule details.
 
-- momentId
-- scheduledAt
-- startedAt
-- endedAt
-- status
-- evidenceType
-- actualParticipantIds
-- checkedInMemberIds
-- checkedOutMemberIds
-- createdAt
-- updatedAt
+Typical concepts:
 
+```text
+weekly or one-time
+private label
+repeat weekdays
+one-time date
+start minutes
+end minutes
+createdAt
+updatedAt
+```
 
-## families/{familyId}/momentInstances/{instanceId}/participants/{userId}
-Stores the participation evidence for one member during one Moment Instance.
+Only the owning member should read or modify these detailed schedule records.
 
-Fields:
+## `families/{familyId}/availabilityBlocks/{blockId}`
 
-- memberId
-- checkedInAt
-- checkedOutAt
-- checkInMethod
-- checkOutMethod
-- updatedAt
+Stores family-readable, label-free busy intervals derived from personal schedules.
 
-Possible methods:
+Typical fields:
 
-- nfc
-- manual
-- userConfirmed
+```text
+familyId
+memberId
+kind
+repeatDays or scheduledDate
+startMinutes
+endMinutes
+createdAt
+updatedAt
+```
 
-This structure will later allow Firestore Security Rules to ensure that a member can update only their own check-in/check-out record.
+Family members may read availability, but only the owning member may create, update, or delete their blocks.
 
+## `families/{familyId}/moments/{momentId}`
 
-## families/{familyId}/careActions/{careActionId}
-Stores an action connected to an important one-time Family Moment.
+Stores one reusable Family Moment definition.
 
-Example:
-Ali's Graduation
-Care Action:
-"Prepare Ali's graduation gift"
+Typical fields:
 
-Fields:
+```text
+familyId
+title
+type
+category
+importanceLevel
+expectedParticipantIds
+startAt
+endAt
+expectedIntervalDays
+location
+notes
+evidenceType
+status
+createdBy
+createdAt
+updatedAt
+```
 
-- momentId
-- title
-- reason
-- assignedMemberId
-- dueAt
-- status
-- evidenceType
-- completedAt
-- createdAt
-- updatedAt
+Adults/admins manage shared Moment definitions.
 
+## `families/{familyId}/momentInstances/{instanceId}`
 
-## families/{familyId}/rhythms/{momentId}
-Stores the calculated state of a recurring Family Moment.
-The document ID can match the recurring Moment ID.
+Stores one planned or actual occurrence.
 
-Fields:
-- momentId
-- expectedIntervalDays
-- lastOccurrenceAt
-- currentGapDays
-- occurrenceCount
-- status
-- confidence
-- updatedAt
+Typical fields:
 
-Possible rhythm statuses:
-- stillLearning
-- stable
-- drifting
-- recovering
-- strengthening
+```text
+familyId
+momentId
+titleSnapshot
+typeSnapshot
+categorySnapshot
+importanceLevelSnapshot
+locationSnapshot
+expectedParticipantIds
+source
+status
+scheduledStartAt
+scheduledEndAt
+actualStartAt
+actualEndAt
+actualDurationMinutes
+startedBy
+endedBy
+confirmedParticipantIds
+evidenceSignals
+confirmationLevel
+isPartial
+createdBy
+createdAt
+updatedAt
+```
 
-Possible confidence values:
-- low
-- medium
-- high
+Adults/admins may create and manage the shared occurrence document. Family members may read occurrences.
 
+## `momentInstances/{instanceId}/participants/{memberId}`
 
-## families/{familyId}/hubs/{hubId}
-Stores information about the family's registered Sakan Hub.
+Stores one member's participation record.
 
-Fields:
+Typical fields:
 
-- name
-- locationLabel
-- tagIdHash
-- isActive
-- registeredBy
-- registeredAt
-- lastScannedAt
+```text
+familyId
+instanceId
+memberId
+state
+checkInMethod
+checkedInAt
+checkedOutAt
+nearbyDetectedAt
+confirmedAt
+createdAt
+updatedAt
+```
 
-Example:
+A family member may create or update only their own participant document.
 
-- name: Sakan Hub
-- locationLabel: Dining Room
+## `families/{familyId}/careActions/{actionId}`
 
+Stores personal preparation actions and reminders.
 
+Typical fields:
 
-## invitations/{code}
+```text
+familyId
+momentId
+title
+reason
+assignedMemberId
+dueAt
+status
+source
+evidenceType
+completedAt
+createdAt
+updatedAt
+```
 
-Stores a temporary invitation that allows an authenticated user to join a family.
+Adults/admins may manage permitted family actions. Other members may access only actions assigned to themselves.
 
-The invitation code is used as the document ID so the app can perform a direct document lookup without listing all invitations.
+## `families/{familyId}/rhythms/{momentId}`
 
-Fields:
+Stores the calculated state of one recurring Family Moment.
 
-- code
-- familyId
-- familyName
-- createdBy
-- isActive
-- expiresAt
-- createdAt
+Typical fields:
 
-Security requirements:
+```text
+familyId
+momentId
+expectedIntervalDays
+lastOccurrenceAt
+currentGapDays
+occurrenceCount
+status
+confidence
+updatedAt
+```
 
-- A user must be authenticated to retrieve an invitation.
-- Invitation collections cannot be listed.
-- An invitation must be active and unexpired.
-- A joining user may create only their own family-member record.
+The document ID may match the Moment ID.
+
+## `families/{familyId}/memories/{memoryId}`
+
+Stores one Family Memory.
+
+Typical fields:
+
+```text
+familyId
+momentId
+instanceId
+title
+occurredAt
+photoUrls
+participantIds
+note
+aiReflection
+createdAt
+updatedAt
+```
+
+`instanceId` may be absent on older documents.
+
+## `families/{familyId}/dailyReviews/{reviewId}`
+
+Stores a review of recent unresolved occurrences.
+
+Typical concepts:
+
+```text
+review date
+reviewedBy
+reviewedAt
+resolved instance IDs
+selected outcomes
+confirmation of no additional unplanned Moments
+```
+
+Adults/admins may write a family review. Family members may read permitted family review data.
+
+## `families/{familyId}/hubs/{hubId}`
+
+This collection may remain in the repository for compatibility with the original architecture. A physical Hub is not required by the current MVP and should not be presented as a working dependency.
+
+Future proximity evidence should remain optional.
+
+## Security Principles
+
+1. All protected reads and writes require authentication.
+2. Family documents are accessible only to members of that family.
+3. Admin-only operations stay restricted.
+4. Children do not receive family-administration writes.
+5. Members update only their own participant record.
+6. Private schedule labels remain under the owning member.
+7. Family-level availability contains no private labels.
+8. Reminder ownership and assignment cannot be silently changed.
+9. External AI credentials are never stored in Firestore client-readable documents.
