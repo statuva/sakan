@@ -18,7 +18,6 @@ class FamilyInsightNoticeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = _accentColor(context);
-    final softAccent = accent.withAlpha(24);
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xl),
@@ -37,14 +36,10 @@ class FamilyInsightNoticeCard extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: softAccent,
+                  color: accent.withAlpha(24),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: Icon(
-                  Icons.auto_awesome_outlined,
-                  size: 20,
-                  color: accent,
-                ),
+                child: Icon(_kindIcon(), size: 20, color: accent),
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
@@ -100,12 +95,23 @@ class FamilyInsightNoticeCard extends StatelessWidget {
                   .toList(),
             ),
           ],
+          if (insight.primaryActionLabel != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'NEXT ACTION · ${insight.primaryActionLabel}',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: accent,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.25,
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.lg),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: onOpen,
-              icon: const Icon(Icons.auto_awesome_outlined),
+              icon: Icon(_actionIcon()),
               label: const Text('View Recommendation'),
             ),
           ),
@@ -116,20 +122,53 @@ class FamilyInsightNoticeCard extends StatelessWidget {
 
   String _kindLabel() {
     return switch (insight.kind) {
+      FamilyInsightKind.activeMoment => 'Live Family Moment',
+      FamilyInsightKind.reviewNeeded => 'Today Review Needed',
       FamilyInsightKind.overdueReminder => 'Overdue Reminder',
       FamilyInsightKind.upcomingMilestone => 'Upcoming Milestone',
       FamilyInsightKind.carePreparation => 'Care Preparation',
+      FamilyInsightKind.sharedMomentOpportunity => 'Shared Moment Opportunity',
       FamilyInsightKind.driftingRhythm => 'Drifting Rhythm',
       FamilyInsightKind.upcomingMoment => 'Upcoming Moment',
     };
   }
 
+  IconData _kindIcon() {
+    return switch (insight.kind) {
+      FamilyInsightKind.activeMoment => Icons.play_circle_outline_rounded,
+      FamilyInsightKind.reviewNeeded => Icons.fact_check_outlined,
+      FamilyInsightKind.overdueReminder => Icons.warning_amber_rounded,
+      FamilyInsightKind.upcomingMilestone => Icons.star_border_rounded,
+      FamilyInsightKind.carePreparation => Icons.favorite_border_rounded,
+      FamilyInsightKind.sharedMomentOpportunity => Icons.groups_2_outlined,
+      FamilyInsightKind.driftingRhythm => Icons.trending_down_rounded,
+      FamilyInsightKind.upcomingMoment => Icons.event_outlined,
+    };
+  }
+
+  IconData _actionIcon() {
+    return switch (insight.actionType) {
+      FamilyInsightActionType.joinActiveMoment => Icons.login_rounded,
+      FamilyInsightActionType.reviewToday => Icons.fact_check_outlined,
+      FamilyInsightActionType.openReminders => Icons.checklist_rounded,
+      FamilyInsightActionType.addReminder => Icons.add_alert_outlined,
+      FamilyInsightActionType.startMomentNow => Icons.play_arrow_rounded,
+      FamilyInsightActionType.scheduleMoment => Icons.event_available_outlined,
+      FamilyInsightActionType.manageMoments =>
+        Icons.auto_awesome_motion_outlined,
+      FamilyInsightActionType.none => Icons.auto_awesome_outlined,
+    };
+  }
+
   Color _accentColor(BuildContext context) {
     return switch (insight.kind) {
+      FamilyInsightKind.activeMoment => CalendarPalette.strengthening,
+      FamilyInsightKind.reviewNeeded => CalendarPalette.drifting,
       FamilyInsightKind.overdueReminder => Theme.of(context).colorScheme.error,
       FamilyInsightKind.upcomingMilestone => CalendarPalette.milestone,
       FamilyInsightKind.carePreparation => CalendarPalette.care,
-      FamilyInsightKind.driftingRhythm => CalendarPalette.milestone,
+      FamilyInsightKind.sharedMomentOpportunity => CalendarPalette.forest,
+      FamilyInsightKind.driftingRhythm => CalendarPalette.drifting,
       FamilyInsightKind.upcomingMoment => CalendarPalette.forest,
     };
   }

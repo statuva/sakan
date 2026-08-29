@@ -76,6 +76,35 @@ CalendarStatusStyle calendarStatusStyle({
   required FamilyMoment moment,
   RhythmRecord? rhythm,
 }) {
+  // Concrete occurrence outcomes always outrank the reusable rhythm label.
+  // This prevents a completed recurring occurrence from appearing merely as
+  // "Stable" instead of "Completed" on the Calendar.
+  if (moment.status != MomentStatus.scheduled) {
+    return switch (moment.status) {
+      MomentStatus.active => const CalendarStatusStyle(
+        label: 'Live',
+        color: CalendarPalette.strengthening,
+        softColor: CalendarPalette.strengtheningSoft,
+      ),
+      MomentStatus.completed => const CalendarStatusStyle(
+        label: 'Completed',
+        color: CalendarPalette.stable,
+        softColor: CalendarPalette.stableSoft,
+      ),
+      MomentStatus.cancelled => const CalendarStatusStyle(
+        label: 'Cancelled',
+        color: CalendarPalette.slate,
+        softColor: CalendarPalette.slateSoft,
+      ),
+      MomentStatus.missed => const CalendarStatusStyle(
+        label: 'Missed',
+        color: CalendarPalette.missed,
+        softColor: CalendarPalette.missedSoft,
+      ),
+      MomentStatus.scheduled => throw StateError('Unreachable status.'),
+    };
+  }
+
   if (moment.type == MomentType.recurring && rhythm != null) {
     return switch (rhythm.status) {
       RhythmStatus.stillLearning => const CalendarStatusStyle(
@@ -106,31 +135,9 @@ CalendarStatusStyle calendarStatusStyle({
     };
   }
 
-  return switch (moment.status) {
-    MomentStatus.scheduled => const CalendarStatusStyle(
-      label: 'Upcoming',
-      color: CalendarPalette.upcoming,
-      softColor: CalendarPalette.upcomingSoft,
-    ),
-    MomentStatus.active => const CalendarStatusStyle(
-      label: 'Active',
-      color: CalendarPalette.strengthening,
-      softColor: CalendarPalette.strengtheningSoft,
-    ),
-    MomentStatus.completed => const CalendarStatusStyle(
-      label: 'Completed',
-      color: CalendarPalette.stable,
-      softColor: CalendarPalette.stableSoft,
-    ),
-    MomentStatus.cancelled => const CalendarStatusStyle(
-      label: 'Cancelled',
-      color: CalendarPalette.slate,
-      softColor: CalendarPalette.slateSoft,
-    ),
-    MomentStatus.missed => const CalendarStatusStyle(
-      label: 'Missed',
-      color: CalendarPalette.missed,
-      softColor: CalendarPalette.missedSoft,
-    ),
-  };
+  return const CalendarStatusStyle(
+    label: 'Upcoming',
+    color: CalendarPalette.upcoming,
+    softColor: CalendarPalette.upcomingSoft,
+  );
 }

@@ -13,13 +13,16 @@ import '../../../shared/models/moment_instance.dart';
 import '../../../shared/models/rhythm_record.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
+import '../../daily_review/presentation/today_review_screen.dart';
 import '../../memories/presentation/add_memory_screen.dart';
 import '../../memories/presentation/all_memories_screen.dart';
 import '../../memories/presentation/memory_details_screen.dart';
 import '../../moments/presentation/live_moment_screen.dart';
 import '../../moments/presentation/moment_form_screen.dart';
+import '../../moments/presentation/moment_session_summary_screen.dart';
 import '../../moments/presentation/moments_screen.dart';
 import '../../profile/presentation/my_reminders_screen.dart';
+import 'calendar_instance_projection.dart';
 import 'calendar_types.dart';
 import 'widgets/active_moment_banner.dart';
 import 'widgets/calendar_agenda_view.dart';
@@ -32,7 +35,6 @@ import 'widgets/calendar_palette.dart';
 import 'widgets/calendar_support_cards.dart';
 import 'widgets/calendar_week_view.dart';
 import 'widgets/family_insight_section.dart';
-import '../../daily_review/presentation/today_review_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -44,7 +46,6 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   CurrentFamilyContext? _familyContext;
   Stream<FamilyInsightReport>? _familyInsightReportStream;
-  Stream<MomentInstance?>? _activeInstanceStream;
 
   CalendarViewMode _viewMode = CalendarViewMode.month;
 
@@ -80,18 +81,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
     try {
       final familyContext = await AppDependencies.currentFamilyService.load();
 
-      final familyInsightReportStream = AppDependencies.familyInsightService
-          .watchReport();
+      if (familyContext.isAdult) {
+        try {
+          await AppDependencies.momentInstanceMigrationService
+              .backfillCurrentSchedules(
+                familyId: familyContext.familyId,
+                currentUserId: familyContext.userId,
+              );
+        } catch (_) {
+          // Migration compatibility must never block the Calendar.
+          // Existing instance-based data remains fully usable.
+        }
+      }
 
-      final activeInstanceStream = AppDependencies.momentInstanceRepository
-          .watchActiveInstance(familyId: familyContext.familyId);
+      final reportStream = AppDependencies.familyInsightService.watchReport();
 
       if (!mounted) return;
 
       setState(() {
         _familyContext = familyContext;
-        _familyInsightReportStream = familyInsightReportStream;
-        _activeInstanceStream = activeInstanceStream;
+        _familyInsightReportStream = reportStream;
         _isLoading = false;
       });
     } catch (_) {
@@ -114,9 +123,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
     }
 
-    if (_familyContext == null ||
-        _familyInsightReportStream == null ||
-        _activeInstanceStream == null) {
+    if (_familyContext == null || _familyInsightReportStream == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Family Calendar')),
         body: SafeArea(
@@ -132,7 +139,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       stream: _familyInsightReportStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return _errorScaffold('We could not calculate your family insights.');
+          return _errorScaffold(
+            'We could not calculate your family calendar and insights.',
+          );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting &&
@@ -140,7 +149,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           return const Scaffold(
             body: SafeArea(
               child: AppLoadingState(
-                message: 'Loading family moments and insights…',
+                message: 'Loading family occurrences and insights…',
               ),
             ),
           );
@@ -152,40 +161,43 @@ class _CalendarScreenState extends State<CalendarScreen> {
           return _errorScaffold('Your family insight report is unavailable.');
         }
 
-        final allMoments = report.snapshot.moments;
-        final rhythmsByMomentId = report.snapshot.rhythmsByMomentId;
-        final filteredMoments = _applyFilters(allMoments);
+        final allEntries = buildCalendarInstanceEntries(report.snapshot);
 
-        return StreamBuilder<MomentInstance?>(
-          stream: _activeInstanceStream,
-          builder: (context, activeSnapshot) {
-            if (activeSnapshot.hasError) {
-              return _errorScaffold(
-                'We could not load the active family Moment.',
-              );
-            }
+        final filteredEntries = _applyFilters(allEntries);
 
-            return _calendarScaffold(
-              filteredMoments: filteredMoments,
-              rhythmsByMomentId: rhythmsByMomentId,
-              insightReport: report,
-              activeInstance: activeSnapshot.data,
-            );
-          },
+        final entryByCalendarId = <String, CalendarInstanceEntry>{
+          for (final entry in allEntries) entry.calendarMoment.id: entry,
+        };
+
+        final projectedMoments = filteredEntries
+            .map((entry) => entry.calendarMoment)
+            .toList(growable: false);
+
+        final rhythmsByCalendarId = <String, RhythmRecord>{
+          for (final entry in allEntries)
+            if (entry.rhythm != null) entry.calendarMoment.id: entry.rhythm!,
+        };
+
+        return _calendarScaffold(
+          report: report,
+          projectedMoments: projectedMoments,
+          entryByCalendarId: entryByCalendarId,
+          rhythmsByCalendarId: rhythmsByCalendarId,
         );
       },
     );
   }
 
   Widget _calendarScaffold({
-    required List<FamilyMoment> filteredMoments,
-    required Map<String, RhythmRecord> rhythmsByMomentId,
-    required FamilyInsightReport insightReport,
-    required MomentInstance? activeInstance,
+    required FamilyInsightReport report,
+    required List<FamilyMoment> projectedMoments,
+    required Map<String, CalendarInstanceEntry> entryByCalendarId,
+    required Map<String, RhythmRecord> rhythmsByCalendarId,
   }) {
     final familyContext = _familyContext!;
-    final bestAvailability = insightReport.bestSharedWindow;
-    final latestMemory = insightReport.snapshot.latestMemory;
+    final activeInstance = report.snapshot.activeInstance;
+    final bestAvailability = report.bestSharedWindow;
+    final latestMemory = report.snapshot.latestMemory;
 
     return Scaffold(
       backgroundColor: CalendarPalette.background,
@@ -199,13 +211,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
             onPressed: _openTodayReview,
             icon: const Icon(Icons.fact_check_outlined),
           ),
-
           TextButton.icon(
             onPressed: _openMomentsPage,
             icon: const Icon(Icons.auto_awesome_motion_outlined, size: 18),
             label: const Text('Manage Moments'),
           ),
-
           const SizedBox(width: 6),
         ],
       ),
@@ -264,7 +274,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               CalendarMonthView(
                 focusedDay: _focusedDay,
                 selectedDay: _selectedDay,
-                moments: filteredMoments,
+                moments: projectedMoments,
                 currentUserId: familyContext.userId,
                 onDaySelected: (day) {
                   setState(() {
@@ -274,9 +284,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
                   _openDaySheet(
                     date: day,
-                    moments: filteredMoments,
-                    rhythmsByMomentId: rhythmsByMomentId,
-                    activeInstance: activeInstance,
+                    projectedMoments: projectedMoments,
+                    entryByCalendarId: entryByCalendarId,
+                    rhythmsByCalendarId: rhythmsByCalendarId,
+                    report: report,
                   );
                 },
                 onPageChanged: (focused) {
@@ -289,7 +300,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               CalendarWeekView(
                 referenceDay: _focusedDay,
                 selectedDay: _selectedDay,
-                moments: filteredMoments,
+                moments: projectedMoments,
                 currentUserId: familyContext.userId,
                 onSelectedDay: (day) {
                   setState(() {
@@ -299,9 +310,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
                   _openDaySheet(
                     date: day,
-                    moments: filteredMoments,
-                    rhythmsByMomentId: rhythmsByMomentId,
-                    activeInstance: activeInstance,
+                    projectedMoments: projectedMoments,
+                    entryByCalendarId: entryByCalendarId,
+                    rhythmsByCalendarId: rhythmsByCalendarId,
+                    report: report,
                   );
                 },
                 onPreviousWeek: () {
@@ -319,15 +331,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
               )
             else
               CalendarAgendaView(
-                moments: filteredMoments,
-                rhythmsByMomentId: rhythmsByMomentId,
+                moments: projectedMoments,
+                rhythmsByMomentId: rhythmsByCalendarId,
                 currentUserId: familyContext.userId,
-                onMomentTap: (moment) {
-                  _openMomentDetails(
-                    moment: moment,
-                    rhythm: rhythmsByMomentId[moment.id],
-                    activeInstance: activeInstance,
-                  );
+                onMomentTap: (projected) {
+                  final entry = entryByCalendarId[projected.id];
+
+                  if (entry != null) {
+                    _openInstanceDetails(entry: entry, report: report);
+                  }
                 },
               ),
 
@@ -335,13 +347,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
               const SizedBox(height: AppSpacing.xl),
 
               FamilyInsightSection(
-                report: insightReport,
-                onAddReminder: _scheduleInsightReminder,
-                onOpenReminders: () {
-                  _openMyRemindersPage();
-                },
-                onManageMoments: () {
-                  _openMomentsPage();
+                report: report,
+                onPerformAction: (insight) {
+                  return _performInsightAction(
+                    insight: insight,
+                    report: report,
+                  );
                 },
               ),
 
@@ -374,9 +385,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         _openAddMemoryScreen();
                       }
                     : null,
-                onAllMemoriesTap: () {
-                  _openAllMemoriesScreen();
-                },
+                onAllMemoriesTap: _openAllMemoriesScreen,
               ),
             ],
           ],
@@ -394,19 +403,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  List<FamilyMoment> _applyFilters(List<FamilyMoment> moments) {
+  List<CalendarInstanceEntry> _applyFilters(
+    List<CalendarInstanceEntry> entries,
+  ) {
     final userId = _familyContext!.userId;
 
-    final filtered = moments.where((moment) {
+    final filtered = entries.where((entry) {
+      final moment = entry.calendarMoment;
       final categoryMatch = _matchesSelectedCategory(moment);
-
       final mineMatch =
           !_mineOnly || moment.expectedParticipantIds.contains(userId);
 
       return categoryMatch && mineMatch;
     }).toList();
 
-    filtered.sort((first, second) => first.startAt.compareTo(second.startAt));
+    filtered.sort(
+      (first, second) =>
+          first.calendarMoment.startAt.compareTo(second.calendarMoment.startAt),
+    );
 
     return filtered;
   }
@@ -443,37 +457,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }).toList();
   }
 
-  Future<void> _openTodayReview() async {
-    final saved = await Navigator.of(
-      context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => const TodayReviewScreen()));
-
-    if (saved == true && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Today Review saved.')));
-    }
-  }
-
-  Future<void> _openMomentsPage() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const MomentsScreen()));
-  }
-
-  Future<void> _openMyRemindersPage() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const MyRemindersScreen()));
-  }
-
   Future<void> _openDaySheet({
     required DateTime date,
-    required List<FamilyMoment> moments,
-    required Map<String, RhythmRecord> rhythmsByMomentId,
-    required MomentInstance? activeInstance,
+    required List<FamilyMoment> projectedMoments,
+    required Map<String, CalendarInstanceEntry> entryByCalendarId,
+    required Map<String, RhythmRecord> rhythmsByCalendarId,
+    required FamilyInsightReport report,
   }) async {
-    final dayMoments = _momentsForDay(moments, date);
+    final dayMoments = _momentsForDay(projectedMoments, date);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -487,33 +478,37 @@ class _CalendarScreenState extends State<CalendarScreen> {
         return CalendarDaySheet(
           date: date,
           moments: dayMoments,
-          rhythmsByMomentId: rhythmsByMomentId,
+          rhythmsByMomentId: rhythmsByCalendarId,
           currentUserId: _familyContext!.userId,
-          onMomentTap: (moment) {
+          onMomentTap: (projected) {
             Navigator.of(sheetContext).pop();
 
-            _openMomentDetails(
-              moment: moment,
-              rhythm: rhythmsByMomentId[moment.id],
-              activeInstance: activeInstance,
-            );
+            final entry = entryByCalendarId[projected.id];
+
+            if (entry != null) {
+              _openInstanceDetails(entry: entry, report: report);
+            }
           },
         );
       },
     );
   }
 
-  Future<void> _openMomentDetails({
-    required FamilyMoment moment,
-    required RhythmRecord? rhythm,
-    required MomentInstance? activeInstance,
+  Future<void> _openInstanceDetails({
+    required CalendarInstanceEntry entry,
+    required FamilyInsightReport report,
   }) async {
     FamilyMemory? memory;
 
     try {
-      memory = await AppDependencies.memoryRepository.getMemoryForMoment(
-        familyId: _familyContext!.familyId,
-        momentId: moment.id,
+      memory = await AppDependencies.memoryRepository.getMemoryForInstance(
+        familyId: entry.instance.familyId,
+        instanceId: entry.instance.id,
+      );
+
+      memory ??= await AppDependencies.memoryRepository.getMemoryForMoment(
+        familyId: entry.instance.familyId,
+        momentId: entry.instance.momentId,
       );
     } catch (_) {
       if (!mounted) return;
@@ -521,7 +516,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'The Moment opened, but its Memory status could not be loaded.',
+            'The occurrence opened, but its Memory status could not be loaded.',
           ),
         ),
       );
@@ -529,22 +524,43 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     if (!mounted) return;
 
-    final activeForThisMoment = activeInstance?.momentId == moment.id;
-
-    final canStartNow = _canStartMomentNow(
-      moment: moment,
-      activeInstance: activeInstance,
+    final instance = entry.instance;
+    final activeInstance = report.snapshot.activeInstance;
+    final isThisActive = activeInstance?.id == instance.id;
+    final isReviewable = report.snapshot.reviewableInstances.any(
+      (item) => item.id == instance.id,
     );
 
-    final liveActionLabel = activeForThisMoment
-        ? 'Join Active Moment'
-        : canStartNow
-        ? 'Start This Now'
-        : null;
+    String? primaryActionLabel;
+    IconData? primaryActionIcon;
+    VoidCallback? primaryAction;
+    String? actionHint;
 
-    final liveActionHint = activeInstance != null && !activeForThisMoment
-        ? 'Another family Moment is already live. End it before starting a new one.'
-        : null;
+    if (isThisActive) {
+      primaryActionLabel = 'Join Active Moment';
+      primaryActionIcon = Icons.login_rounded;
+      primaryAction = () {
+        Navigator.of(context).pop();
+        _openLiveMoment(instance);
+      };
+    } else if (_canStartEntryNow(entry, activeInstance)) {
+      primaryActionLabel = 'Start This Now';
+      primaryActionIcon = Icons.play_arrow_rounded;
+      primaryAction = () {
+        Navigator.of(context).pop();
+        _startMomentNow(entry);
+      };
+    } else if (isReviewable && _familyContext!.isAdult) {
+      primaryActionLabel = 'Review Today';
+      primaryActionIcon = Icons.fact_check_outlined;
+      primaryAction = () {
+        Navigator.of(context).pop();
+        _openTodayReview();
+      };
+    } else if (activeInstance != null && !isThisActive) {
+      actionHint =
+          'Another family Moment is already live. End it before starting a new one.';
+    }
 
     await showModalBottomSheet<void>(
       context: context,
@@ -556,48 +572,51 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       builder: (sheetContext) {
         return CalendarMomentDetailsSheet(
-          moment: moment,
-          rhythm: rhythm,
+          moment: entry.calendarMoment,
+          instance: instance,
+          rhythm: entry.rhythm,
           memory: memory,
           currentUserId: _familyContext!.userId,
-          canEdit: _familyContext!.isAdult,
-          liveActionLabel: liveActionLabel,
-          liveActionHint: liveActionHint,
-          onLiveAction: activeForThisMoment
+          canEditDefinition:
+              _familyContext!.isAdult && entry.definition != null,
+          primaryActionLabel: primaryActionLabel,
+          primaryActionIcon: primaryActionIcon,
+          onPrimaryAction: primaryAction,
+          primaryActionHint: actionHint,
+          onViewSummary: instance.status == MomentInstanceStatus.completed
               ? () {
                   Navigator.of(sheetContext).pop();
-                  _openLiveMoment(activeInstance!);
-                }
-              : canStartNow
-              ? () {
-                  Navigator.of(sheetContext).pop();
-                  _startMomentNow(moment);
+                  _openSessionSummary(instance);
                 }
               : null,
-          onEditMoment: () {
-            Navigator.of(sheetContext).pop();
+          onEditMoment: entry.definition == null
+              ? null
+              : () {
+                  Navigator.of(sheetContext).pop();
 
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => MomentFormScreen(initialMoment: moment),
-              ),
-            );
-          },
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          MomentFormScreen(initialMoment: entry.definition),
+                    ),
+                  );
+                },
           onAddMemory:
-              moment.status == MomentStatus.completed &&
+              instance.status == MomentInstanceStatus.completed &&
                   memory == null &&
                   _familyContext!.isAdult
               ? () {
                   Navigator.of(sheetContext).pop();
-
-                  _openAddMemoryScreen(initialMoment: moment);
+                  _openAddMemoryScreen(
+                    initialMoment: entry.definitionOrSnapshot,
+                    initialInstance: instance,
+                  );
                 }
               : null,
           onViewMemory: memory == null
               ? null
               : () {
                   Navigator.of(sheetContext).pop();
-
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => MemoryDetailsScreen(memory: memory!),
@@ -607,8 +626,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
           onEditMemory: memory != null && _familyContext!.isAdult
               ? () {
                   Navigator.of(sheetContext).pop();
-
-                  _openAddMemoryScreen(initialMoment: moment);
+                  _openAddMemoryScreen(
+                    initialMoment: entry.definitionOrSnapshot,
+                    initialInstance: instance,
+                  );
                 }
               : null,
         );
@@ -616,31 +637,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  bool _canStartMomentNow({
-    required FamilyMoment moment,
-    required MomentInstance? activeInstance,
-  }) {
+  bool _canStartEntryNow(
+    CalendarInstanceEntry entry,
+    MomentInstance? activeInstance,
+  ) {
     if (!_familyContext!.isAdult ||
         activeInstance != null ||
         _isStartingMoment) {
       return false;
     }
 
-    if (moment.status == MomentStatus.cancelled ||
-        moment.status == MomentStatus.completed ||
-        moment.status == MomentStatus.missed) {
+    final instance = entry.instance;
+    final isPlanned =
+        instance.status == MomentInstanceStatus.proposed ||
+        instance.status == MomentInstanceStatus.scheduled ||
+        instance.status == MomentInstanceStatus.inviting;
+
+    if (!isPlanned || instance.expectedParticipantIds.length < 2) {
       return false;
     }
 
-    if (moment.expectedParticipantIds.length < 2) {
-      return false;
-    }
-
-    return moment.category != MomentCategory.responsibility &&
-        moment.category != MomentCategory.memory;
+    return instance.categorySnapshot == MomentCategory.tradition ||
+        instance.categorySnapshot == MomentCategory.familyTime;
   }
 
-  Future<void> _startMomentNow(FamilyMoment moment) async {
+  Future<void> _startMomentNow(CalendarInstanceEntry entry) async {
     if (_isStartingMoment) {
       return;
     }
@@ -651,9 +672,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
         return AlertDialog(
           title: const Text('Start this Moment now?'),
           content: Text(
-            '“${moment.title}” will become live. '
-            'You will be checked in automatically, '
-            'and the shared timer will begin.',
+            '“${entry.instance.titleSnapshot}” will become live. '
+            'You will be checked in automatically, and the shared timer will begin.',
           ),
           actions: [
             TextButton(
@@ -685,13 +705,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     try {
       final instance = await AppDependencies.momentInstanceRepository
           .startMomentNow(
-            moment: moment,
+            moment: entry.definitionOrSnapshot,
             startedBy: _familyContext!.userId,
             source: MomentInstanceSource.calendar,
+            existingInstanceId: entry.instance.id,
           );
 
       if (!mounted) return;
-
       await _openLiveMoment(instance);
     } catch (error) {
       if (!mounted) return;
@@ -714,37 +734,79 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  Future<void> _openLiveMoment(MomentInstance instance) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => LiveMomentScreen(
-          familyId: instance.familyId,
-          instanceId: instance.id,
-        ),
-      ),
-    );
-  }
+  Future<void> _performInsightAction({
+    required FamilyInsightItem insight,
+    required FamilyInsightReport report,
+  }) async {
+    switch (insight.actionType) {
+      case FamilyInsightActionType.joinActiveMoment:
+        final active = insight.relatedInstanceId == null
+            ? report.snapshot.activeInstance
+            : report.snapshot.instanceById(insight.relatedInstanceId!);
 
-  Future<void> _openAddMemoryScreen({FamilyMoment? initialMoment}) async {
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => AddMemoryScreen(initialMoment: initialMoment),
-      ),
-    );
+        if (active != null) {
+          await _openLiveMoment(active);
+        }
+        return;
 
-    if (saved != true || !mounted) {
-      return;
+      case FamilyInsightActionType.reviewToday:
+        await _openTodayReview();
+        return;
+
+      case FamilyInsightActionType.openReminders:
+        await _openMyRemindersPage();
+        return;
+
+      case FamilyInsightActionType.addReminder:
+        await _scheduleInsightReminder(insight);
+        return;
+
+      case FamilyInsightActionType.startMomentNow:
+        final instanceId = insight.relatedInstanceId;
+
+        if (instanceId == null) {
+          await _openMomentsPage();
+          return;
+        }
+
+        final entry = buildCalendarInstanceEntries(
+          report.snapshot,
+          includeCancelled: true,
+        ).where((item) => item.instance.id == instanceId).firstOrNull;
+
+        if (entry == null) {
+          await _openMomentsPage();
+          return;
+        }
+
+        await _startMomentNow(entry);
+        return;
+
+      case FamilyInsightActionType.scheduleMoment:
+        final momentId = insight.relatedMomentId;
+        final moment = momentId == null
+            ? null
+            : report.snapshot.momentById(momentId);
+
+        if (moment == null) {
+          await _openMomentsPage();
+          return;
+        }
+
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MomentFormScreen(initialMoment: moment),
+          ),
+        );
+        return;
+
+      case FamilyInsightActionType.manageMoments:
+        await _openMomentsPage();
+        return;
+
+      case FamilyInsightActionType.none:
+        return;
     }
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Family Memory saved.')));
-  }
-
-  Future<void> _openAllMemoriesScreen() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const AllMemoriesScreen()));
   }
 
   Future<void> _scheduleInsightReminder(FamilyInsightItem insight) async {
@@ -757,7 +819,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return;
     }
 
-    final recommendedTime = insight.recommendedReminderAt;
+    final recommendedTime = insight.recommendedActionAt;
 
     if (recommendedTime == null) {
       if (!mounted) return;
@@ -769,7 +831,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ),
       );
-
       return;
     }
 
@@ -837,5 +898,86 @@ class _CalendarScreenState extends State<CalendarScreen> {
         });
       }
     }
+  }
+
+  Future<void> _openTodayReview() async {
+    final saved = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const TodayReviewScreen()));
+
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Today Review saved.')));
+    }
+  }
+
+  Future<void> _openMomentsPage() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const MomentsScreen()));
+  }
+
+  Future<void> _openMyRemindersPage() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const MyRemindersScreen()));
+  }
+
+  Future<void> _openLiveMoment(MomentInstance instance) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LiveMomentScreen(
+          familyId: instance.familyId,
+          instanceId: instance.id,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openSessionSummary(MomentInstance instance) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MomentSessionSummaryScreen(
+          familyId: instance.familyId,
+          instanceId: instance.id,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAddMemoryScreen({
+    FamilyMoment? initialMoment,
+    MomentInstance? initialInstance,
+  }) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AddMemoryScreen(
+          initialMoment: initialMoment,
+          initialInstance: initialInstance,
+        ),
+      ),
+    );
+
+    if (saved != true || !mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Family Memory saved.')));
+  }
+
+  Future<void> _openAllMemoriesScreen() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AllMemoriesScreen()));
+  }
+}
+
+extension _FirstOrNullExtension<T> on Iterable<T> {
+  T? get firstOrNull {
+    final iterator = this.iterator;
+    return iterator.moveNext() ? iterator.current : null;
   }
 }

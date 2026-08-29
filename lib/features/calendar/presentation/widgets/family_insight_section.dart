@@ -11,25 +11,20 @@ import 'family_insight_notice_card.dart';
 class FamilyInsightSection extends StatelessWidget {
   const FamilyInsightSection({
     required this.report,
-    required this.onAddReminder,
-    required this.onOpenReminders,
-    required this.onManageMoments,
+    required this.onPerformAction,
     super.key,
   });
 
   final FamilyInsightReport report;
 
-  final Future<void> Function(FamilyInsightItem insight) onAddReminder;
-
-  final VoidCallback onOpenReminders;
-  final VoidCallback onManageMoments;
+  final Future<void> Function(FamilyInsightItem insight) onPerformAction;
 
   @override
   Widget build(BuildContext context) {
     final insight = report.primaryInsight;
 
     if (insight == null) {
-      return _NoFamilyInsightCard(onManageMoments: onManageMoments);
+      return const _NoFamilyInsightCard();
     }
 
     return FamilyInsightNoticeCard(
@@ -44,45 +39,18 @@ class FamilyInsightSection extends StatelessWidget {
     BuildContext context,
     FamilyInsightItem insight,
   ) async {
-    final hasExistingReminder = insight.relatedReminderId != null;
-
-    final canAddReminder =
-        !hasExistingReminder && insight.recommendedReminderAt != null;
-
-    final String primaryActionLabel;
-
-    if (hasExistingReminder ||
-        insight.kind == FamilyInsightKind.overdueReminder) {
-      primaryActionLabel = 'Open My Reminders';
-    } else if (canAddReminder) {
-      primaryActionLabel = 'Add Reminder';
-    } else {
-      primaryActionLabel = 'Manage Moments';
-    }
-
     await showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
         return FamilyInsightDialog(
           insight: insight,
-          primaryActionLabel: primaryActionLabel,
-          onPrimaryAction: () {
-            Navigator.of(dialogContext).pop();
-
-            if (hasExistingReminder ||
-                insight.kind == FamilyInsightKind.overdueReminder) {
-              onOpenReminders();
-              return;
-            }
-
-            if (canAddReminder) {
-              unawaited(onAddReminder(insight));
-              return;
-            }
-
-            onManageMoments();
-          },
+          onPrimaryAction: insight.actionType == FamilyInsightActionType.none
+              ? null
+              : () {
+                  Navigator.of(dialogContext).pop();
+                  unawaited(onPerformAction(insight));
+                },
         );
       },
     );
@@ -90,9 +58,7 @@ class FamilyInsightSection extends StatelessWidget {
 }
 
 class _NoFamilyInsightCard extends StatelessWidget {
-  const _NoFamilyInsightCard({required this.onManageMoments});
-
-  final VoidCallback onManageMoments;
+  const _NoFamilyInsightCard();
 
   @override
   Widget build(BuildContext context) {
@@ -115,17 +81,12 @@ class _NoFamilyInsightCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Sakan will surface an overdue reminder, '
-            'upcoming milestone, care need, or drifting '
-            'rhythm when the stored data supports it.',
+            'Sakan will surface a live session, unresolved occurrence, '
+            'overdue reminder, milestone, or drifting rhythm when the '
+            'recorded data supports it.',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: CalendarPalette.inkSoft),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          OutlinedButton(
-            onPressed: onManageMoments,
-            child: const Text('Manage Moments'),
           ),
         ],
       ),
