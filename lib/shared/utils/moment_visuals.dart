@@ -116,8 +116,6 @@ String evidenceTypeLabel(EvidenceType evidenceType) {
 
     EvidenceType.photoAttached => 'Photo or memory',
 
-    EvidenceType.hubVerified => 'Sakan Hub check-in/out',
-
     EvidenceType.manual => 'Manual confirmation',
   };
 }

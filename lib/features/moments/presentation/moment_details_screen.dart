@@ -528,7 +528,6 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
       EvidenceType.scheduledOnly => 'Scheduled occurrence',
       EvidenceType.userConfirmed => 'Member confirmation',
       EvidenceType.photoAttached => 'Memory or photo evidence',
-      EvidenceType.hubVerified => 'Device-assisted verification',
       EvidenceType.manual => 'Manual check-in',
     };
   }

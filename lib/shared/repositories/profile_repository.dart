@@ -1,5 +1,4 @@
 import 'package:sakan/shared/models/family.dart';
-import 'package:sakan/shared/models/hub.dart';
 import 'package:sakan/shared/models/member.dart';
 import 'package:sakan/shared/models/model_enums.dart' as models;
 
@@ -87,16 +86,5 @@ abstract interface class ProfileRepository {
   Future<void> updateFamilyName({
     required String familyId,
     required String familyName,
-  });
-
-  Stream<List<Hub>> watchHubs(String familyId);
-
-  Future<void> saveHub(Hub hub);
-
-  Future<void> removeHub({required String familyId, required String hubId});
-
-  Future<void> updateManualCheckIn({
-    required String familyId,
-    required bool enabled,
   });
 }

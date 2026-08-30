@@ -23,13 +23,7 @@ enum MomentCategory {
   memory,
 }
 
-enum EvidenceType {
-  scheduledOnly,
-  userConfirmed,
-  photoAttached,
-  hubVerified,
-  manual,
-}
+enum EvidenceType { scheduledOnly, userConfirmed, photoAttached, manual }
 
 enum MomentStatus { scheduled, active, completed, cancelled, missed }
 
