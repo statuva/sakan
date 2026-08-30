@@ -102,16 +102,11 @@ class _TwinMomentSheet extends StatelessWidget {
       );
 
     final completed = orderedInstances
-        .where(
-          (instance) =>
-              instance.status == MomentInstanceStatus.completed,
-        )
+        .where((instance) => instance.status == MomentInstanceStatus.completed)
         .toList(growable: false);
 
     final missedCount = orderedInstances
-        .where(
-          (instance) => instance.status == MomentInstanceStatus.missed,
-        )
+        .where((instance) => instance.status == MomentInstanceStatus.missed)
         .length;
 
     final latestCompleted = completed.isEmpty ? null : completed.first;
@@ -129,14 +124,14 @@ class _TwinMomentSheet extends StatelessWidget {
 
     final membersById = report.snapshot.membersById;
 
-    final participants = moment.expectedParticipantIds
-        .map((id) => membersById[id])
-        .whereType<Member>()
-        .toList()
-      ..sort(
-        (first, second) =>
-            first.displayName.compareTo(second.displayName),
-      );
+    final participants =
+        moment.expectedParticipantIds
+            .map((id) => membersById[id])
+            .whereType<Member>()
+            .toList()
+          ..sort(
+            (first, second) => first.displayName.compareTo(second.displayName),
+          );
 
     return _SheetSurface(
       title: moment.title,
@@ -161,30 +156,27 @@ class _TwinMomentSheet extends StatelessWidget {
               _CategoryChip(visual: categoryVisual),
               _NeutralChip(
                 label: twinFrequencyLabel(
-                  rhythm?.expectedIntervalDays ??
-                      moment.expectedIntervalDays,
+                  rhythm?.expectedIntervalDays ?? moment.expectedIntervalDays,
                 ),
               ),
-              _NeutralChip(
-                label: twinConfidenceLabel(confidence),
-              ),
+              _NeutralChip(label: twinConfidenceLabel(confidence)),
             ],
           ),
           const SizedBox(height: AppSpacing.xl),
           Text(
             'Participants',
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: CalendarPalette.inkSoft,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: CalendarPalette.inkSoft,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (participants.isEmpty)
             Text(
               'No active family members are currently linked to this Moment.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: CalendarPalette.inkSoft,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: CalendarPalette.inkSoft),
             )
           else
             Wrap(
@@ -203,9 +195,7 @@ class _TwinMomentSheet extends StatelessWidget {
                   .toList(),
             ),
           const SizedBox(height: AppSpacing.xl),
-          _InterpretationPanel(
-            interpretation: interpretation,
-          ),
+          _InterpretationPanel(interpretation: interpretation),
           const SizedBox(height: AppSpacing.lg),
           _EvidenceExpansion(
             moment: moment,
@@ -221,9 +211,7 @@ class _TwinMomentSheet extends StatelessWidget {
     );
   }
 
-  MomentInstance? _nextOpenInstance(
-    List<MomentInstance> instances,
-  ) {
+  MomentInstance? _nextOpenInstance(List<MomentInstance> instances) {
     final open = instances.where((instance) => instance.isOpen).toList()
       ..sort(
         (first, second) =>
@@ -235,9 +223,7 @@ class _TwinMomentSheet extends StatelessWidget {
 }
 
 class _InterpretationPanel extends StatelessWidget {
-  const _InterpretationPanel({
-    required this.interpretation,
-  });
+  const _InterpretationPanel({required this.interpretation});
 
   final MomentTwinInterpretation interpretation;
 
@@ -270,9 +256,9 @@ class _InterpretationPanel extends StatelessWidget {
                 child: Text(
                   'What this means for your family',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: CalendarPalette.forestDark,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: CalendarPalette.forestDark,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
@@ -281,9 +267,9 @@ class _InterpretationPanel extends StatelessWidget {
           Text(
             interpretation.summary,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: CalendarPalette.ink,
-                  height: 1.5,
-                ),
+              color: CalendarPalette.ink,
+              height: 1.5,
+            ),
           ),
           if (interpretation.themes.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
@@ -303,11 +289,10 @@ class _InterpretationPanel extends StatelessWidget {
                       ),
                       child: Text(
                         theme,
-                        style:
-                            Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: CalendarPalette.forestDark,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: CalendarPalette.forestDark,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   )
@@ -317,9 +302,9 @@ class _InterpretationPanel extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           Text(
             '$sourceLabel · grounded in recorded Moment data',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: CalendarPalette.inkSoft,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: CalendarPalette.inkSoft),
           ),
         ],
       ),
@@ -358,9 +343,7 @@ class _EvidenceExpansion extends StatelessWidget {
         border: Border.all(color: CalendarPalette.border),
       ),
       child: Theme(
-        data: Theme.of(context).copyWith(
-          dividerColor: Colors.transparent,
-        ),
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.lg,
@@ -379,31 +362,24 @@ class _EvidenceExpansion extends StatelessWidget {
           title: Text(
             'How Sakan knows this',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: CalendarPalette.ink,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: CalendarPalette.ink,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           subtitle: Text(
             'Open the recorded facts and recent history.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: CalendarPalette.inkSoft,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: CalendarPalette.inkSoft),
           ),
           children: [
-            _FactLine(
-              label: 'Confirmed sessions',
-              value: '$completedCount',
-            ),
+            _FactLine(label: 'Confirmed sessions', value: '$completedCount'),
             if (missedCount > 0)
-              _FactLine(
-                label: 'Missed occurrences',
-                value: '$missedCount',
-              ),
+              _FactLine(label: 'Missed occurrences', value: '$missedCount'),
             _FactLine(
               label: 'Usual rhythm',
               value: twinFrequencyLabel(
-                rhythm?.expectedIntervalDays ??
-                    moment.expectedIntervalDays,
+                rhythm?.expectedIntervalDays ?? moment.expectedIntervalDays,
               ),
             ),
             if (rhythm?.lastOccurrenceAt != null)
@@ -431,9 +407,9 @@ class _EvidenceExpansion extends StatelessWidget {
               label: 'Next occurrence',
               value: nextOpen == null
                   ? 'No open occurrence scheduled'
-                  : DateFormat('EEE, d MMM y · h:mm a').format(
-                      nextOpen!.scheduledStartAt.toLocal(),
-                    ),
+                  : DateFormat(
+                      'EEE, d MMM y · h:mm a',
+                    ).format(nextOpen!.scheduledStartAt.toLocal()),
               showDivider: false,
             ),
             if (latestCompleted != null) ...[
@@ -441,14 +417,12 @@ class _EvidenceExpansion extends StatelessWidget {
               Text(
                 'Latest recorded evidence',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: CalendarPalette.ink,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  color: CalendarPalette.ink,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              ..._evidenceLabels(
-                latestCompleted!.evidenceSignals,
-              ).map(
+              ..._evidenceLabels(latestCompleted!.evidenceSignals).map(
                 (label) => Padding(
                   padding: const EdgeInsets.only(bottom: 7),
                   child: Row(
@@ -476,16 +450,14 @@ class _EvidenceExpansion extends StatelessWidget {
               Text(
                 'Recent history',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: CalendarPalette.ink,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  color: CalendarPalette.ink,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              ...instances.take(4).map(
-                    (instance) => _OccurrenceLine(
-                      instance: instance,
-                    ),
-                  ),
+              ...instances
+                  .take(4)
+                  .map((instance) => _OccurrenceLine(instance: instance)),
             ],
           ],
         ),
@@ -527,10 +499,7 @@ class _EvidenceExpansion extends StatelessWidget {
 
   String? _averageDurationText() {
     final durations = instances
-        .where(
-          (instance) =>
-              instance.status == MomentInstanceStatus.completed,
-        )
+        .where((instance) => instance.status == MomentInstanceStatus.completed)
         .map((instance) => instance.actualDurationMinutes)
         .whereType<int>()
         .toList(growable: false);
@@ -539,19 +508,14 @@ class _EvidenceExpansion extends StatelessWidget {
       return null;
     }
 
-    final total = durations.fold<int>(
-      0,
-      (sum, value) => sum + value,
-    );
+    final total = durations.fold<int>(0, (sum, value) => sum + value);
 
     return '${(total / durations.length).round()} min';
   }
 }
 
 class _OccurrenceLine extends StatelessWidget {
-  const _OccurrenceLine({
-    required this.instance,
-  });
+  const _OccurrenceLine({required this.instance});
 
   final MomentInstance instance;
 
@@ -560,9 +524,7 @@ class _OccurrenceLine extends StatelessWidget {
     final visual = _instanceVisual(instance.status);
 
     final details = <String>[
-      DateFormat('d MMM y').format(
-        instance.effectiveStartAt.toLocal(),
-      ),
+      DateFormat('d MMM y').format(instance.effectiveStartAt.toLocal()),
       if (instance.actualDurationMinutes != null)
         '${instance.actualDurationMinutes} min',
       if (instance.allRecordedParticipantIds.isNotEmpty)
@@ -596,9 +558,9 @@ class _OccurrenceLine extends StatelessWidget {
           Text(
             visual.label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: visual.color,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: visual.color,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -621,29 +583,27 @@ class _TwinMemberSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final snapshot = report.snapshot;
 
-    final connectedMoments = snapshot.moments
-        .where(
-          (moment) => moment.expectedParticipantIds.contains(member.id),
-        )
-        .toList()
-      ..sort((first, second) {
-        if (first.type != second.type) {
-          return first.type == MomentType.recurring ? -1 : 1;
-        }
+    final connectedMoments =
+        snapshot.moments
+            .where(
+              (moment) => moment.expectedParticipantIds.contains(member.id),
+            )
+            .toList()
+          ..sort((first, second) {
+            if (first.type != second.type) {
+              return first.type == MomentType.recurring ? -1 : 1;
+            }
 
-        return first.title.compareTo(second.title);
-      });
+            return first.title.compareTo(second.title);
+          });
 
-    final joinedSessions = snapshot.completedInstances.where(
-      (instance) {
-        return instance.allRecordedParticipantIds.contains(member.id);
-      },
-    ).length;
+    final joinedSessions = snapshot.completedInstances.where((instance) {
+      return instance.allRecordedParticipantIds.contains(member.id);
+    }).length;
 
     final upcoming = snapshot.upcomingInstances
         .where(
-          (instance) =>
-              instance.expectedParticipantIds.contains(member.id),
+          (instance) => instance.expectedParticipantIds.contains(member.id),
         )
         .length;
 
@@ -663,9 +623,7 @@ class _TwinMemberSheet extends StatelessWidget {
             runSpacing: AppSpacing.xs,
             children: [
               _NeutralChip(label: _roleLabel(member.role)),
-              _NeutralChip(
-                label: _relationshipLabel(member.relationship),
-              ),
+              _NeutralChip(label: _relationshipLabel(member.relationship)),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -697,17 +655,17 @@ class _TwinMemberSheet extends StatelessWidget {
           Text(
             'Connected Moments',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: CalendarPalette.ink,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: CalendarPalette.ink,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: AppSpacing.sm),
           if (connectedMoments.isEmpty)
             Text(
               'This member is not connected to a recorded Family Moment yet.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: CalendarPalette.inkSoft,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: CalendarPalette.inkSoft),
             )
           else
             ...connectedMoments.map((moment) {
@@ -738,20 +696,18 @@ class _TwinMemberSheet extends StatelessWidget {
                     Expanded(
                       child: Text(
                         moment.title,
-                        style:
-                            Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     if (moment.type == MomentType.recurring)
                       Text(
                         visual.label,
-                        style:
-                            Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: visual.color,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: visual.color,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                   ],
                 ),
@@ -762,9 +718,9 @@ class _TwinMemberSheet extends StatelessWidget {
             'This view reports recorded participation only. '
             'It does not score or judge an individual family member.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: CalendarPalette.inkSoft,
-                  height: 1.4,
-                ),
+              color: CalendarPalette.inkSoft,
+              height: 1.4,
+            ),
           ),
         ],
       ),
@@ -773,10 +729,7 @@ class _TwinMemberSheet extends StatelessWidget {
 }
 
 class _SheetSurface extends StatelessWidget {
-  const _SheetSurface({
-    required this.title,
-    required this.child,
-  });
+  const _SheetSurface({required this.title, required this.child});
 
   final String title;
   final Widget child;
@@ -785,9 +738,7 @@ class _SheetSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: CalendarPalette.background,
-      borderRadius: const BorderRadius.vertical(
-        top: Radius.circular(26),
-      ),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
@@ -814,9 +765,9 @@ class _SheetSurface extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: CalendarPalette.ink,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  color: CalendarPalette.ink,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -842,10 +793,7 @@ class _LabelChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 6,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(999),
@@ -853,28 +801,23 @@ class _LabelChip extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
 }
 
 class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({
-    required this.visual,
-  });
+  const _CategoryChip({required this.visual});
 
   final TwinCategoryVisual visual;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 6,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: visual.background,
         borderRadius: BorderRadius.circular(999),
@@ -882,18 +825,14 @@ class _CategoryChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            visual.icon,
-            size: 14,
-            color: visual.color,
-          ),
+          Icon(visual.icon, size: 14, color: visual.color),
           const SizedBox(width: 5),
           Text(
             visual.label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: visual.color,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: visual.color,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -902,19 +841,14 @@ class _CategoryChip extends StatelessWidget {
 }
 
 class _NeutralChip extends StatelessWidget {
-  const _NeutralChip({
-    required this.label,
-  });
+  const _NeutralChip({required this.label});
 
   final String label;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 6,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: CalendarPalette.surfaceSoft,
         borderRadius: BorderRadius.circular(999),
@@ -922,9 +856,9 @@ class _NeutralChip extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: CalendarPalette.inkSoft,
-              fontWeight: FontWeight.w600,
-            ),
+          color: CalendarPalette.inkSoft,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -954,8 +888,8 @@ class _FactLine extends StatelessWidget {
                 child: Text(
                   label,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: CalendarPalette.inkSoft,
-                      ),
+                    color: CalendarPalette.inkSoft,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -964,9 +898,9 @@ class _FactLine extends StatelessWidget {
                   value,
                   textAlign: TextAlign.end,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: CalendarPalette.ink,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    color: CalendarPalette.ink,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -979,47 +913,42 @@ class _FactLine extends StatelessWidget {
   }
 }
 
-TwinStatusVisual _instanceVisual(
-  MomentInstanceStatus status,
-) {
+TwinStatusVisual _instanceVisual(MomentInstanceStatus status) {
   return switch (status) {
     MomentInstanceStatus.completed => const TwinStatusVisual(
-        label: 'Completed',
-        color: CalendarPalette.stable,
-        background: CalendarPalette.stableSoft,
-      ),
+      label: 'Completed',
+      color: CalendarPalette.stable,
+      background: CalendarPalette.stableSoft,
+    ),
     MomentInstanceStatus.missed => const TwinStatusVisual(
-        label: 'Missed',
-        color: CalendarPalette.missed,
-        background: CalendarPalette.missedSoft,
-      ),
+      label: 'Missed',
+      color: CalendarPalette.missed,
+      background: CalendarPalette.missedSoft,
+    ),
     MomentInstanceStatus.active => const TwinStatusVisual(
-        label: 'Active',
-        color: CalendarPalette.strengthening,
-        background: CalendarPalette.strengtheningSoft,
-      ),
+      label: 'Active',
+      color: CalendarPalette.strengthening,
+      background: CalendarPalette.strengtheningSoft,
+    ),
     MomentInstanceStatus.cancelled => const TwinStatusVisual(
-        label: 'Cancelled',
-        color: CalendarPalette.slate,
-        background: CalendarPalette.slateSoft,
-      ),
+      label: 'Cancelled',
+      color: CalendarPalette.slate,
+      background: CalendarPalette.slateSoft,
+    ),
     _ => const TwinStatusVisual(
-        label: 'Scheduled',
-        color: CalendarPalette.upcoming,
-        background: CalendarPalette.upcomingSoft,
-      ),
+      label: 'Scheduled',
+      color: CalendarPalette.upcoming,
+      background: CalendarPalette.upcomingSoft,
+    ),
   };
 }
 
-List<String> _evidenceLabels(
-  List<MomentEvidenceSignal> signals,
-) {
+List<String> _evidenceLabels(List<MomentEvidenceSignal> signals) {
   final labels = <String>[];
 
   for (final signal in signals) {
     final label = switch (signal) {
-      MomentEvidenceSignal.scheduled =>
-        'A scheduled occurrence was recorded',
+      MomentEvidenceSignal.scheduled => 'A scheduled occurrence was recorded',
       MomentEvidenceSignal.hostStarted =>
         'A family member started the session in Sakan',
       MomentEvidenceSignal.manualCheckIn =>
@@ -1030,12 +959,10 @@ List<String> _evidenceLabels(
         'The session duration was recorded',
       MomentEvidenceSignal.bluetoothNearby =>
         'Optional Bluetooth nearby evidence was recorded',
-      MomentEvidenceSignal.qrCheckIn =>
-        'A QR check-in was recorded',
+      MomentEvidenceSignal.qrCheckIn => 'A QR check-in was recorded',
       MomentEvidenceSignal.todayReview =>
         'The outcome was confirmed through Today Review',
-      MomentEvidenceSignal.familyNote =>
-        'A family note was added',
+      MomentEvidenceSignal.familyNote => 'A family note was added',
       MomentEvidenceSignal.memoryCreated =>
         'A Memory was linked to the occurrence',
     };
@@ -1056,9 +983,7 @@ String _roleLabel(FamilyRole role) {
   };
 }
 
-String _relationshipLabel(
-  FamilyRelationship relationship,
-) {
+String _relationshipLabel(FamilyRelationship relationship) {
   return switch (relationship) {
     FamilyRelationship.parent => 'Parent',
     FamilyRelationship.child => 'Child',

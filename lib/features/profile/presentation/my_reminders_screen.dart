@@ -12,6 +12,8 @@ import '../../../shared/widgets/cards/app_card.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 import 'reminder_form_screen.dart';
+import '../../../shared/widgets/content/app_page_intro.dart';
+import '../../../shared/widgets/controls/app_pill_segmented_control.dart';
 
 enum _ReminderView { pending, completed }
 
@@ -360,25 +362,11 @@ class _MyRemindersScreenState extends State<MyRemindersScreen> {
                       const SizedBox(width: AppSpacing.md),
 
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Your personal '
-                              'to-do list',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-
-                            const SizedBox(height: 5),
-
-                            Text(
-                              'Manual reminders and '
-                              'suggestions you approve '
-                              'from Calendar or the '
-                              'Digital Twin appear here.',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
+                        child: const AppPageIntro(
+                          title: 'Your personal to-do list',
+                          description:
+                              'Keep manual reminders and Sakan suggestions you '
+                              'approve in one place.',
                         ),
                       ),
                     ],
@@ -387,26 +375,22 @@ class _MyRemindersScreenState extends State<MyRemindersScreen> {
 
                 const SizedBox(height: AppSpacing.lg),
 
-                SegmentedButton<_ReminderView>(
+                AppPillSegmentedControl<_ReminderView>(
                   segments: [
-                    ButtonSegment<_ReminderView>(
+                    AppPillSegment(
                       value: _ReminderView.pending,
-                      icon: const Icon(Icons.radio_button_unchecked),
-                      label: Text('Pending ($pendingCount)'),
+                      label: 'Pending ($pendingCount)',
                     ),
-                    ButtonSegment<_ReminderView>(
+                    AppPillSegment(
                       value: _ReminderView.completed,
-                      icon: const Icon(Icons.check_circle_outline),
-                      label: Text(
-                        'Completed '
-                        '($completedCount)',
-                      ),
+                      label: 'Completed ($completedCount)',
                     ),
                   ],
-                  selected: {_view},
-                  onSelectionChanged: (selection) {
+                  selectedValue: _view,
+                  enabled: !_isUpdating,
+                  onChanged: (value) {
                     setState(() {
-                      _view = selection.first;
+                      _view = value;
                     });
                   },
                 ),

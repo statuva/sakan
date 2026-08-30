@@ -196,8 +196,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }) {
     final familyContext = _familyContext!;
     final activeInstance = report.snapshot.activeInstance;
-    final bestAvailability = report.bestSharedWindow;
-    final latestMemory = report.snapshot.latestMemory;
+    final memories = List<FamilyMemory>.from(report.snapshot.memories)
+      ..sort((first, second) => second.occurredAt.compareTo(first.occurredAt));
 
     return Scaffold(
       backgroundColor: CalendarPalette.background,
@@ -346,32 +346,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
               const SizedBox(height: AppSpacing.sm),
 
               CalendarSupportCards(
-                availability: bestAvailability,
-                memory: latestMemory,
-                onAvailabilityTap: bestAvailability == null
-                    ? null
-                    : () {
-                        setState(() {
-                          _viewMode = CalendarViewMode.week;
-                          _focusedDay = bestAvailability.date;
-                          _selectedDay = bestAvailability.date;
-                        });
-                      },
-                onMemoryTap: latestMemory == null
-                    ? null
-                    : () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                MemoryDetailsScreen(memory: latestMemory),
-                          ),
-                        );
-                      },
-                onAddMemoryTap: familyContext.isAdult
-                    ? () {
-                        _openAddMemoryScreen();
-                      }
-                    : null,
+                memories: memories,
+                onMemoryTap: (memory) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => MemoryDetailsScreen(memory: memory),
+                    ),
+                  );
+                },
                 onAllMemoriesTap: _openAllMemoriesScreen,
               ),
             ],
