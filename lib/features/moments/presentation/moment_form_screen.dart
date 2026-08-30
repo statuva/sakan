@@ -10,6 +10,7 @@ import 'package:sakan/shared/widgets/buttons/app_primary_button.dart';
 import 'package:sakan/shared/widgets/cards/app_card.dart';
 import 'package:sakan/shared/widgets/feedback/app_error_state.dart';
 import 'package:sakan/shared/widgets/feedback/app_loading_state.dart';
+import 'package:sakan/shared/widgets/controls/app_pill_segmented_control.dart';
 
 class MomentFormScreen extends StatefulWidget {
   const MomentFormScreen({this.initialMoment, super.key});
@@ -461,27 +462,24 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
                 const SizedBox(height: AppSpacing.lg),
 
-                SegmentedButton<MomentType>(
+                AppPillSegmentedControl<MomentType>(
                   segments: const [
-                    ButtonSegment(
+                    AppPillSegment(
                       value: MomentType.recurring,
-                      icon: Icon(Icons.repeat_rounded),
-                      label: Text('Recurring'),
+                      label: 'Recurring',
                     ),
-                    ButtonSegment(
+                    AppPillSegment(
                       value: MomentType.singular,
-                      icon: Icon(Icons.event_outlined),
-                      label: Text('One-time'),
+                      label: 'One-time',
                     ),
                   ],
-                  selected: {_type},
-                  onSelectionChanged: _isSaving
-                      ? null
-                      : (selection) {
-                          setState(() {
-                            _type = selection.first;
-                          });
-                        },
+                  selectedValue: _type,
+                  enabled: !_isSaving,
+                  onChanged: (value) {
+                    setState(() {
+                      _type = value;
+                    });
+                  },
                 ),
 
                 const SizedBox(height: AppSpacing.lg),

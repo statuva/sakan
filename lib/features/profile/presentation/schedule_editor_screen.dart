@@ -10,6 +10,8 @@ import 'package:sakan/shared/models/schedule_block.dart';
 import 'package:sakan/shared/widgets/cards/app_card.dart';
 import 'package:sakan/shared/widgets/feedback/app_error_state.dart';
 import 'package:sakan/shared/widgets/feedback/app_loading_state.dart';
+import 'package:sakan/shared/widgets/content/app_page_intro.dart';
+import 'package:sakan/shared/widgets/controls/app_pill_segmented_control.dart';
 
 enum _ScheduleEntryType { oneTime, weekly }
 
@@ -485,44 +487,14 @@ class _ScheduleEditorScreenState extends State<ScheduleEditorScreen> {
                 120,
               ),
               children: [
-                AppCard(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.event_busy_outlined,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Connected to Calendar',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'One-time appointments '
-                              'and weekly routines '
-                              'help Sakan find better '
-                              'shared family times.',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Other family members '
-                              'can see only that you '
-                              'are busy—not the '
-                              'private label.',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                const AppPageIntro(
+                  title: 'How your schedule is used',
+                  description:
+                      'Add the times you are unavailable so Sakan can find '
+                      'better shared family windows.',
+                  secondaryText:
+                      'Other members see only when you are busy—not your '
+                      'private label.',
                 ),
 
                 const SizedBox(height: AppSpacing.xl),
@@ -877,28 +849,25 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SegmentedButton<_ScheduleEntryType>(
+                AppPillSegmentedControl<_ScheduleEntryType>(
                   segments: const [
-                    ButtonSegment<_ScheduleEntryType>(
+                    AppPillSegment(
                       value: _ScheduleEntryType.oneTime,
-                      icon: Icon(Icons.event_outlined),
-                      label: Text('One-time'),
+                      label: 'One-time',
                     ),
-                    ButtonSegment<_ScheduleEntryType>(
+                    AppPillSegment(
                       value: _ScheduleEntryType.weekly,
-                      icon: Icon(Icons.repeat_rounded),
-                      label: Text('Weekly'),
+                      label: 'Weekly',
                     ),
                   ],
-                  selected: <_ScheduleEntryType>{_type},
-                  onSelectionChanged: (selection) {
+                  selectedValue: _type,
+                  onChanged: (value) {
                     setState(() {
-                      _type = selection.first;
+                      _type = value;
                       _scheduleError = null;
                     });
                   },
                 ),
-
                 const SizedBox(height: AppSpacing.lg),
 
                 TextFormField(

@@ -109,10 +109,9 @@ class FamilyInsightNoticeCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           SizedBox(
             width: double.infinity,
-            child: FilledButton.icon(
+            child: FilledButton(
               onPressed: onOpen,
-              icon: Icon(_actionIcon()),
-              label: const Text('View Recommendation'),
+              child: const Text('View Recommendation'),
             ),
           ),
         ],
@@ -143,20 +142,6 @@ class FamilyInsightNoticeCard extends StatelessWidget {
       FamilyInsightKind.sharedMomentOpportunity => Icons.groups_2_outlined,
       FamilyInsightKind.driftingRhythm => Icons.trending_down_rounded,
       FamilyInsightKind.upcomingMoment => Icons.event_outlined,
-    };
-  }
-
-  IconData _actionIcon() {
-    return switch (insight.actionType) {
-      FamilyInsightActionType.joinActiveMoment => Icons.login_rounded,
-      FamilyInsightActionType.reviewToday => Icons.fact_check_outlined,
-      FamilyInsightActionType.openReminders => Icons.checklist_rounded,
-      FamilyInsightActionType.addReminder => Icons.add_alert_outlined,
-      FamilyInsightActionType.startMomentNow => Icons.play_arrow_rounded,
-      FamilyInsightActionType.scheduleMoment => Icons.event_available_outlined,
-      FamilyInsightActionType.manageMoments =>
-        Icons.auto_awesome_motion_outlined,
-      FamilyInsightActionType.none => Icons.auto_awesome_outlined,
     };
   }
 
