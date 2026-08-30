@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:sakan/shared/models/family.dart';
-import 'package:sakan/shared/models/hub.dart';
 import "package:sakan/shared/models/member.dart";
 import "package:sakan/shared/models/model_enums.dart" as models;
 import 'package:sakan/shared/models/notification_preferences.dart';
@@ -304,51 +303,6 @@ class FirebaseProfileRepository implements ProfileRepository {
 
     return _firestore.collection('families').doc(familyId).update({
       'name': cleanFamilyName,
-      'updatedAt': Timestamp.now(),
-    });
-  }
-
-  @override
-  Stream<List<Hub>> watchHubs(String familyId) {
-    return _firestore
-        .collection('families')
-        .doc(familyId)
-        .collection('hubs')
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs
-              .map((document) => Hub.fromMap(document.id, document.data()))
-              .toList();
-        });
-  }
-
-  @override
-  Future<void> saveHub(Hub hub) {
-    return _firestore
-        .collection('families')
-        .doc(hub.familyId)
-        .collection('hubs')
-        .doc(hub.id)
-        .set(hub.toMap());
-  }
-
-  @override
-  Future<void> removeHub({required String familyId, required String hubId}) {
-    return _firestore
-        .collection('families')
-        .doc(familyId)
-        .collection('hubs')
-        .doc(hubId)
-        .delete();
-  }
-
-  @override
-  Future<void> updateManualCheckIn({
-    required String familyId,
-    required bool enabled,
-  }) {
-    return _firestore.collection('families').doc(familyId).update({
-      'manualCheckInEnabled': enabled,
       'updatedAt': Timestamp.now(),
     });
   }

@@ -93,7 +93,7 @@ class DemoDataService {
 
       startAt: now.add(const Duration(days: 2)),
       expectedIntervalDays: 7,
-      evidenceType: EvidenceType.hubVerified,
+      evidenceType: EvidenceType.photoAttached,
       status: MomentStatus.scheduled,
       createdBy: 'demo_user_mom',
       createdAt: now,

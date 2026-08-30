@@ -6,7 +6,6 @@ import 'preferences_screen.dart';
 import 'privacy_settings_screen.dart';
 import 'notification_settings_screen.dart';
 import 'family_settings_screen.dart';
-import 'hub_settings_screen.dart';
 import 'schedule_editor_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sakan/shared/models/model_enums.dart';
@@ -202,19 +201,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             context,
                             MaterialPageRoute(
                               builder: (_) => const FamilySettingsScreen(),
-                            ),
-                          );
-                        },
-                      ),
-
-                      _ProfileTile(
-                        icon: Icons.nfc,
-                        title: 'Hub Settings',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const HubSettingsScreen(),
                             ),
                           );
                         },

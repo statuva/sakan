@@ -408,11 +408,6 @@ match /dailyReviews/{reviewId} {
 
         allow update, delete: if isAdultOrAdmin(familyId);
       }
-
-      match /hubs/{hubId} {
-        allow read: if isFamilyMember(familyId);
-        allow create, update, delete: if isFamilyAdmin(familyId);
-      }
     }
 
     match /{document=**} {
