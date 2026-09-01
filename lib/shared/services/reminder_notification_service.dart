@@ -75,9 +75,7 @@ class ReminderNotificationService {
       ReminderNotificationService._();
 
   static const String _channelId = 'sakan_reminders';
-
   static const String _channelName = 'Sakan Reminders';
-
   static const String _channelDescription =
       'Personal reminders created or approved in Sakan.';
 
@@ -95,7 +93,6 @@ class ReminderNotificationService {
       FlutterLocalNotificationsPlugin();
 
   ReminderNotificationTapCallback? _onReminderTap;
-
   bool _initialized = false;
 
   bool get supportsScheduling {
@@ -124,8 +121,6 @@ class ReminderNotificationService {
         timezone.getLocation(deviceTimezone.identifier),
       );
     } catch (_) {
-      // The UTC fallback still schedules the same
-      // absolute instant when dueAt is stored in UTC.
       timezone.setLocalLocation(timezone.UTC);
     }
 
@@ -151,8 +146,8 @@ class ReminderNotificationService {
 
     await androidImplementation?.createNotificationChannel(_androidChannel);
 
-    final launchDetails = await _notifications
-        .getNotificationAppLaunchDetails();
+    final launchDetails =
+        await _notifications.getNotificationAppLaunchDetails();
 
     if (launchDetails?.didNotificationLaunchApp == true &&
         launchDetails?.notificationResponse?.payload != null) {
@@ -178,15 +173,15 @@ class ReminderNotificationService {
       return false;
     }
 
-    final alreadyEnabled = await androidImplementation
-        .areNotificationsEnabled();
+    final alreadyEnabled =
+        await androidImplementation.areNotificationsEnabled();
 
     if (alreadyEnabled == true) {
       return true;
     }
 
-    final granted = await androidImplementation
-        .requestNotificationsPermission();
+    final granted =
+        await androidImplementation.requestNotificationsPermission();
 
     if (granted != null) {
       return granted;
@@ -219,7 +214,6 @@ class ReminderNotificationService {
     if (reminder.isFinished ||
         !reminder.dueAt.toLocal().isAfter(DateTime.now())) {
       await cancelReminder(reminder.id);
-
       return false;
     }
 
@@ -233,9 +227,7 @@ class ReminderNotificationService {
 
     try {
       final notificationId = notificationIdFor(reminder.id);
-
       final body = _notificationBody(reminder);
-
       final scheduledDate = timezone.TZDateTime.from(
         reminder.dueAt.toUtc(),
         timezone.local,
@@ -270,11 +262,7 @@ class ReminderNotificationService {
 
       return true;
     } catch (error) {
-      debugPrint(
-        'Could not schedule reminder '
-        'notification: $error',
-      );
-
+      debugPrint('Could not schedule reminder notification: $error');
       return false;
     }
   }
@@ -287,9 +275,34 @@ class ReminderNotificationService {
     try {
       await _notifications.cancel(id: notificationIdFor(reminderId));
     } catch (error) {
+      debugPrint('Could not cancel reminder notification: $error');
+    }
+  }
+
+  /// Cancels every pending notification created by Sakan's personal reminder
+  /// system. This prevents one account's reminders from appearing after a
+  /// different family member signs in on the same phone.
+  Future<void> cancelAllReminderNotifications() async {
+    if (!supportsScheduling || !_initialized) {
+      return;
+    }
+
+    try {
+      final pending = await _notifications.pendingNotificationRequests();
+
+      for (final notification in pending) {
+        final payload = ReminderNotificationPayload.tryParse(
+          notification.payload,
+        );
+
+        if (payload != null) {
+          await _notifications.cancel(id: notification.id);
+        }
+      }
+    } catch (error) {
       debugPrint(
-        'Could not cancel reminder '
-        'notification: $error',
+        'Could not cancel Sakan reminder notifications during sign-out: '
+        '$error',
       );
     }
   }
@@ -308,7 +321,8 @@ class ReminderNotificationService {
     final now = DateTime.now();
 
     final schedulableReminders = reminders.where((reminder) {
-      return !reminder.isFinished && reminder.dueAt.toLocal().isAfter(now);
+      return !reminder.isFinished &&
+          reminder.dueAt.toLocal().isAfter(now);
     }).toList();
 
     final expectedNotificationIds = schedulableReminders
@@ -336,10 +350,7 @@ class ReminderNotificationService {
         await scheduleReminder(reminder, requestPermission: false);
       }
     } catch (error) {
-      debugPrint(
-        'Could not synchronize reminder '
-        'notifications: $error',
-      );
+      debugPrint('Could not synchronize reminder notifications: $error');
     }
   }
 
@@ -352,9 +363,6 @@ class ReminderNotificationService {
   }
 
   int notificationIdFor(String reminderId) {
-    // Stable FNV-1a hash. String.hashCode is not
-    // used because notification IDs must remain
-    // stable between application launches.
     var hash = 0x811C9DC5;
 
     for (final codeUnit in reminderId.codeUnits) {
