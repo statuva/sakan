@@ -113,16 +113,41 @@ class FamilyInsightSnapshot {
     final reference = generatedAt.toLocal();
 
     final result = instances.where((instance) {
-      final isPlanned =
-          instance.status == MomentInstanceStatus.proposed ||
-          instance.status == MomentInstanceStatus.scheduled ||
-          instance.status == MomentInstanceStatus.inviting;
-
-      if (!isPlanned) {
+      if (!_isPlanned(instance)) {
         return false;
       }
 
       return !instance.scheduledStartAt.toLocal().isBefore(reference);
+    }).toList();
+
+    result.sort(
+      (first, second) =>
+          first.scheduledStartAt.compareTo(second.scheduledStartAt),
+    );
+
+    return result;
+  }
+
+  /// Planned occurrences that can currently produce a user action.
+  ///
+  /// This includes future occurrences, occurrences whose start time has
+  /// arrived but whose planned end has not passed, and unresolved occurrences
+  /// from the seven-day review backlog.
+  List<MomentInstance> get actionablePlannedInstances {
+    final now = generatedAt.toLocal();
+    final earliestEnd = now.subtract(const Duration(days: 7));
+
+    final result = instances.where((instance) {
+      if (!_isPlanned(instance)) {
+        return false;
+      }
+
+      final localStart = instance.scheduledStartAt.toLocal();
+      final localEnd =
+          instance.scheduledEndAt?.toLocal() ??
+          localStart.add(const Duration(minutes: 90));
+
+      return !localEnd.isBefore(earliestEnd);
     }).toList();
 
     result.sort(
@@ -159,7 +184,7 @@ class FamilyInsightSnapshot {
     return result;
   }
 
-  /// Planned occurrences from today or yesterday whose expected time
+  /// Planned occurrences from the previous seven days whose expected time
   /// has passed but which have no completed, missed, or cancelled outcome.
   List<MomentInstance> get reviewableInstances {
     final now = generatedAt.toLocal();
@@ -167,20 +192,17 @@ class FamilyInsightSnapshot {
       now.year,
       now.month,
       now.day,
-    ).subtract(const Duration(days: 1));
+    ).subtract(const Duration(days: 7));
 
     final result = instances.where((instance) {
-      final isPlanned =
-          instance.status == MomentInstanceStatus.proposed ||
-          instance.status == MomentInstanceStatus.scheduled ||
-          instance.status == MomentInstanceStatus.inviting;
-
-      if (!isPlanned) {
+      if (!_isPlanned(instance)) {
         return false;
       }
 
       final localStart = instance.scheduledStartAt.toLocal();
-      final localEnd = instance.scheduledEndAt?.toLocal() ?? localStart;
+      final localEnd =
+          instance.scheduledEndAt?.toLocal() ??
+          localStart.add(const Duration(minutes: 90));
 
       return !localStart.isBefore(earliest) && !localEnd.isAfter(now);
     }).toList();
@@ -304,9 +326,7 @@ class FamilyInsightSnapshot {
 
   MomentInstance? openInstanceForMoment(String momentId) {
     final result = instancesForMoment(momentId).where((instance) {
-      return instance.status == MomentInstanceStatus.proposed ||
-          instance.status == MomentInstanceStatus.scheduled ||
-          instance.status == MomentInstanceStatus.inviting ||
+      return _isPlanned(instance) ||
           instance.status == MomentInstanceStatus.active;
     }).toList();
 
@@ -314,12 +334,25 @@ class FamilyInsightSnapshot {
       return null;
     }
 
-    result.sort(
-      (first, second) =>
-          first.effectiveStartAt.compareTo(second.effectiveStartAt),
-    );
+    result.sort((first, second) {
+      if (first.isActive != second.isActive) {
+        return first.isActive ? -1 : 1;
+      }
+
+      return first.effectiveStartAt.compareTo(second.effectiveStartAt);
+    });
 
     return result.first;
+  }
+
+  CareAction? activeReminderForInstance(String instanceId) {
+    for (final reminder in pendingCurrentUserReminders) {
+      if (reminder.instanceId == instanceId) {
+        return reminder;
+      }
+    }
+
+    return null;
   }
 
   CareAction? activeReminderForMoment(String momentId) {
@@ -332,7 +365,31 @@ class FamilyInsightSnapshot {
     return null;
   }
 
+  CareAction? activeReminderForOccurrence(MomentInstance instance) {
+    final exact = activeReminderForInstance(instance.id);
+
+    if (exact != null) {
+      return exact;
+    }
+
+    // Compatibility for reminders created before instanceId was stored.
+    for (final reminder in pendingCurrentUserReminders) {
+      if (reminder.instanceId == null &&
+          reminder.momentId == instance.momentId) {
+        return reminder;
+      }
+    }
+
+    return null;
+  }
+
   bool currentUserIsExpected(MomentInstance instance) {
     return instance.expectedParticipantIds.contains(currentUserId);
+  }
+
+  static bool _isPlanned(MomentInstance instance) {
+    return instance.status == MomentInstanceStatus.proposed ||
+        instance.status == MomentInstanceStatus.scheduled ||
+        instance.status == MomentInstanceStatus.inviting;
   }
 }

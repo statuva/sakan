@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:intl/intl.dart';
+
 import '../models/availability_block.dart';
 import '../models/care_action.dart';
 import '../models/current_family_context.dart';
@@ -17,6 +19,7 @@ import '../repositories/memory_repository.dart';
 import '../repositories/moment_instance_repository.dart';
 import '../repositories/schedule_repository.dart';
 import 'current_family_service.dart';
+import 'moment_action_evaluator.dart';
 
 class FamilyInsightService {
   const FamilyInsightService({
@@ -77,7 +80,7 @@ class FamilyInsightService {
   }
 
   /// Emits whenever Firestore data changes and once per minute so
-  /// time-based facts such as overdue reminders stay current.
+  /// time-based facts stay current.
   Stream<FamilyInsightReport> watchReport() {
     late StreamController<FamilyInsightReport> controller;
 
@@ -116,20 +119,22 @@ class FamilyInsightService {
             return;
           }
 
-          final snapshot = FamilyInsightSnapshot(
-            familyId: context.familyId,
-            currentUserId: context.userId,
-            generatedAt: DateTime.now().toUtc(),
-            members: members!,
-            moments: moments!,
-            instances: instances!,
-            rhythms: rhythms!,
-            availability: availability!,
-            reminders: reminders!,
-            memories: memories!,
+          controller.add(
+            analyze(
+              FamilyInsightSnapshot(
+                familyId: context.familyId,
+                currentUserId: context.userId,
+                generatedAt: DateTime.now().toUtc(),
+                members: members!,
+                moments: moments!,
+                instances: instances!,
+                rhythms: rhythms!,
+                availability: availability!,
+                reminders: reminders!,
+                memories: memories!,
+              ),
+            ),
           );
-
-          controller.add(analyze(snapshot));
         }
 
         void forwardError(Object error, StackTrace stackTrace) {
@@ -242,8 +247,6 @@ class FamilyInsightService {
     return analyzeSnapshot(snapshot);
   }
 
-  /// Public pure entry point used by automated tests and future
-  /// server-side validation.
   static FamilyInsightReport analyzeSnapshot(FamilyInsightSnapshot snapshot) {
     final bestSharedWindow = findBestSharedWindow(snapshot);
     final insights = _buildInsights(snapshot, bestSharedWindow);
@@ -373,63 +376,125 @@ class FamilyInsightService {
       addInsight(_activeMomentInsight(active));
     }
 
-    if (snapshot.currentUserCanManageSharedMoments &&
-        snapshot.reviewableInstances.isNotEmpty) {
-      addInsight(_reviewNeededInsight(snapshot.reviewableInstances.first));
-    }
+    final candidates = snapshot.actionablePlannedInstances;
 
-    final startable = _startableInstances(snapshot);
+    for (final instance in candidates) {
+      final existingReminder = snapshot.activeReminderForOccurrence(instance);
+      final currentRole = snapshot.currentMember?.role;
 
-    if (startable.isNotEmpty) {
-      addInsight(_startNowInsight(snapshot, startable.first));
+      final canStart =
+          snapshot.currentUserCanManageSharedMoments &&
+          (currentRole == FamilyRole.admin ||
+              snapshot.currentUserIsExpected(instance));
+
+      final canCreateReminder =
+          currentRole == FamilyRole.admin ||
+          snapshot.currentUserIsExpected(instance);
+
+      final decision = MomentActionEvaluator.evaluate(
+        instance: instance,
+        now: snapshot.generatedAt,
+        activeInstance: active,
+        canStartSharedMoment: canStart,
+        canReviewSharedMoment: snapshot.currentUserCanManageSharedMoments,
+        canCreatePersonalReminder: canCreateReminder,
+        existingReminder: existingReminder,
+      );
+
+      switch (decision.actionType) {
+        case FamilyInsightActionType.startMomentNow:
+          addInsight(_startNowInsight(snapshot, instance));
+          break;
+        case FamilyInsightActionType.addReminder:
+        case FamilyInsightActionType.openReminders:
+          addInsight(
+            _sameDayReminderInsight(instance: instance, decision: decision),
+          );
+          break;
+        case FamilyInsightActionType.reviewToday:
+          addInsight(_reviewNeededInsight(instance, snapshot.generatedAt));
+          break;
+        default:
+          break;
+      }
     }
 
     for (final reminder in snapshot.overdueCurrentUserReminders.take(2)) {
       addInsight(_overdueReminderInsight(reminder));
     }
 
-    final upcoming = List<MomentInstance>.from(snapshot.upcomingInstances)
-      ..sort((first, second) {
-        final firstRank = _instancePriority(snapshot, first);
-        final secondRank = _instancePriority(snapshot, second);
+    for (final instance in snapshot.upcomingInstances) {
+      final category = instance.categorySnapshot;
+      final days = _daysUntil(snapshot.generatedAt, instance.scheduledStartAt);
 
-        final rankResult = firstRank.compareTo(secondRank);
+      final isPreparation =
+          category == MomentCategory.milestone ||
+          category == MomentCategory.care ||
+          category == MomentCategory.responsibility;
 
-        if (rankResult != 0) {
-          return rankResult;
-        }
-
-        return first.scheduledStartAt.compareTo(second.scheduledStartAt);
-      });
-
-    for (final instance in upcoming) {
-      final rank = _instancePriority(snapshot, instance);
-
-      // Rank 1 belongs to a Drifting rhythm and is intentionally handled
-      // by the dedicated rhythm insight below so the explanation does not
-      // degrade into a generic upcoming-event message.
-      if (rank == 0 || rank == 2) {
-        addInsight(_upcomingInstanceInsight(snapshot, instance));
+      if (isPreparation && days >= 0 && days <= 14) {
+        addInsight(_preparationInsight(snapshot, instance));
       }
     }
 
     for (final rhythm in snapshot.driftingRhythms) {
       final moment = snapshot.momentById(rhythm.momentId);
 
-      if (moment != null) {
+      if (moment != null && !moment.isArchived) {
         addInsight(
           _driftingRhythmInsight(snapshot, moment, rhythm, bestSharedWindow),
         );
       }
     }
 
-    if (upcoming.isNotEmpty) {
-      addInsight(_upcomingInstanceInsight(snapshot, upcoming.first));
+    if (insights.isEmpty && snapshot.upcomingInstances.isNotEmpty) {
+      addInsight(
+        _informationalUpcomingInsight(snapshot.upcomingInstances.first),
+      );
     }
 
-    insights.sort((first, second) => first.priority.compareTo(second.priority));
+    insights.sort((first, second) {
+      final priorityResult = first.priority.compareTo(second.priority);
+
+      if (priorityResult != 0) {
+        return priorityResult;
+      }
+
+      final importanceResult = _importanceForInsight(
+        snapshot,
+        second,
+      ).compareTo(_importanceForInsight(snapshot, first));
+
+      if (importanceResult != 0) {
+        return importanceResult;
+      }
+
+      final firstTime = first.recommendedActionAt ?? DateTime(9999);
+      final secondTime = second.recommendedActionAt ?? DateTime(9999);
+      return firstTime.compareTo(secondTime);
+    });
 
     return insights;
+  }
+
+  static int _importanceForInsight(
+    FamilyInsightSnapshot snapshot,
+    FamilyInsightItem insight,
+  ) {
+    final instanceId = insight.relatedInstanceId;
+
+    if (instanceId != null) {
+      final instance = snapshot.instanceById(instanceId);
+
+      if (instance != null) {
+        return instance.importanceLevelSnapshot;
+      }
+    }
+
+    final momentId = insight.relatedMomentId;
+    return momentId == null
+        ? 0
+        : snapshot.momentById(momentId)?.importanceLevel ?? 0;
   }
 
   static FamilyInsightItem _activeMomentInsight(MomentInstance instance) {
@@ -458,17 +523,87 @@ class FamilyInsightService {
     );
   }
 
-  static FamilyInsightItem _reviewNeededInsight(MomentInstance instance) {
+  static FamilyInsightItem _startNowInsight(
+    FamilyInsightSnapshot snapshot,
+    MomentInstance instance,
+  ) {
+    return FamilyInsightItem(
+      id: 'start:${instance.id}',
+      kind: FamilyInsightKind.sharedMomentOpportunity,
+      actionType: FamilyInsightActionType.startMomentNow,
+      priority: 5,
+      headline: '${instance.titleSnapshot} can start now',
+      summary:
+          'Its planned time has arrived and no other family session is active.',
+      reasons: <String>[
+        'The occurrence is inside its planned start window.',
+        '${instance.expectedParticipantIds.length} family members are expected.',
+        if (snapshot.momentById(instance.momentId)?.type ==
+            MomentType.recurring)
+          'It contributes to a recurring family rhythm.',
+      ],
+      suggestedActions: const <String>[
+        'Start the shared timer.',
+        'Let each participating member check in.',
+        'End the Moment when the family is finished.',
+      ],
+      confidence: ConfidenceLevel.high,
+      relatedMomentId: instance.momentId,
+      relatedInstanceId: instance.id,
+      recommendedActionAt: snapshot.generatedAt,
+    );
+  }
+
+  static FamilyInsightItem _sameDayReminderInsight({
+    required MomentInstance instance,
+    required MomentActionDecision decision,
+  }) {
+    final hasReminder =
+        decision.actionType == FamilyInsightActionType.openReminders;
+
+    return FamilyInsightItem(
+      id: 'today:${instance.id}',
+      kind: FamilyInsightKind.upcomingMoment,
+      actionType: decision.actionType,
+      priority: 10,
+      headline: '${instance.titleSnapshot} is later today',
+      summary:
+          'The Moment is planned for ${DateFormat('h:mm a').format(instance.scheduledStartAt.toLocal())}.',
+      reasons: <String>[
+        'The occurrence is scheduled today.',
+        if (hasReminder)
+          'A personal reminder is already linked to this occurrence.'
+        else
+          'No personal reminder is linked to this occurrence yet.',
+      ],
+      suggestedActions: hasReminder
+          ? const <String>['Open your existing reminder.']
+          : const <String>[
+              'Add a reminder before the planned start time.',
+              'Start the session when the planned time arrives.',
+            ],
+      confidence: ConfidenceLevel.high,
+      relatedMomentId: instance.momentId,
+      relatedInstanceId: instance.id,
+      relatedReminderId: decision.relatedReminderId,
+      recommendedActionAt: decision.recommendedActionAt,
+    );
+  }
+
+  static FamilyInsightItem _reviewNeededInsight(
+    MomentInstance instance,
+    DateTime generatedAt,
+  ) {
     return FamilyInsightItem(
       id: 'review:${instance.id}',
       kind: FamilyInsightKind.reviewNeeded,
       actionType: FamilyInsightActionType.reviewToday,
-      priority: 5,
+      priority: 15,
       headline: 'Did ${instance.titleSnapshot} happen?',
       summary:
           'Its planned time has passed, but Sakan has no completed, missed, or cancelled outcome yet.',
-      reasons: <String>[
-        'The scheduled time has passed.',
+      reasons: const <String>[
+        'The scheduled end time has passed.',
         'No live-session completion was recorded.',
         'A quick review keeps the rhythm history accurate.',
       ],
@@ -480,39 +615,7 @@ class FamilyInsightService {
       confidence: ConfidenceLevel.high,
       relatedMomentId: instance.momentId,
       relatedInstanceId: instance.id,
-      recommendedActionAt: DateTime.now(),
-    );
-  }
-
-  static FamilyInsightItem _startNowInsight(
-    FamilyInsightSnapshot snapshot,
-    MomentInstance instance,
-  ) {
-    final definition = snapshot.momentById(instance.momentId);
-
-    return FamilyInsightItem(
-      id: 'start:${instance.id}',
-      kind: FamilyInsightKind.sharedMomentOpportunity,
-      actionType: FamilyInsightActionType.startMomentNow,
-      priority: 10,
-      headline: '${instance.titleSnapshot} can start now',
-      summary:
-          'This shared Moment is close to its planned time and no other family session is active.',
-      reasons: <String>[
-        'The occurrence is scheduled around the current time.',
-        '${instance.expectedParticipantIds.length} family members are expected.',
-        if (definition?.type == MomentType.recurring)
-          'It contributes to a recurring family rhythm.',
-      ],
-      suggestedActions: const <String>[
-        'Start the shared timer.',
-        'Let each participating member check in.',
-        'End the Moment when the family is finished.',
-      ],
-      confidence: ConfidenceLevel.high,
-      relatedMomentId: instance.momentId,
-      relatedInstanceId: instance.id,
-      recommendedActionAt: DateTime.now(),
+      recommendedActionAt: generatedAt,
     );
   }
 
@@ -538,66 +641,44 @@ class FamilyInsightService {
       ],
       confidence: ConfidenceLevel.high,
       relatedMomentId: reminder.momentId,
+      relatedInstanceId: reminder.instanceId,
       relatedReminderId: reminder.id,
+      recommendedActionAt: reminder.dueAt,
     );
   }
 
-  static FamilyInsightItem _upcomingInstanceInsight(
+  static FamilyInsightItem _preparationInsight(
     FamilyInsightSnapshot snapshot,
     MomentInstance instance,
   ) {
-    final moment = snapshot.momentById(instance.momentId);
-    final category = moment?.category ?? instance.categorySnapshot;
-    final importance =
-        moment?.importanceLevel ?? instance.importanceLevelSnapshot;
+    final existing = snapshot.activeReminderForOccurrence(instance);
+    final category = instance.categorySnapshot;
     final days = _daysUntil(snapshot.generatedAt, instance.scheduledStartAt);
-
-    final existingReminder = snapshot.activeReminderForMoment(
-      instance.momentId,
-    );
-
-    final isPreparation =
-        category == MomentCategory.milestone ||
-        category == MomentCategory.care ||
-        category == MomentCategory.responsibility;
-
-    final actionType = existingReminder != null
-        ? FamilyInsightActionType.openReminders
-        : isPreparation
-        ? FamilyInsightActionType.addReminder
-        : _canStartNow(snapshot, instance)
-        ? FamilyInsightActionType.startMomentNow
-        : FamilyInsightActionType.scheduleMoment;
-
-    final reminderChoice = actionType == FamilyInsightActionType.addReminder
+    final reminderChoice = existing == null
         ? _findPersonalReminderTime(snapshot, instance)
         : null;
 
     return FamilyInsightItem(
-      id: 'instance:${instance.id}',
+      id: 'prepare:${instance.id}',
       kind: switch (category) {
         MomentCategory.milestone => FamilyInsightKind.upcomingMilestone,
         MomentCategory.care ||
         MomentCategory.responsibility => FamilyInsightKind.carePreparation,
         _ => FamilyInsightKind.upcomingMoment,
       },
-      actionType: actionType,
-      priority: switch (category) {
-        MomentCategory.milestone => 30,
-        MomentCategory.care || MomentCategory.responsibility => 30,
-        _ => importance >= 4 ? 50 : 60,
-      },
+      actionType: existing == null
+          ? FamilyInsightActionType.addReminder
+          : FamilyInsightActionType.openReminders,
+      priority: 30,
       headline: _upcomingHeadline(instance.titleSnapshot, days),
       summary: _instanceSummary(category),
       reasons: <String>[
         _daysReason(days),
-        'The Moment is marked $importance/5 importance.',
-        '${instance.expectedParticipantIds.length} expected '
-            '${instance.expectedParticipantIds.length == 1 ? 'participant is' : 'participants are'} connected to it.',
-        if (existingReminder == null && isPreparation)
-          'No active personal preparation reminder is linked to it.'
-        else if (existingReminder != null)
-          'A personal reminder is already linked to it.',
+        'The Moment is marked ${instance.importanceLevelSnapshot}/5 importance.',
+        if (existing == null)
+          'No active personal preparation reminder is linked to this occurrence.'
+        else
+          'A personal reminder is already linked to this occurrence.',
         if (reminderChoice?.usesAvailability == true)
           'The suggested reminder time avoids your recorded busy periods.',
       ],
@@ -605,13 +686,8 @@ class FamilyInsightService {
       confidence: ConfidenceLevel.high,
       relatedMomentId: instance.momentId,
       relatedInstanceId: instance.id,
-      relatedReminderId: existingReminder?.id,
-      recommendedActionAt: switch (actionType) {
-        FamilyInsightActionType.addReminder => reminderChoice?.dateTime,
-        FamilyInsightActionType.startMomentNow => DateTime.now(),
-        FamilyInsightActionType.scheduleMoment => instance.scheduledStartAt,
-        _ => existingReminder?.dueAt,
-      },
+      relatedReminderId: existing?.id,
+      recommendedActionAt: existing?.dueAt ?? reminderChoice?.dateTime,
       recommendedActionUsesAvailability:
           reminderChoice?.usesAvailability ?? false,
     );
@@ -624,12 +700,33 @@ class FamilyInsightService {
     FamilyAvailabilityWindow? bestSharedWindow,
   ) {
     final openInstance = snapshot.openInstanceForMoment(moment.id);
-    final canStart =
-        openInstance != null && _canStartNow(snapshot, openInstance);
+    FamilyInsightActionType actionType = FamilyInsightActionType.scheduleMoment;
+    DateTime? actionAt = bestSharedWindow?.startAt;
+    String? relatedInstanceId = openInstance?.id;
 
-    final actionType = canStart
-        ? FamilyInsightActionType.startMomentNow
-        : FamilyInsightActionType.scheduleMoment;
+    if (openInstance != null) {
+      final role = snapshot.currentMember?.role;
+      final canStart =
+          snapshot.currentUserCanManageSharedMoments &&
+          (role == FamilyRole.admin ||
+              snapshot.currentUserIsExpected(openInstance));
+
+      final decision = MomentActionEvaluator.evaluate(
+        instance: openInstance,
+        now: snapshot.generatedAt,
+        activeInstance: snapshot.activeInstance,
+        canStartSharedMoment: canStart,
+        canReviewSharedMoment: snapshot.currentUserCanManageSharedMoments,
+        canCreatePersonalReminder: false,
+      );
+
+      if (decision.actionType == FamilyInsightActionType.startMomentNow) {
+        actionType = FamilyInsightActionType.startMomentNow;
+        actionAt = snapshot.generatedAt;
+      } else {
+        actionAt = openInstance.scheduledStartAt;
+      }
+    }
 
     return FamilyInsightItem(
       id: 'rhythm:${rhythm.id}',
@@ -637,20 +734,15 @@ class FamilyInsightService {
       actionType: actionType,
       priority: 40,
       headline: '${moment.title} is drifting',
-      summary:
-          'This recurring family Moment has moved beyond its usual confirmed pattern and may need a realistic next occurrence.',
+      summary: moment.isDayFlexible && openInstance == null
+          ? 'This recurring Moment needs an exact date before the family can do it again.'
+          : 'This recurring family Moment has moved beyond its usual confirmed pattern and may need a realistic next occurrence.',
       reasons: <String>[
         '${rhythm.currentGapDays} days have passed since its last confirmed occurrence.',
         'Its expected interval is ${rhythm.expectedIntervalDays} days.',
         'The current recorded rhythm status is Drifting.',
         if (bestSharedWindow != null)
-          '${bestSharedWindow.availableMemberCount} of '
-              '${bestSharedWindow.totalMemberCount} active members have no recorded conflict in the best upcoming window.',
-        if (bestSharedWindow != null &&
-            !bestSharedWindow.hasFullScheduleCoverage)
-          'Availability is based on '
-              '${bestSharedWindow.membersWithScheduleDataCount} of '
-              '${bestSharedWindow.totalMemberCount} members with schedule data.',
+          '${bestSharedWindow.availableMemberCount} of ${bestSharedWindow.totalMemberCount} active members have no recorded conflict in the best upcoming window.',
       ],
       suggestedActions: const <String>[
         'Review the next planned occurrence.',
@@ -659,112 +751,34 @@ class FamilyInsightService {
       ],
       confidence: rhythm.confidence,
       relatedMomentId: moment.id,
-      relatedInstanceId: openInstance?.id,
-      recommendedActionAt: canStart
-          ? DateTime.now()
-          : openInstance?.scheduledStartAt ?? bestSharedWindow?.startAt,
-      recommendedActionUsesAvailability: !canStart && bestSharedWindow != null,
+      relatedInstanceId: relatedInstanceId,
+      recommendedActionAt: actionAt,
+      recommendedActionUsesAvailability:
+          actionType == FamilyInsightActionType.scheduleMoment &&
+          bestSharedWindow != null,
     );
   }
 
-  static List<MomentInstance> _startableInstances(
-    FamilyInsightSnapshot snapshot,
-  ) {
-    if (!snapshot.currentUserCanManageSharedMoments ||
-        snapshot.activeInstance != null) {
-      return const <MomentInstance>[];
-    }
-
-    final result = snapshot.instances
-        .where((instance) => _canStartNow(snapshot, instance))
-        .toList();
-
-    final now = snapshot.generatedAt.toLocal();
-
-    result.sort((first, second) {
-      final firstDistance = first.scheduledStartAt
-          .toLocal()
-          .difference(now)
-          .inMinutes
-          .abs();
-
-      final secondDistance = second.scheduledStartAt
-          .toLocal()
-          .difference(now)
-          .inMinutes
-          .abs();
-
-      return firstDistance.compareTo(secondDistance);
-    });
-
-    return result;
-  }
-
-  static bool _canStartNow(
-    FamilyInsightSnapshot snapshot,
+  static FamilyInsightItem _informationalUpcomingInsight(
     MomentInstance instance,
   ) {
-    if (!snapshot.currentUserCanManageSharedMoments ||
-        snapshot.activeInstance != null) {
-      return false;
-    }
-
-    final isPlanned =
-        instance.status == MomentInstanceStatus.proposed ||
-        instance.status == MomentInstanceStatus.scheduled ||
-        instance.status == MomentInstanceStatus.inviting;
-
-    if (!isPlanned || instance.expectedParticipantIds.length < 2) {
-      return false;
-    }
-
-    final category = instance.categorySnapshot;
-
-    if (category != MomentCategory.tradition &&
-        category != MomentCategory.familyTime) {
-      return false;
-    }
-
-    final member = snapshot.currentMember;
-    final isAdmin = member?.role == FamilyRole.admin;
-
-    if (!isAdmin && !snapshot.currentUserIsExpected(instance)) {
-      return false;
-    }
-
-    final now = snapshot.generatedAt.toLocal();
-    final scheduled = instance.scheduledStartAt.toLocal();
-    final minutes = scheduled.difference(now).inMinutes;
-
-    return minutes >= -120 && minutes <= 180;
-  }
-
-  static int _instancePriority(
-    FamilyInsightSnapshot snapshot,
-    MomentInstance instance,
-  ) {
-    final category = instance.categorySnapshot;
-    final days = _daysUntil(snapshot.generatedAt, instance.scheduledStartAt);
-
-    if ((category == MomentCategory.milestone ||
-            category == MomentCategory.care ||
-            category == MomentCategory.responsibility) &&
-        days >= 0 &&
-        days <= 14) {
-      return 0;
-    }
-
-    final rhythm = snapshot.rhythmForMoment(instance.momentId);
-
-    if (rhythm?.status == RhythmStatus.drifting) {
-      return 1;
-    }
-
-    if (instance.importanceLevelSnapshot >= 4 && days >= 0 && days <= 21) {
-      return 2;
-    }
-
-    return 3;
+    return FamilyInsightItem(
+      id: 'upcoming:${instance.id}',
+      kind: FamilyInsightKind.upcomingMoment,
+      actionType: FamilyInsightActionType.none,
+      priority: 60,
+      headline: '${instance.titleSnapshot} is coming up',
+      summary:
+          'It is already scheduled. Sakan will surface a reminder or start action when the time is closer.',
+      reasons: <String>[
+        'The occurrence is planned for ${DateFormat('EEE, d MMM · h:mm a').format(instance.scheduledStartAt.toLocal())}.',
+      ],
+      suggestedActions: const <String>[],
+      confidence: ConfidenceLevel.high,
+      relatedMomentId: instance.momentId,
+      relatedInstanceId: instance.id,
+      recommendedActionAt: instance.scheduledStartAt,
+    );
   }
 
   static _ActionTimeChoice? _findPersonalReminderTime(
@@ -772,15 +786,25 @@ class FamilyInsightService {
     MomentInstance instance,
   ) {
     final reference = snapshot.generatedAt.toLocal();
-    final eventDate = _dateOnly(instance.scheduledStartAt.toLocal());
+    final event = instance.scheduledStartAt.toLocal();
+    final eventDate = _dateOnly(event);
     final today = _dateOnly(reference);
 
-    if (!eventDate.isAfter(today)) {
-      final candidate = reference.add(const Duration(minutes: 30));
+    if (eventDate == today) {
+      var candidate = event.subtract(const Duration(minutes: 30));
+      final minimum = reference.add(const Duration(minutes: 1));
 
-      return candidate.isBefore(instance.scheduledStartAt.toLocal())
-          ? _ActionTimeChoice(dateTime: candidate, usesAvailability: false)
-          : null;
+      if (candidate.isBefore(minimum)) {
+        candidate = minimum;
+      }
+
+      return candidate.isAfter(event)
+          ? null
+          : _ActionTimeChoice(dateTime: candidate, usesAvailability: false);
+    }
+
+    if (!eventDate.isAfter(today)) {
+      return null;
     }
 
     final personalBlocks = snapshot.availability
@@ -835,20 +859,9 @@ class FamilyInsightService {
       }
     }
 
-    var fallbackDate = eventDate.subtract(const Duration(days: 2));
+    final fallback = event.subtract(const Duration(days: 1));
 
-    if (!fallbackDate.isAfter(today)) {
-      fallbackDate = today.add(const Duration(days: 1));
-    }
-
-    final fallback = DateTime(
-      fallbackDate.year,
-      fallbackDate.month,
-      fallbackDate.day,
-      18,
-    );
-
-    if (!fallback.isBefore(instance.scheduledStartAt.toLocal())) {
+    if (!fallback.isAfter(reference)) {
       return null;
     }
 
@@ -918,10 +931,6 @@ class FamilyInsightService {
   }
 
   static String _upcomingHeadline(String title, int days) {
-    if (days < 0) {
-      return '$title needs review';
-    }
-
     if (days == 0) {
       return '$title is today';
     }
@@ -932,10 +941,6 @@ class FamilyInsightService {
 
     if (days <= 7) {
       return '$title is this week';
-    }
-
-    if (days <= 14) {
-      return '$title is next week';
     }
 
     return '$title is coming up';
@@ -949,11 +954,7 @@ class FamilyInsightService {
         'This care-related occurrence is approaching and may need a personal action.',
       MomentCategory.responsibility =>
         'A family responsibility is approaching and should have a clear owner.',
-      MomentCategory.tradition =>
-        'A concrete occurrence of this family tradition is approaching.',
-      MomentCategory.familyTime =>
-        'This planned shared family occurrence is approaching.',
-      MomentCategory.memory => 'This memory-related occurrence is approaching.',
+      _ => 'This planned family occurrence is approaching.',
     };
   }
 
@@ -974,29 +975,11 @@ class FamilyInsightService {
         'Prepare the required items.',
         'Create a deadline reminder.',
       ],
-      MomentCategory.tradition => const <String>[
-        'Review the planned occurrence.',
-        'Confirm the expected participants.',
-        'Start the Moment when the family gathers.',
-      ],
-      MomentCategory.familyTime => const <String>[
-        'Confirm the shared time.',
-        'Choose the activity or location.',
-        'Start the Moment when everyone is ready.',
-      ],
-      MomentCategory.memory => const <String>[
-        'Review the related family history.',
-        'Confirm who is involved.',
-        'Preserve a note after completion.',
-      ],
+      _ => const <String>['Review the planned occurrence.'],
     };
   }
 
   static String _daysReason(int days) {
-    if (days < 0) {
-      return 'The planned date has passed.';
-    }
-
     if (days == 0) {
       return 'The occurrence is today.';
     }
