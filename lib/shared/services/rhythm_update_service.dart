@@ -7,6 +7,7 @@ import '../models/rhythm_record.dart';
 import '../repositories/calendar_repository.dart';
 import '../repositories/moment_instance_repository.dart';
 import '../repositories/rhythm_repository.dart';
+import 'moment_schedule_resolver.dart';
 
 class RhythmUpdateResult {
   const RhythmUpdateResult({
@@ -86,8 +87,6 @@ class RhythmUpdateService {
       now: referenceNow,
     );
 
-    // saveMoment() may preserve the older Rhythm document while
-    // advancing the definition, so write the calculated record last.
     await _rhythmRepository.saveRhythm(rhythm);
 
     return RhythmUpdateResult(
@@ -210,6 +209,10 @@ class RhythmUpdateService {
     required String updatedBy,
     required DateTime now,
   }) async {
+    if (moment.isArchived || moment.isDayFlexible) {
+      return _NextOccurrenceResult(moment: moment, instance: null);
+    }
+
     final open = await _momentInstanceRepository.getOpenInstanceForMoment(
       familyId: moment.familyId,
       momentId: moment.id,
@@ -236,26 +239,30 @@ class RhythmUpdateService {
       return _NextOccurrenceResult(moment: moment, instance: null);
     }
 
-    final intervalDays = math.max(1, moment.expectedIntervalDays ?? 7);
-
     final latest = terminal.first;
-    var nextStart = latest.effectiveStartAt.toUtc().add(
-      Duration(days: intervalDays),
+
+    final nextStart = MomentScheduleResolver.nextExactStart(
+      moment: moment,
+      after: latest.effectiveStartAt,
+      now: now,
     );
 
-    while (!nextStart.isAfter(now.add(const Duration(minutes: 5)))) {
-      nextStart = nextStart.add(Duration(days: intervalDays));
+    if (nextStart == null) {
+      return _NextOccurrenceResult(moment: moment, instance: null);
     }
 
-    final duration = _plannedDuration(moment, latest);
-
-    final nextEnd = duration == null ? null : nextStart.add(duration);
+    final nextEnd =
+        MomentScheduleResolver.endForStart(
+          start: nextStart,
+          endMinutes: moment.resolvedPreferredEndMinutes,
+        ) ??
+        _fallbackEnd(moment, latest, nextStart);
 
     final nextMoment = moment.copyWith(
-      startAt: nextStart,
-      endAt: nextEnd,
+      startAt: nextStart.toUtc(),
+      endAt: nextEnd?.toUtc(),
       status: MomentStatus.scheduled,
-      evidenceType: EvidenceType.scheduledOnly,
+      evidenceType: EvidenceType.manual,
       updatedAt: now,
     );
 
@@ -343,17 +350,21 @@ class RhythmUpdateService {
     return true;
   }
 
-  Duration? _plannedDuration(FamilyMoment moment, MomentInstance latest) {
+  DateTime? _fallbackEnd(
+    FamilyMoment moment,
+    MomentInstance latest,
+    DateTime nextStart,
+  ) {
     final instanceEnd = latest.scheduledEndAt;
 
     if (instanceEnd != null && instanceEnd.isAfter(latest.scheduledStartAt)) {
-      return instanceEnd.difference(latest.scheduledStartAt);
+      return nextStart.add(instanceEnd.difference(latest.scheduledStartAt));
     }
 
     final momentEnd = moment.endAt;
 
     if (momentEnd != null && momentEnd.isAfter(moment.startAt)) {
-      return momentEnd.difference(moment.startAt);
+      return nextStart.add(momentEnd.difference(moment.startAt));
     }
 
     return null;

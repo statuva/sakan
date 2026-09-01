@@ -48,10 +48,19 @@ abstract interface class MomentInstanceRepository {
     MomentInstanceSource source = MomentInstanceSource.calendar,
   });
 
+  Future<MomentInstance> scheduleOccurrence({
+    required FamilyMoment moment,
+    required DateTime scheduledStartAt,
+    DateTime? scheduledEndAt,
+    required String createdBy,
+    MomentInstanceSource source = MomentInstanceSource.manual,
+  });
+
   Future<int> cancelOpenInstancesForMoment({
     required String familyId,
     required String momentId,
     required String cancelledBy,
+    bool includeActive = true,
   });
 
   Future<MomentInstance> startMomentNow({

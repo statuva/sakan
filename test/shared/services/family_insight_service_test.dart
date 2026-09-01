@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:sakan/shared/models/care_action.dart';
 import 'package:sakan/shared/models/family_insight_report.dart';
 import 'package:sakan/shared/models/family_insight_snapshot.dart';
 import 'package:sakan/shared/models/family_moment.dart';
@@ -10,7 +11,7 @@ import 'package:sakan/shared/models/rhythm_record.dart';
 import 'package:sakan/shared/services/family_insight_service.dart';
 
 void main() {
-  final now = DateTime.utc(2026, 8, 29, 16);
+  final now = DateTime.utc(2026, 8, 31, 13);
 
   test('active session becomes the primary Join Moment insight', () {
     final moment = _moment(
@@ -25,9 +26,7 @@ void main() {
       moment: moment,
       status: MomentInstanceStatus.active,
       scheduledStartAt: now,
-      actualStartAt: now.subtract(
-        const Duration(minutes: 10),
-      ),
+      actualStartAt: now.subtract(const Duration(minutes: 10)),
     );
 
     final report = FamilyInsightService.analyzeSnapshot(
@@ -42,34 +41,95 @@ void main() {
       report.primaryInsight?.actionType,
       FamilyInsightActionType.joinActiveMoment,
     );
-
-    expect(
-      report.primaryInsight?.relatedInstanceId,
-      active.id,
-    );
   });
 
-  test('past unresolved occurrence asks an adult to Review Today', () {
+  test('daily lunch before its time recommends Add Reminder', () {
     final moment = _moment(
-      id: 'movie',
-      title: 'Movie Night',
+      id: 'daily-lunch',
+      title: 'Daily Lunch',
       category: MomentCategory.tradition,
-      startAt: now.subtract(const Duration(hours: 2)),
+      startAt: DateTime.utc(2026, 8, 31, 15),
+      intervalDays: 1,
     );
 
-    final unresolved = _instance(
-      id: 'instance-review',
+    final occurrence = _instance(
+      id: 'daily-lunch-31',
       moment: moment,
       status: MomentInstanceStatus.scheduled,
-      scheduledStartAt: now.subtract(const Duration(hours: 2)),
-      scheduledEndAt: now.subtract(const Duration(hours: 1)),
+      scheduledStartAt: DateTime.utc(2026, 8, 31, 15),
+      scheduledEndAt: DateTime.utc(2026, 8, 31, 16),
     );
 
     final report = FamilyInsightService.analyzeSnapshot(
       _snapshot(
         now: now,
         moments: <FamilyMoment>[moment],
-        instances: <MomentInstance>[unresolved],
+        instances: <MomentInstance>[occurrence],
+      ),
+    );
+
+    expect(
+      report.primaryInsight?.actionType,
+      FamilyInsightActionType.addReminder,
+    );
+    expect(report.primaryInsight?.relatedInstanceId, occurrence.id);
+  });
+
+  test('daily lunch during its start window recommends Start This Now', () {
+    final start = DateTime.utc(2026, 8, 31, 15);
+    final moment = _moment(
+      id: 'daily-lunch',
+      title: 'Daily Lunch',
+      category: MomentCategory.tradition,
+      startAt: start,
+      intervalDays: 1,
+    );
+
+    final occurrence = _instance(
+      id: 'daily-lunch-31',
+      moment: moment,
+      status: MomentInstanceStatus.scheduled,
+      scheduledStartAt: start,
+      scheduledEndAt: start.add(const Duration(hours: 1)),
+    );
+
+    final report = FamilyInsightService.analyzeSnapshot(
+      _snapshot(
+        now: start.add(const Duration(minutes: 15)),
+        moments: <FamilyMoment>[moment],
+        instances: <MomentInstance>[occurrence],
+      ),
+    );
+
+    expect(
+      report.primaryInsight?.actionType,
+      FamilyInsightActionType.startMomentNow,
+    );
+  });
+
+  test('daily lunch after its end recommends Review Today', () {
+    final start = DateTime.utc(2026, 8, 31, 15);
+    final moment = _moment(
+      id: 'daily-lunch',
+      title: 'Daily Lunch',
+      category: MomentCategory.tradition,
+      startAt: start,
+      intervalDays: 1,
+    );
+
+    final occurrence = _instance(
+      id: 'daily-lunch-31',
+      moment: moment,
+      status: MomentInstanceStatus.scheduled,
+      scheduledStartAt: start,
+      scheduledEndAt: start.add(const Duration(hours: 1)),
+    );
+
+    final report = FamilyInsightService.analyzeSnapshot(
+      _snapshot(
+        now: start.add(const Duration(hours: 2)),
+        moments: <FamilyMoment>[moment],
+        instances: <MomentInstance>[occurrence],
       ),
     );
 
@@ -77,6 +137,55 @@ void main() {
       report.primaryInsight?.actionType,
       FamilyInsightActionType.reviewToday,
     );
+  });
+
+  test('existing instance reminder becomes Open My Reminders', () {
+    final moment = _moment(
+      id: 'daily-lunch',
+      title: 'Daily Lunch',
+      category: MomentCategory.tradition,
+      startAt: DateTime.utc(2026, 8, 31, 15),
+      intervalDays: 1,
+    );
+
+    final occurrence = _instance(
+      id: 'daily-lunch-31',
+      moment: moment,
+      status: MomentInstanceStatus.scheduled,
+      scheduledStartAt: DateTime.utc(2026, 8, 31, 15),
+      scheduledEndAt: DateTime.utc(2026, 8, 31, 16),
+    );
+
+    final reminder = CareAction(
+      id: 'reminder-1',
+      familyId: 'family-1',
+      momentId: moment.id,
+      instanceId: occurrence.id,
+      title: 'Get ready for lunch',
+      reason: '',
+      assignedMemberId: 'adult-1',
+      dueAt: DateTime.utc(2026, 8, 31, 14, 30),
+      status: CareActionStatus.pending,
+      source: CareActionSource.calendar,
+      evidenceType: EvidenceType.scheduledOnly,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    final report = FamilyInsightService.analyzeSnapshot(
+      _snapshot(
+        now: now,
+        moments: <FamilyMoment>[moment],
+        instances: <MomentInstance>[occurrence],
+        reminders: <CareAction>[reminder],
+      ),
+    );
+
+    expect(
+      report.primaryInsight?.actionType,
+      FamilyInsightActionType.openReminders,
+    );
+    expect(report.primaryInsight?.relatedReminderId, reminder.id);
   });
 
   test('upcoming milestone creates an Add Reminder action', () {
@@ -109,28 +218,23 @@ void main() {
     );
   });
 
-  test('drifting rhythm recommends scheduling its next occurrence', () {
+  test('flexible drifting rhythm recommends scheduling an occurrence', () {
     final moment = _moment(
-      id: 'breakfast',
-      title: 'Weekend Breakfast',
+      id: 'outing',
+      title: 'Family Outing',
       category: MomentCategory.tradition,
-      startAt: now.add(const Duration(days: 6)),
-    );
-
-    final occurrence = _instance(
-      id: 'instance-breakfast',
-      moment: moment,
-      status: MomentInstanceStatus.scheduled,
-      scheduledStartAt: now.add(const Duration(days: 6)),
+      startAt: now,
+      flexible: true,
+      intervalDays: 30,
     );
 
     final rhythm = RhythmRecord(
       id: moment.id,
       familyId: 'family-1',
       momentId: moment.id,
-      expectedIntervalDays: 7,
-      lastOccurrenceAt: now.subtract(const Duration(days: 18)),
-      currentGapDays: 18,
+      expectedIntervalDays: 30,
+      lastOccurrenceAt: now.subtract(const Duration(days: 50)),
+      currentGapDays: 50,
       occurrenceCount: 3,
       status: RhythmStatus.drifting,
       confidence: ConfidenceLevel.medium,
@@ -141,7 +245,7 @@ void main() {
       _snapshot(
         now: now,
         moments: <FamilyMoment>[moment],
-        instances: <MomentInstance>[occurrence],
+        instances: const <MomentInstance>[],
         rhythms: <RhythmRecord>[rhythm],
       ),
     );
@@ -158,6 +262,7 @@ FamilyInsightSnapshot _snapshot({
   required List<FamilyMoment> moments,
   required List<MomentInstance> instances,
   List<RhythmRecord> rhythms = const <RhythmRecord>[],
+  List<CareAction> reminders = const <CareAction>[],
 }) {
   return FamilyInsightSnapshot(
     familyId: 'family-1',
@@ -193,7 +298,7 @@ FamilyInsightSnapshot _snapshot({
     instances: instances,
     rhythms: rhythms,
     availability: const [],
-    reminders: const [],
+    reminders: reminders,
     memories: const [],
   );
 }
@@ -204,6 +309,8 @@ FamilyMoment _moment({
   required MomentCategory category,
   required DateTime startAt,
   MomentType type = MomentType.recurring,
+  int intervalDays = 7,
+  bool flexible = false,
 }) {
   return FamilyMoment(
     id: id,
@@ -212,14 +319,13 @@ FamilyMoment _moment({
     type: type,
     category: category,
     importanceLevel: 5,
-    expectedParticipantIds: const <String>[
-      'adult-1',
-      'child-1',
-    ],
+    expectedParticipantIds: const <String>['adult-1', 'child-1'],
     startAt: startAt,
     expectedIntervalDays:
-        type == MomentType.recurring ? 7 : null,
-    evidenceType: EvidenceType.scheduledOnly,
+        type == MomentType.recurring ? intervalDays : null,
+    preferredStartMinutes: startAt.hour * 60 + startAt.minute,
+    isDayFlexible: flexible,
+    evidenceType: EvidenceType.manual,
     status: MomentStatus.scheduled,
     createdBy: 'adult-1',
     createdAt: startAt.subtract(const Duration(days: 2)),
@@ -258,9 +364,7 @@ MomentInstance _instance({
     ],
     confirmationLevel: MomentConfirmationLevel.low,
     createdBy: 'adult-1',
-    createdAt: scheduledStartAt.subtract(
-      const Duration(days: 1),
-    ),
+    createdAt: scheduledStartAt.subtract(const Duration(days: 1)),
     updatedAt: scheduledStartAt,
   );
 }

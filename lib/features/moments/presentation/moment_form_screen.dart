@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:sakan/app/app_dependencies.dart';
-import 'package:sakan/core/theme/app_spacing.dart';
-import 'package:sakan/shared/models/current_family_context.dart';
-import 'package:sakan/shared/models/family_moment.dart';
-import 'package:sakan/shared/models/member.dart';
-import 'package:sakan/shared/models/model_enums.dart';
-import 'package:sakan/shared/utils/moment_visuals.dart';
-import 'package:sakan/shared/widgets/buttons/app_primary_button.dart';
-import 'package:sakan/shared/widgets/cards/app_card.dart';
-import 'package:sakan/shared/widgets/feedback/app_error_state.dart';
-import 'package:sakan/shared/widgets/feedback/app_loading_state.dart';
-import 'package:sakan/shared/widgets/controls/app_pill_segmented_control.dart';
+import 'package:intl/intl.dart';
+
+import '../../../app/app_dependencies.dart';
+import '../../../core/theme/app_spacing.dart';
+import '../../../shared/models/current_family_context.dart';
+import '../../../shared/models/family_moment.dart';
+import '../../../shared/models/member.dart';
+import '../../../shared/models/model_enums.dart';
+import '../../../shared/services/moment_schedule_resolver.dart';
+import '../../../shared/utils/moment_visuals.dart';
+import '../../../shared/widgets/buttons/app_primary_button.dart';
+import '../../../shared/widgets/cards/app_card.dart';
+import '../../../shared/widgets/controls/app_pill_segmented_control.dart';
+import '../../../shared/widgets/feedback/app_error_state.dart';
+import '../../../shared/widgets/feedback/app_loading_state.dart';
 
 class MomentFormScreen extends StatefulWidget {
   const MomentFormScreen({this.initialMoment, super.key});
@@ -23,11 +26,8 @@ class MomentFormScreen extends StatefulWidget {
 
 class _MomentFormScreenState extends State<MomentFormScreen> {
   final _formKey = GlobalKey<FormState>();
-
   final _titleController = TextEditingController();
-
   final _locationController = TextEditingController();
-
   final _notesController = TextEditingController();
 
   CurrentFamilyContext? _familyContext;
@@ -36,28 +36,28 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
   final Set<String> _selectedParticipantIds = <String>{};
 
   MomentType _type = MomentType.recurring;
-
   MomentCategory _category = MomentCategory.tradition;
-
-  EvidenceType _evidenceType = EvidenceType.scheduledOnly;
-
-  MomentStatus _status = MomentStatus.scheduled;
 
   int _importanceLevel = 4;
   int _intervalDays = 7;
 
-  DateTime _startDate = DateUtils.dateOnly(
+  DateTime _oneTimeDate = DateUtils.dateOnly(
     DateTime.now().add(const Duration(days: 1)),
   );
 
   TimeOfDay _startTime = const TimeOfDay(hour: 18, minute: 0);
-
   TimeOfDay _endTime = const TimeOfDay(hour: 19, minute: 0);
 
   bool _hasEndTime = true;
+  bool _isDayFlexible = false;
+  bool _isArchived = false;
+
+  int _preferredWeekday = DateTime.friday;
+  int _preferredDayOfMonth = 1;
+  int _preferredMonth = DateTime.january;
+
   bool _isLoading = true;
   bool _isSaving = false;
-
   String? _errorMessage;
 
   bool get _isEditing => widget.initialMoment != null;
@@ -86,7 +86,7 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
       final familyContext = await AppDependencies.currentFamilyService.load();
 
       if (!familyContext.isAdult) {
-        throw StateError('Only an adult or family admin can manage moments.');
+        throw StateError('Only an adult or family admin can manage Moments.');
       }
 
       final members = await AppDependencies.currentFamilyService
@@ -97,40 +97,44 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
       if (initialMoment != null) {
         final startLocal = initialMoment.startAt.toLocal();
-
-        final endLocal = initialMoment.endAt?.toLocal();
+        final startMinutes = initialMoment.resolvedPreferredStartMinutes;
+        final endMinutes = initialMoment.resolvedPreferredEndMinutes;
 
         _titleController.text = initialMoment.title;
-
         _locationController.text = initialMoment.location ?? '';
-
         _notesController.text = initialMoment.notes ?? '';
 
         _type = initialMoment.type;
         _category = initialMoment.category;
-
         _importanceLevel = initialMoment.importanceLevel;
-
         _intervalDays = initialMoment.expectedIntervalDays ?? 7;
 
-        _evidenceType = initialMoment.evidenceType;
+        _oneTimeDate = DateUtils.dateOnly(startLocal);
+        _startTime = _timeFromMinutes(startMinutes);
+        _hasEndTime = endMinutes != null;
 
-        _status = initialMoment.status;
-
-        _startDate = DateUtils.dateOnly(startLocal);
-
-        _startTime = TimeOfDay.fromDateTime(startLocal);
-
-        _hasEndTime = endLocal != null;
-
-        if (endLocal != null) {
-          _endTime = TimeOfDay.fromDateTime(endLocal);
+        if (endMinutes != null) {
+          _endTime = _timeFromMinutes(endMinutes);
         }
+
+        _isDayFlexible = initialMoment.isDayFlexible;
+        _isArchived = initialMoment.isArchived;
+        _preferredWeekday =
+            initialMoment.preferredWeekday ?? startLocal.weekday;
+        _preferredDayOfMonth =
+            initialMoment.preferredDayOfMonth ?? startLocal.day;
+        _preferredMonth = initialMoment.preferredMonth ?? startLocal.month;
 
         _selectedParticipantIds
           ..clear()
           ..addAll(initialMoment.expectedParticipantIds);
       } else {
+        final tomorrow = DateTime.now().add(const Duration(days: 1));
+        _oneTimeDate = DateUtils.dateOnly(tomorrow);
+        _preferredWeekday = tomorrow.weekday;
+        _preferredDayOfMonth = tomorrow.day;
+        _preferredMonth = tomorrow.month;
+
         _selectedParticipantIds
           ..clear()
           ..addAll(
@@ -153,8 +157,8 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
       setState(() {
         _isLoading = false;
         _errorMessage = error is StateError
-            ? error.message
-            : 'We could not prepare the moment form.';
+            ? error.message.toString()
+            : 'We could not prepare the Moment form.';
       });
     }
   }
@@ -162,15 +166,15 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
   Future<void> _pickDate() async {
     final selected = await showDatePicker(
       context: context,
-      initialDate: _startDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      initialDate: _oneTimeDate,
+      firstDate: DateUtils.dateOnly(DateTime.now()),
       lastDate: DateTime(DateTime.now().year + 10, 12, 31),
     );
 
     if (selected == null) return;
 
     setState(() {
-      _startDate = DateUtils.dateOnly(selected);
+      _oneTimeDate = DateUtils.dateOnly(selected);
     });
   }
 
@@ -200,11 +204,7 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
     });
   }
 
-  DateTime _combineDateAndTime(DateTime date, TimeOfDay time) {
-    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
-  }
-
-  Future<void> _saveMoment() async {
+  Future<void> _saveMoment({bool? archivedOverride}) async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -220,22 +220,48 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
       return;
     }
 
-    if (_type == MomentType.recurring && _intervalDays <= 0) {
-      _showMessage('Choose a valid recurrence frequency.');
+    final interval = _type == MomentType.recurring ? _intervalDays : 0;
+    final flexible =
+        _type == MomentType.recurring &&
+        (_intervalDays == 7 ||
+            _intervalDays == 14 ||
+            _intervalDays == 30 ||
+            _intervalDays == 90) &&
+        _isDayFlexible;
+
+    final startMinutes = _minutesFromTime(_startTime);
+    final endMinutes = _hasEndTime ? _minutesFromTime(_endTime) : null;
+
+    final exactStart = MomentScheduleResolver.firstExactStart(
+      type: _type,
+      reference: DateTime.now(),
+      startMinutes: startMinutes,
+      oneTimeDate: _type == MomentType.singular ? _oneTimeDate : null,
+      intervalDays: interval,
+      isDayFlexible: flexible,
+      preferredWeekday: _preferredWeekday,
+      preferredDayOfMonth: _preferredDayOfMonth,
+      preferredMonth: _preferredMonth,
+    );
+
+    final startLocal =
+        exactStart ??
+        MomentScheduleResolver.anchorForFlexible(
+          reference: DateTime.now(),
+          startMinutes: startMinutes,
+        );
+
+    final endLocal = MomentScheduleResolver.endForStart(
+      start: startLocal,
+      endMinutes: endMinutes,
+    );
+
+    if (_type == MomentType.singular &&
+        startLocal.isBefore(
+          DateTime.now().subtract(const Duration(minutes: 1)),
+        )) {
+      _showMessage('Choose a future date and time for a one-time Moment.');
       return;
-    }
-
-    final startLocal = _combineDateAndTime(_startDate, _startTime);
-
-    DateTime? endLocal;
-
-    if (_hasEndTime) {
-      endLocal = _combineDateAndTime(_startDate, _endTime);
-
-      if (!endLocal.isAfter(startLocal)) {
-        _showMessage('End time must be after the start time.');
-        return;
-      }
     }
 
     setState(() {
@@ -245,8 +271,8 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
     try {
       final initialMoment = widget.initialMoment;
-
       final now = DateTime.now().toUtc();
+      final archived = archivedOverride ?? _isArchived;
 
       final momentId =
           initialMoment?.id ??
@@ -266,14 +292,37 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
         expectedIntervalDays: _type == MomentType.recurring
             ? _intervalDays
             : null,
+        preferredStartMinutes: _type == MomentType.recurring
+            ? startMinutes
+            : null,
+        preferredEndMinutes: _type == MomentType.recurring ? endMinutes : null,
+        preferredWeekday:
+            _type == MomentType.recurring &&
+                (_intervalDays == 7 || _intervalDays == 14) &&
+                !flexible
+            ? _preferredWeekday
+            : null,
+        preferredDayOfMonth:
+            _type == MomentType.recurring &&
+                (_intervalDays == 30 ||
+                    _intervalDays == 90 ||
+                    _intervalDays == 365) &&
+                !flexible
+            ? _preferredDayOfMonth
+            : null,
+        preferredMonth: _type == MomentType.recurring && _intervalDays == 365
+            ? _preferredMonth
+            : null,
+        isDayFlexible: flexible,
+        isArchived: archived,
         location: _locationController.text.trim().isEmpty
             ? null
             : _locationController.text.trim(),
         notes: _notesController.text.trim().isEmpty
             ? null
             : _notesController.text.trim(),
-        evidenceType: _evidenceType,
-        status: _status,
+        evidenceType: EvidenceType.manual,
+        status: archived ? MomentStatus.cancelled : MomentStatus.scheduled,
         createdBy: initialMoment?.createdBy ?? familyContext.userId,
         createdAt: initialMoment?.createdAt ?? now,
         updatedAt: now,
@@ -281,21 +330,31 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
       await AppDependencies.calendarRepository.saveMoment(moment);
 
-      await AppDependencies.momentInstanceRepository
-          .syncScheduledInstanceFromMoment(
-            moment: moment,
-            createdBy: familyContext.userId,
-            source: MomentInstanceSource.calendar,
-          );
+      if (archived || flexible) {
+        await AppDependencies.momentInstanceRepository
+            .cancelOpenInstancesForMoment(
+              familyId: moment.familyId,
+              momentId: moment.id,
+              cancelledBy: familyContext.userId,
+            );
+      } else {
+        await AppDependencies.momentInstanceRepository
+            .syncScheduledInstanceFromMoment(
+              moment: moment,
+              createdBy: familyContext.userId,
+              source: MomentInstanceSource.calendar,
+            );
+      }
 
       if (!mounted) return;
-
       Navigator.of(context).pop(true);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = 'We could not save this family moment.';
+        _errorMessage = error is StateError
+            ? error.message.toString()
+            : 'We could not save this Family Moment.';
       });
     } finally {
       if (mounted) {
@@ -304,6 +363,46 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
         });
       }
     }
+  }
+
+  Future<void> _toggleArchived() async {
+    final nextValue = !_isArchived;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(
+            nextValue ? 'Archive this Moment?' : 'Restore this Moment?',
+          ),
+          content: Text(
+            nextValue
+                ? 'Future open occurrences will be cancelled. Completed and missed history will remain.'
+                : 'Sakan will restore the definition and create its next exact occurrence when a day is configured.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(nextValue ? 'Archive' : 'Restore'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _isArchived = nextValue;
+    });
+
+    await _saveMoment(archivedOverride: nextValue);
   }
 
   Future<void> _deleteMoment() async {
@@ -315,25 +414,20 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Delete this moment?'),
+          title: const Text('Delete this Moment definition?'),
           content: Text(
-            '“${initialMoment.title}” will be '
-            'removed from Moments, Calendar, and '
-            'its Rhythm record.',
+            '“${initialMoment.title}” will be removed from the Moment Library. '
+            'Use Archive instead when you want to preserve the definition.',
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(false);
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () {
-                Navigator.of(context).pop(true);
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Delete'),
             ),
           ],
@@ -363,12 +457,10 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
       );
 
       if (!mounted) return;
-
       Navigator.of(context).pop(true);
     } catch (_) {
       if (!mounted) return;
-
-      _showMessage('We could not delete this moment.');
+      _showMessage('We could not delete this Moment.');
     } finally {
       if (mounted) {
         setState(() {
@@ -396,7 +488,6 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
     }.where((value) => value > 0).toList();
 
     values.sort();
-
     return values;
   }
 
@@ -405,7 +496,7 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
     if (_isLoading) {
       return const Scaffold(
         body: SafeArea(
-          child: AppLoadingState(message: 'Preparing the family moment…'),
+          child: AppLoadingState(message: 'Preparing the Family Moment…'),
         ),
       );
     }
@@ -417,7 +508,7 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
         ),
         body: SafeArea(
           child: AppErrorState(
-            message: _errorMessage ?? 'The moment form is unavailable.',
+            message: _errorMessage ?? 'The Moment form is unavailable.',
             onRetry: _loadForm,
           ),
         ),
@@ -430,7 +521,7 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
         actions: [
           if (_isEditing)
             IconButton(
-              tooltip: 'Delete moment',
+              tooltip: 'Delete Moment',
               onPressed: _isSaving ? null : _deleteMoment,
               icon: const Icon(Icons.delete_outline_rounded),
             ),
@@ -453,15 +544,12 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'Enter a moment name.';
+                      return 'Enter a Moment name.';
                     }
-
                     return null;
                   },
                 ),
-
                 const SizedBox(height: AppSpacing.lg),
-
                 AppPillSegmentedControl<MomentType>(
                   segments: const [
                     AppPillSegment(
@@ -481,9 +569,7 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                     });
                   },
                 ),
-
                 const SizedBox(height: AppSpacing.lg),
-
                 AppCard(
                   child: Column(
                     children: [
@@ -503,27 +589,21 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                         onChanged: _isSaving
                             ? null
                             : (value) {
-                                if (value == null) {
-                                  return;
+                                if (value != null) {
+                                  setState(() {
+                                    _category = value;
+                                  });
                                 }
-
-                                setState(() {
-                                  _category = value;
-                                });
                               },
                       ),
-
                       const SizedBox(height: AppSpacing.lg),
-
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          'Importance '
-                          '($_importanceLevel/5)',
+                          'Importance ($_importanceLevel/5)',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
-
                       Slider(
                         value: _importanceLevel.toDouble(),
                         min: 1,
@@ -541,10 +621,8 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                     ],
                   ),
                 ),
-
                 if (_type == MomentType.recurring) ...[
                   const SizedBox(height: AppSpacing.lg),
-
                   DropdownButtonFormField<int>(
                     initialValue: _intervalDays,
                     decoration: const InputDecoration(labelText: 'Frequency'),
@@ -552,104 +630,32 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                         .map(
                           (days) => DropdownMenuItem(
                             value: days,
-                            child: Text(switch (days) {
-                              1 => 'Daily',
-                              7 => 'Weekly',
-                              14 => 'Every 2 weeks',
-                              30 => 'Monthly',
-                              90 => 'Every 3 months',
-                              365 => 'Yearly',
-                              _ => 'Every $days days',
-                            }),
+                            child: Text(_frequencyLabel(days)),
                           ),
                         )
                         .toList(),
                     onChanged: _isSaving
                         ? null
                         : (value) {
-                            if (value == null) {
-                              return;
+                            if (value != null) {
+                              setState(() {
+                                _intervalDays = value;
+                                if (value == 1 || value == 365) {
+                                  _isDayFlexible = false;
+                                }
+                              });
                             }
-
-                            setState(() {
-                              _intervalDays = value;
-                            });
                           },
                   ),
                 ],
-
                 const SizedBox(height: AppSpacing.lg),
-
-                AppCard(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.calendar_today_outlined),
-                        title: const Text('Date'),
-                        subtitle: Text(
-                          '${_startDate.day}/'
-                          '${_startDate.month}/'
-                          '${_startDate.year}',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: _isSaving ? null : _pickDate,
-                      ),
-
-                      const Divider(),
-
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.access_time_outlined),
-                        title: const Text('Start Time'),
-                        subtitle: Text(
-                          MaterialLocalizations.of(
-                            context,
-                          ).formatTimeOfDay(_startTime),
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: _isSaving ? null : _pickStartTime,
-                      ),
-
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Add End Time'),
-                        value: _hasEndTime,
-                        onChanged: _isSaving
-                            ? null
-                            : (value) {
-                                setState(() {
-                                  _hasEndTime = value;
-                                });
-                              },
-                      ),
-
-                      if (_hasEndTime)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.access_time_filled),
-                          title: const Text('End Time'),
-                          subtitle: Text(
-                            MaterialLocalizations.of(
-                              context,
-                            ).formatTimeOfDay(_endTime),
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: _isSaving ? null : _pickEndTime,
-                        ),
-                    ],
-                  ),
-                ),
-
+                _buildTimingCard(context),
                 const SizedBox(height: AppSpacing.lg),
-
                 Text(
                   'Expected Participants',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
-
                 const SizedBox(height: AppSpacing.sm),
-
                 AppCard(
                   child: Column(
                     children: _members
@@ -678,83 +684,23 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                         .toList(),
                   ),
                 ),
-
                 const SizedBox(height: AppSpacing.lg),
-
-                DropdownButtonFormField<EvidenceType>(
-                  initialValue: _evidenceType,
-                  decoration: const InputDecoration(
-                    labelText: 'Evidence Method',
-                  ),
-                  items: EvidenceType.values
-                      .map(
-                        (evidence) => DropdownMenuItem(
-                          value: evidence,
-                          child: Text(evidenceTypeLabel(evidence)),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: _isSaving
-                      ? null
-                      : (value) {
-                          if (value == null) {
-                            return;
-                          }
-
-                          setState(() {
-                            _evidenceType = value;
-                          });
-                        },
-                ),
-
-                if (_isEditing) ...[
-                  const SizedBox(height: AppSpacing.lg),
-
-                  DropdownButtonFormField<MomentStatus>(
-                    initialValue: _status,
-                    decoration: const InputDecoration(
-                      labelText: 'Moment Status',
-                    ),
-                    items: MomentStatus.values
-                        .map(
-                          (status) => DropdownMenuItem(
-                            value: status,
-                            child: Text(momentStatusLabel(status)),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: _isSaving
-                        ? null
-                        : (value) {
-                            if (value == null) {
-                              return;
-                            }
-
-                            setState(() {
-                              _status = value;
-                            });
-                          },
-                  ),
-                ],
-
-                const SizedBox(height: AppSpacing.lg),
-
                 TextFormField(
                   controller: _locationController,
                   decoration: const InputDecoration(
                     labelText: 'Location',
-                    hintText: 'Dining Room, School…',
+                    hintText: 'Dining Room, Park…',
                   ),
                 ),
-
                 const SizedBox(height: AppSpacing.md),
-
                 TextFormField(
                   controller: _notesController,
                   maxLines: 4,
-                  decoration: const InputDecoration(labelText: 'Notes'),
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    hintText: 'What makes this Moment meaningful?',
+                  ),
                 ),
-
                 if (_errorMessage != null) ...[
                   const SizedBox(height: AppSpacing.md),
                   Text(
@@ -764,19 +710,236 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                     ),
                   ),
                 ],
-
                 const SizedBox(height: AppSpacing.xxl),
-
                 AppPrimaryButton(
                   label: _isEditing ? 'Save Changes' : 'Save Moment',
                   isLoading: _isSaving,
                   onPressed: _isSaving ? null : _saveMoment,
                 ),
+                if (_isEditing) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  OutlinedButton.icon(
+                    onPressed: _isSaving ? null : _toggleArchived,
+                    icon: Icon(
+                      _isArchived
+                          ? Icons.unarchive_outlined
+                          : Icons.archive_outlined,
+                    ),
+                    label: Text(
+                      _isArchived
+                          ? 'Restore this Moment'
+                          : 'Archive this Moment',
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildTimingCard(BuildContext context) {
+    return AppCard(
+      child: Column(
+        children: [
+          if (_type == MomentType.singular) ...[
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.calendar_today_outlined),
+              title: const Text('Date'),
+              subtitle: Text(DateFormat('d/M/y').format(_oneTimeDate)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _isSaving ? null : _pickDate,
+            ),
+            const Divider(),
+          ] else ...[
+            if (_intervalDays == 7 || _intervalDays == 14) ...[
+              DropdownButtonFormField<int>(
+                initialValue: _isDayFlexible ? 0 : _preferredWeekday,
+                decoration: const InputDecoration(labelText: 'Preferred Day'),
+                items: <DropdownMenuItem<int>>[
+                  const DropdownMenuItem(value: 0, child: Text('Flexible')),
+                  ...List.generate(7, (index) {
+                    final weekday = index + 1;
+                    return DropdownMenuItem(
+                      value: weekday,
+                      child: Text(_weekdayLabel(weekday)),
+                    );
+                  }),
+                ],
+                onChanged: _isSaving
+                    ? null
+                    : (value) {
+                        if (value == null) return;
+                        setState(() {
+                          _isDayFlexible = value == 0;
+                          if (value != 0) {
+                            _preferredWeekday = value;
+                          }
+                        });
+                      },
+              ),
+              const Divider(),
+            ],
+            if (_intervalDays == 30 || _intervalDays == 90) ...[
+              DropdownButtonFormField<int>(
+                initialValue: _isDayFlexible ? 0 : _preferredDayOfMonth,
+                decoration: const InputDecoration(
+                  labelText: 'Preferred Day of Month',
+                ),
+                items: <DropdownMenuItem<int>>[
+                  const DropdownMenuItem(value: 0, child: Text('Flexible')),
+                  ...List.generate(
+                    31,
+                    (index) => DropdownMenuItem(
+                      value: index + 1,
+                      child: Text('Day ${index + 1}'),
+                    ),
+                  ),
+                ],
+                onChanged: _isSaving
+                    ? null
+                    : (value) {
+                        if (value == null) return;
+                        setState(() {
+                          _isDayFlexible = value == 0;
+                          if (value != 0) {
+                            _preferredDayOfMonth = value;
+                          }
+                        });
+                      },
+              ),
+              const Divider(),
+            ],
+            if (_intervalDays == 365) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      initialValue: _preferredMonth,
+                      decoration: const InputDecoration(labelText: 'Month'),
+                      items: List.generate(
+                        12,
+                        (index) => DropdownMenuItem(
+                          value: index + 1,
+                          child: Text(
+                            DateFormat.MMMM().format(DateTime(2026, index + 1)),
+                          ),
+                        ),
+                      ),
+                      onChanged: _isSaving
+                          ? null
+                          : (value) {
+                              if (value != null) {
+                                setState(() {
+                                  _preferredMonth = value;
+                                });
+                              }
+                            },
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      initialValue: _preferredDayOfMonth,
+                      decoration: const InputDecoration(labelText: 'Day'),
+                      items: List.generate(
+                        31,
+                        (index) => DropdownMenuItem(
+                          value: index + 1,
+                          child: Text('${index + 1}'),
+                        ),
+                      ),
+                      onChanged: _isSaving
+                          ? null
+                          : (value) {
+                              if (value != null) {
+                                setState(() {
+                                  _preferredDayOfMonth = value;
+                                });
+                              }
+                            },
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(),
+            ],
+          ],
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.access_time_outlined),
+            title: const Text('Start Time'),
+            subtitle: Text(
+              MaterialLocalizations.of(context).formatTimeOfDay(_startTime),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _isSaving ? null : _pickStartTime,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Add End Time'),
+            value: _hasEndTime,
+            onChanged: _isSaving
+                ? null
+                : (value) {
+                    setState(() {
+                      _hasEndTime = value;
+                    });
+                  },
+          ),
+          if (_hasEndTime)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.access_time_filled),
+              title: const Text('End Time'),
+              subtitle: Text(
+                MaterialLocalizations.of(context).formatTimeOfDay(_endTime),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _isSaving ? null : _pickEndTime,
+            ),
+          if (_type == MomentType.recurring && _isDayFlexible) ...[
+            const Divider(),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.event_available_outlined),
+              title: Text('Exact date chosen later'),
+              subtitle: Text(
+                'Sakan will keep the Moment in the Library without placing a fake date on the Calendar.',
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  int _minutesFromTime(TimeOfDay value) {
+    return value.hour * 60 + value.minute;
+  }
+
+  TimeOfDay _timeFromMinutes(int minutes) {
+    final safe = minutes.clamp(0, 1439).toInt();
+    return TimeOfDay(hour: safe ~/ 60, minute: safe % 60);
+  }
+
+  String _frequencyLabel(int days) {
+    return switch (days) {
+      1 => 'Daily',
+      7 => 'Weekly',
+      14 => 'Every 2 weeks',
+      30 => 'Monthly',
+      90 => 'Every 3 months',
+      365 => 'Yearly',
+      _ => 'Every $days days',
+    };
+  }
+
+  String _weekdayLabel(int weekday) {
+    final monday = DateTime(2026, 1, 5);
+    return DateFormat.EEEE().format(monday.add(Duration(days: weekday - 1)));
   }
 }

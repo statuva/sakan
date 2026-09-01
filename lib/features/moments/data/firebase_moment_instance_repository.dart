@@ -346,10 +346,67 @@ class FirebaseMomentInstanceRepository implements MomentInstanceRepository {
   }
 
   @override
+  Future<MomentInstance> scheduleOccurrence({
+    required FamilyMoment moment,
+    required DateTime scheduledStartAt,
+    DateTime? scheduledEndAt,
+    required String createdBy,
+    MomentInstanceSource source = MomentInstanceSource.manual,
+  }) async {
+    _verifyCurrentUser(createdBy);
+    _validateMoment(moment);
+
+    final start = scheduledStartAt.toUtc();
+    final end = scheduledEndAt?.toUtc();
+
+    if (end != null && !end.isAfter(start)) {
+      throw ArgumentError('The end time must be after the start time.');
+    }
+
+    final now = DateTime.now().toUtc();
+
+    final instanceId = _scheduledInstanceId(
+      momentId: moment.id,
+      scheduledStartAt: start,
+    );
+
+    final instance = MomentInstance(
+      id: instanceId,
+      familyId: moment.familyId,
+      momentId: moment.id,
+      titleSnapshot: moment.title,
+      typeSnapshot: moment.type,
+      categorySnapshot: moment.category,
+      importanceLevelSnapshot: moment.importanceLevel,
+      locationSnapshot: moment.location,
+      expectedParticipantIds: moment.expectedParticipantIds,
+      confirmedParticipantIds: [],
+      reportedParticipantIds: [],
+      evidenceSignals: [],
+      confirmationLevel: MomentConfirmationLevel.low,
+      source: source,
+      status: MomentInstanceStatus.scheduled,
+      scheduledStartAt: start,
+      scheduledEndAt: end,
+      createdBy: createdBy,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await _instanceReference(
+      familyId: instance.familyId,
+      instanceId: instance.id,
+    ).set(instance.toMap());
+
+    return instance;
+  }
+
+  @override
   Future<int> cancelOpenInstancesForMoment({
     required String familyId,
     required String momentId,
     required String cancelledBy,
+    bool includeActive = false,
   }) async {
     _verifyCurrentUser(cancelledBy);
 

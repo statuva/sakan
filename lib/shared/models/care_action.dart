@@ -16,6 +16,7 @@ class CareAction {
     required this.createdAt,
     required this.updatedAt,
     this.momentId,
+    this.instanceId,
     this.completedAt,
   });
 
@@ -25,18 +26,15 @@ class CareAction {
   final String familyId;
 
   /// Null for a manually created personal reminder.
-  ///
-  /// Calendar or Digital Twin reminders may reference
-  /// the Family Moment that caused the recommendation.
   final String? momentId;
 
+  /// Links a recommendation to one concrete occurrence. Old reminders may
+  /// have only momentId and remain readable through the compatibility lookup.
+  final String? instanceId;
+
   final String title;
-
-  /// Displayed to the user as the reminder note.
   final String reason;
-
   final String assignedMemberId;
-
   final DateTime dueAt;
 
   final CareActionStatus status;
@@ -44,7 +42,6 @@ class CareAction {
   final EvidenceType evidenceType;
 
   final DateTime? completedAt;
-
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -62,11 +59,8 @@ class CareAction {
   }
 
   factory CareAction.fromMap(String id, Map<String, dynamic> map) {
-    final rawMomentId = map['momentId'];
-
-    final momentId = rawMomentId is String && rawMomentId.trim().isNotEmpty
-        ? rawMomentId
-        : null;
+    final momentId = _nonEmptyString(map['momentId']);
+    final instanceId = _nonEmptyString(map['instanceId']);
 
     final fallbackSource = momentId == null
         ? CareActionSource.manual
@@ -76,6 +70,7 @@ class CareAction {
       id: id,
       familyId: map['familyId'] as String,
       momentId: momentId,
+      instanceId: instanceId,
       title: map['title'] as String? ?? 'Untitled reminder',
       reason: map['reason'] as String? ?? '',
       assignedMemberId: map['assignedMemberId'] as String,
@@ -104,9 +99,10 @@ class CareAction {
   }
 
   Map<String, dynamic> toMap() {
-    return {
+    return <String, dynamic>{
       'familyId': familyId,
       'momentId': momentId,
+      'instanceId': instanceId,
       'title': title,
       'reason': reason,
       'assignedMemberId': assignedMemberId,
@@ -124,6 +120,7 @@ class CareAction {
 
   CareAction copyWith({
     Object? momentId = _notProvided,
+    Object? instanceId = _notProvided,
     String? title,
     String? reason,
     String? assignedMemberId,
@@ -140,6 +137,9 @@ class CareAction {
       momentId: identical(momentId, _notProvided)
           ? this.momentId
           : momentId as String?,
+      instanceId: identical(instanceId, _notProvided)
+          ? this.instanceId
+          : instanceId as String?,
       title: title ?? this.title,
       reason: reason ?? this.reason,
       assignedMemberId: assignedMemberId ?? this.assignedMemberId,
@@ -153,6 +153,10 @@ class CareAction {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+
+  static String? _nonEmptyString(Object? value) {
+    return value is String && value.trim().isNotEmpty ? value : null;
   }
 
   static T _enumValueOrFallback<T extends Enum>(

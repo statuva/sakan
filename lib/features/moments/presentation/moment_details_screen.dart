@@ -4,10 +4,10 @@ import 'package:intl/intl.dart';
 import '../../../app/app_dependencies.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/models/current_family_context.dart';
-import '../../../shared/models/family_memory.dart';
 import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/member.dart';
 import '../../../shared/models/model_enums.dart';
+import '../../../shared/services/moment_schedule_resolver.dart';
 import '../../../shared/utils/moment_visuals.dart';
 import '../../../shared/widgets/cards/app_card.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
@@ -28,7 +28,6 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
 
   Stream<List<FamilyMoment>>? _momentsStream;
   Stream<List<Member>>? _membersStream;
-  Stream<List<FamilyMemory>>? _memoriesStream;
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -52,18 +51,11 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
 
       setState(() {
         _familyContext = familyContext;
-
         _momentsStream = AppDependencies.calendarRepository.watchMoments(
           familyId: familyContext.familyId,
         );
-
         _membersStream = AppDependencies.currentFamilyService
             .watchFamilyMembers(familyContext.familyId);
-
-        _memoriesStream = AppDependencies.memoryRepository.watchMemories(
-          familyId: familyContext.familyId,
-        );
-
         _isLoading = false;
       });
     } catch (_) {
@@ -121,8 +113,7 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
 
     if (_familyContext == null ||
         _momentsStream == null ||
-        _membersStream == null ||
-        _memoriesStream == null) {
+        _membersStream == null) {
       return _errorScaffold(
         _errorMessage ?? 'This Family Moment is unavailable.',
       );
@@ -144,9 +135,7 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
           );
         }
 
-        final moments = momentSnapshot.data ?? <FamilyMoment>[];
-
-        final moment = _findMoment(moments);
+        final moment = _findMoment(momentSnapshot.data ?? <FamilyMoment>[]);
 
         if (moment == null) {
           return Scaffold(
@@ -167,9 +156,7 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
                       ),
                       const SizedBox(height: AppSpacing.lg),
                       FilledButton(
-                        onPressed: () {
-                          Navigator.of(context).pop(true);
-                        },
+                        onPressed: () => Navigator.of(context).pop(true),
                         child: const Text('Back to Moments'),
                       ),
                     ],
@@ -189,32 +176,14 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
               );
             }
 
-            final members = memberSnapshot.data ?? <Member>[];
+            final associatedMembers = _associatedMembers(
+              moment: moment,
+              members: memberSnapshot.data ?? <Member>[],
+            );
 
-            return StreamBuilder<List<FamilyMemory>>(
-              stream: _memoriesStream,
-              builder: (context, memorySnapshot) {
-                if (memorySnapshot.hasError) {
-                  return _errorScaffold('We could not load the Memory count.');
-                }
-
-                final memories = memorySnapshot.data ?? <FamilyMemory>[];
-
-                final relatedMemories = memories.where((memory) {
-                  return memory.momentId == moment.id;
-                }).toList();
-
-                final associatedMembers = _associatedMembers(
-                  moment: moment,
-                  members: members,
-                );
-
-                return _detailsScaffold(
-                  moment: moment,
-                  associatedMembers: associatedMembers,
-                  memoryCount: relatedMemories.length,
-                );
-              },
+            return _detailsScaffold(
+              moment: moment,
+              associatedMembers: associatedMembers,
             );
           },
         );
@@ -250,10 +219,8 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
   Widget _detailsScaffold({
     required FamilyMoment moment,
     required List<Member> associatedMembers,
-    required int memoryCount,
   }) {
     final canEdit = _familyContext!.isAdult;
-
     final categoryColor = momentCategoryColor(moment.category);
 
     return Scaffold(
@@ -286,9 +253,7 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
                           color: categoryColor,
                         ),
                       ),
-
                       const SizedBox(width: AppSpacing.md),
-
                       Expanded(
                         child: Text(
                           moment.title,
@@ -298,9 +263,7 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: AppSpacing.md),
-
                   Wrap(
                     spacing: AppSpacing.xs,
                     runSpacing: AppSpacing.xs,
@@ -318,18 +281,19 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
                           label: _frequencyLabel(moment.expectedIntervalDays),
                           color: Theme.of(context).colorScheme.secondary,
                         ),
+                      if (moment.isArchived)
+                        _InformationLabel(
+                          label: 'Archived',
+                          color: Theme.of(context).colorScheme.error,
+                        ),
                     ],
                   ),
-
                   if (canEdit) ...[
                     const SizedBox(height: AppSpacing.lg),
-
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: () {
-                          _editMoment(moment);
-                        },
+                        onPressed: () => _editMoment(moment),
                         icon: const Icon(Icons.edit_outlined),
                         label: const Text('Edit this Moment'),
                       ),
@@ -338,13 +302,9 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: AppSpacing.xl),
-
             const _SectionTitle(title: 'Importance'),
-
             const SizedBox(height: AppSpacing.sm),
-
             AppCard(
               child: Row(
                 children: [
@@ -364,13 +324,9 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: AppSpacing.xl),
-
             const _SectionTitle(title: 'About this Moment'),
-
             const SizedBox(height: AppSpacing.sm),
-
             AppCard(
               child: Text(
                 moment.notes?.trim().isNotEmpty == true
@@ -381,13 +337,9 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
                 ).textTheme.bodyLarge?.copyWith(height: 1.45),
               ),
             ),
-
             const SizedBox(height: AppSpacing.xl),
-
             const _SectionTitle(title: 'Associated Members'),
-
             const SizedBox(height: AppSpacing.sm),
-
             AppCard(
               child: associatedMembers.isEmpty
                   ? const Text(
@@ -407,49 +359,44 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
                       }).toList(),
                     ),
             ),
-
             const SizedBox(height: AppSpacing.xl),
-
             _SectionTitle(
               title: moment.type == MomentType.recurring
                   ? 'Usual Timing'
                   : 'Planned Timing',
             ),
-
             const SizedBox(height: AppSpacing.sm),
-
             AppCard(
               child: Column(
                 children: [
-                  if (moment.type == MomentType.recurring)
+                  if (moment.type == MomentType.recurring) ...[
                     _DetailLine(
                       icon: Icons.repeat_rounded,
                       title: 'Frequency',
                       value: _frequencyLabel(moment.expectedIntervalDays),
                     ),
-
-                  if (moment.type == MomentType.recurring) const Divider(),
-
-                  _DetailLine(
-                    icon: Icons.calendar_today_outlined,
-                    title: moment.type == MomentType.recurring
-                        ? 'Usual day'
-                        : 'Date',
-                    value: moment.type == MomentType.recurring
-                        ? DateFormat('EEEE').format(moment.startAt.toLocal())
-                        : DateFormat(
-                            'EEEE, d MMMM y',
-                          ).format(moment.startAt.toLocal()),
-                  ),
-
-                  const Divider(),
-
+                    const Divider(),
+                    _DetailLine(
+                      icon: Icons.calendar_today_outlined,
+                      title: 'Preferred day',
+                      value: _recurringDayLabel(moment),
+                    ),
+                    const Divider(),
+                  ] else ...[
+                    _DetailLine(
+                      icon: Icons.calendar_today_outlined,
+                      title: 'Date',
+                      value: DateFormat(
+                        'EEEE, d MMMM y',
+                      ).format(moment.startAt.toLocal()),
+                    ),
+                    const Divider(),
+                  ],
                   _DetailLine(
                     icon: Icons.access_time_outlined,
                     title: 'Time',
                     value: _timeRange(moment),
                   ),
-
                   if (moment.location?.trim().isNotEmpty == true) ...[
                     const Divider(),
                     _DetailLine(
@@ -461,35 +408,14 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: AppSpacing.xl),
-
-            const _SectionTitle(title: 'Evidence Method'),
-
+            const _SectionTitle(title: 'How occurrences are confirmed'),
             const SizedBox(height: AppSpacing.sm),
-
-            AppCard(
+            const AppCard(
               child: _DetailLine(
                 icon: Icons.verified_outlined,
-                title: 'Configured method',
-                value: _evidenceLabel(moment.evidenceType),
-              ),
-            ),
-
-            const SizedBox(height: AppSpacing.xl),
-
-            const _SectionTitle(title: 'Memories'),
-
-            const SizedBox(height: AppSpacing.sm),
-
-            AppCard(
-              child: _DetailLine(
-                icon: Icons.photo_library_outlined,
-                title: 'Saved Memories',
-                value: memoryCount == 0
-                    ? 'No Memories saved yet'
-                    : '$memoryCount saved '
-                          '${memoryCount == 1 ? 'Memory' : 'Memories'}',
+                title: 'Confirmation',
+                value: 'Manual check-in or Today Review',
               ),
             ),
           ],
@@ -499,15 +425,59 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
   }
 
   String _timeRange(FamilyMoment moment) {
-    final start = moment.startAt.toLocal();
-    final end = moment.endAt?.toLocal();
+    final startMinutes = moment.resolvedPreferredStartMinutes;
+    final endMinutes = moment.resolvedPreferredEndMinutes;
+    final reference = DateTime(2026, 1, 1);
+    final start = DateTime(
+      reference.year,
+      reference.month,
+      reference.day,
+      startMinutes ~/ 60,
+      startMinutes % 60,
+    );
 
-    if (end == null) {
+    if (endMinutes == null) {
       return DateFormat('h:mm a').format(start);
     }
 
-    return '${DateFormat('h:mm a').format(start)}'
-        '–${DateFormat('h:mm a').format(end)}';
+    final end = DateTime(
+      reference.year,
+      reference.month,
+      reference.day,
+      endMinutes ~/ 60,
+      endMinutes % 60,
+    );
+
+    return '${DateFormat('h:mm a').format(start)}–'
+        '${DateFormat('h:mm a').format(end)}';
+  }
+
+  String _recurringDayLabel(FamilyMoment moment) {
+    if (moment.isDayFlexible) {
+      return 'Flexible — exact date chosen later';
+    }
+
+    return switch (moment.expectedIntervalDays) {
+      1 => 'Every day',
+      7 || 14 => _weekdayLabel(
+        moment.preferredWeekday ?? moment.startAt.toLocal().weekday,
+      ),
+      30 ||
+      90 => 'Day ${moment.preferredDayOfMonth ?? moment.startAt.toLocal().day}',
+      365 => _yearlyDayLabel(moment),
+      _ => 'Uses its configured interval',
+    };
+  }
+
+  String _yearlyDayLabel(FamilyMoment moment) {
+    final month = moment.preferredMonth ?? moment.startAt.toLocal().month;
+    final requestedDay =
+        moment.preferredDayOfMonth ?? moment.startAt.toLocal().day;
+    final day = requestedDay
+        .clamp(1, MomentScheduleResolver.daysInMonth(2026, month))
+        .toInt();
+
+    return DateFormat('d MMMM').format(DateTime(2026, month, day));
   }
 
   String _frequencyLabel(int? days) {
@@ -523,13 +493,9 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
     };
   }
 
-  String _evidenceLabel(EvidenceType type) {
-    return switch (type) {
-      EvidenceType.scheduledOnly => 'Scheduled occurrence',
-      EvidenceType.userConfirmed => 'Member confirmation',
-      EvidenceType.photoAttached => 'Memory or photo evidence',
-      EvidenceType.manual => 'Manual check-in',
-    };
+  String _weekdayLabel(int weekday) {
+    final monday = DateTime(2026, 1, 5);
+    return DateFormat.EEEE().format(monday.add(Duration(days: weekday - 1)));
   }
 
   IconData _categoryIcon(MomentCategory category) {
@@ -545,12 +511,7 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
 
   String _initial(String name) {
     final trimmed = name.trim();
-
-    if (trimmed.isEmpty) {
-      return '?';
-    }
-
-    return trimmed[0].toUpperCase();
+    return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
   }
 }
 
@@ -641,17 +602,13 @@ class _DetailLine extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon, size: 21, color: Theme.of(context).colorScheme.primary),
-
         const SizedBox(width: AppSpacing.md),
-
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title, style: Theme.of(context).textTheme.labelLarge),
-
               const SizedBox(height: 4),
-
               Text(value, style: Theme.of(context).textTheme.bodyMedium),
             ],
           ),
