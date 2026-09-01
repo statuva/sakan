@@ -331,12 +331,22 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
       await AppDependencies.calendarRepository.saveMoment(moment);
 
       if (archived || flexible) {
-        await AppDependencies.momentInstanceRepository
-            .cancelOpenInstancesForMoment(
+        final openInstance = await AppDependencies.momentInstanceRepository
+            .getOpenInstanceForMoment(
               familyId: moment.familyId,
               momentId: moment.id,
-              cancelledBy: familyContext.userId,
             );
+
+        // Do not cancel a Moment that is already live. The definition can be
+        // archived or made flexible after the active session finishes.
+        if (openInstance == null || !openInstance.isActive) {
+          await AppDependencies.momentInstanceRepository
+              .cancelOpenInstancesForMoment(
+                familyId: moment.familyId,
+                momentId: moment.id,
+                cancelledBy: familyContext.userId,
+              );
+        }
       } else {
         await AppDependencies.momentInstanceRepository
             .syncScheduledInstanceFromMoment(

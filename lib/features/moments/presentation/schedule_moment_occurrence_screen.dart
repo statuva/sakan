@@ -154,13 +154,25 @@ class _ScheduleMomentOccurrenceScreenState
     });
 
     try {
-      await AppDependencies.momentInstanceRepository.scheduleOccurrence(
-        moment: widget.moment,
-        scheduledStartAt: start.toUtc(),
-        scheduledEndAt: end?.toUtc(),
-        createdBy: context.userId,
-        source: MomentInstanceSource.manual,
+      final scheduledMoment = widget.moment.copyWith(
+        startAt: start.toUtc(),
+        endAt: end?.toUtc(),
+        status: MomentStatus.scheduled,
+        isArchived: false,
+        isDayFlexible: false,
+        updatedAt: DateTime.now().toUtc(),
       );
+
+      final instance = await AppDependencies.momentInstanceRepository
+          .syncScheduledInstanceFromMoment(
+            moment: scheduledMoment,
+            createdBy: context.userId,
+            source: MomentInstanceSource.manual,
+          );
+
+      if (instance == null) {
+        throw StateError('This occurrence could not be scheduled.');
+      }
 
       if (!mounted) return;
       Navigator.of(this.context).pop(true);

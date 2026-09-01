@@ -345,7 +345,6 @@ class FirebaseMomentInstanceRepository implements MomentInstanceRepository {
     return instance;
   }
 
-  @override
   Future<MomentInstance> scheduleOccurrence({
     required FamilyMoment moment,
     required DateTime scheduledStartAt,
