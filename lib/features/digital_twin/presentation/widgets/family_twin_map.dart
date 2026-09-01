@@ -10,6 +10,7 @@ import '../../../../shared/models/model_enums.dart';
 import '../../../../shared/models/moment_instance.dart';
 import '../../../../shared/models/rhythm_record.dart';
 import '../../../calendar/presentation/widgets/calendar_palette.dart';
+import '../../domain/twin_simulation_result.dart';
 import '../digital_twin_visuals.dart';
 
 typedef TwinMomentTap =
@@ -24,10 +25,12 @@ class FamilyTwinMap extends StatefulWidget {
     required this.report,
     required this.onMemberTap,
     required this.onMomentTap,
+    this.simulation,
     super.key,
   });
 
   final FamilyInsightReport report;
+  final DigitalTwinSimulationResult? simulation;
   final ValueChanged<Member> onMemberTap;
   final TwinMomentTap onMomentTap;
 
@@ -74,14 +77,21 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
   @override
   Widget build(BuildContext context) {
     final snapshot = widget.report.snapshot;
-    final members = snapshot.activeMembers.take(6).toList();
-    final moments = _visibleRecurringMoments(widget.report);
+    final members = _visibleMembers();
+    final moments = _visibleRecurringMoments();
+    final displayMomentCount = _allDisplayMoments()
+        .where((moment) => moment.type == MomentType.recurring)
+        .length;
 
     return Container(
       decoration: BoxDecoration(
         color: CalendarPalette.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: CalendarPalette.border),
+        border: Border.all(
+          color: widget.simulation == null
+              ? CalendarPalette.border
+              : CalendarPalette.milestone.withAlpha(95),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -99,13 +109,41 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Family Moment Map',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              color: CalendarPalette.ink,
-                              fontWeight: FontWeight.w700,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Family Moment Map',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    color: CalendarPalette.ink,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                             ),
+                          ),
+                          if (widget.simulation != null) ...[
+                            const SizedBox(width: AppSpacing.xs),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: CalendarPalette.milestoneSoft,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                'SIMULATED',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: CalendarPalette.milestone,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 9,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 3),
                       Text(
@@ -175,9 +213,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                                         node.member,
                                         layout.momentNodes,
                                       ),
-                                      onTap: () {
-                                        _selectMember(node.member);
-                                      },
+                                      onTap: () => _selectMember(node.member),
                                     ),
                                   ),
                                   ...layout.momentNodes.map(
@@ -187,9 +223,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                                       connected: _momentIsConnected(
                                         node.moment,
                                       ),
-                                      onTap: () {
-                                        _selectMoment(node);
-                                      },
+                                      onTap: () => _selectMoment(node),
                                     ),
                                   ),
                                 ],
@@ -214,43 +248,48 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                 Wrap(
                   spacing: AppSpacing.md,
                   runSpacing: AppSpacing.xs,
-                  children: const [
-                    _LegendDot(color: CalendarPalette.stable, label: 'Stable'),
-                    _LegendDot(
+                  children: [
+                    const _LegendDot(
+                      color: CalendarPalette.stable,
+                      label: 'Stable',
+                    ),
+                    const _LegendDot(
                       color: CalendarPalette.drifting,
                       label: 'Drifting',
                     ),
-                    _LegendDot(
+                    const _LegendDot(
                       color: CalendarPalette.recovering,
                       label: 'Recovering',
                     ),
-                    _LegendDot(
+                    const _LegendDot(
                       color: CalendarPalette.strengthening,
                       label: 'Strengthening',
                     ),
-                    _LegendDot(
+                    const _LegendDot(
                       color: CalendarPalette.slate,
                       label: 'Still Learning',
                     ),
+                    if (widget.simulation != null)
+                      const _LegendDashed(
+                        color: CalendarPalette.milestone,
+                        label: 'Simulated change',
+                      ),
                   ],
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'Connections stay quiet until a member or Moment is selected.',
+                  widget.simulation == null
+                      ? 'Connections stay quiet until a member or Moment is selected.'
+                      : 'Gold outlines and dashed connections exist only in this simulation.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: CalendarPalette.inkSoft,
                   ),
                 ),
                 if (snapshot.activeMembers.length > members.length ||
-                    snapshot.moments
-                            .where(
-                              (moment) => moment.type == MomentType.recurring,
-                            )
-                            .length >
-                        moments.length) ...[
+                    displayMomentCount > moments.length) ...[
                   const SizedBox(height: 3),
                   Text(
-                    'The map shows a focused set of nodes. All recurring Moment patterns remain listed below.',
+                    'The map shows a focused set of nodes. Changed nodes are kept visible.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: CalendarPalette.inkSoft,
                     ),
@@ -264,14 +303,76 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
     );
   }
 
+  List<FamilyMoment> _allDisplayMoments() {
+    return widget.simulation?.simulatedMoments ??
+        widget.report.snapshot.moments;
+  }
+
+  List<Member> _visibleMembers() {
+    final members = widget.report.snapshot.activeMembers.toList()
+      ..sort(
+        (first, second) => first.displayName.compareTo(second.displayName),
+      );
+
+    final simulation = widget.simulation;
+
+    if (simulation == null) {
+      return members.take(6).toList(growable: false);
+    }
+
+    final changed = members
+        .where((member) => simulation.changedMemberIds.contains(member.id))
+        .toList(growable: false);
+
+    final unchanged = members
+        .where((member) => !simulation.changedMemberIds.contains(member.id))
+        .toList(growable: false);
+
+    return <Member>[...changed, ...unchanged].take(6).toList(growable: false);
+  }
+
+  List<FamilyMoment> _visibleRecurringMoments() {
+    final moments = _allDisplayMoments()
+        .where((moment) => moment.type == MomentType.recurring)
+        .toList();
+
+    moments.sort((first, second) {
+      final simulation = widget.simulation;
+      final firstChanged =
+          simulation?.changedMomentIds.contains(first.id) ?? false;
+      final secondChanged =
+          simulation?.changedMomentIds.contains(second.id) ?? false;
+
+      if (firstChanged != secondChanged) {
+        return firstChanged ? -1 : 1;
+      }
+
+      final statusResult = _rhythmRank(
+        _displayStatus(first),
+      ).compareTo(_rhythmRank(_displayStatus(second)));
+
+      if (statusResult != 0) {
+        return statusResult;
+      }
+
+      return first.title.compareTo(second.title);
+    });
+
+    return moments.take(8).toList(growable: false);
+  }
+
+  RhythmStatus _displayStatus(FamilyMoment moment) {
+    final pattern = widget.simulation?.patternForMoment(moment.id);
+
+    return pattern?.projectedStatus ??
+        widget.report.snapshot.rhythmForMoment(moment.id)?.status ??
+        RhythmStatus.stillLearning;
+  }
+
   bool _memberIsConnected(Member member, List<_MomentNode> momentNodes) {
     final selected = _selectedNodeKey;
 
-    if (selected == null) {
-      return true;
-    }
-
-    if (selected == 'member:${member.id}') {
+    if (selected == null || selected == 'member:${member.id}') {
       return true;
     }
 
@@ -293,11 +394,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
   bool _momentIsConnected(FamilyMoment moment) {
     final selected = _selectedNodeKey;
 
-    if (selected == null) {
-      return true;
-    }
-
-    if (selected == 'moment:${moment.id}') {
+    if (selected == null || selected == 'moment:${moment.id}') {
       return true;
     }
 
@@ -306,38 +403,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
     }
 
     final selectedMemberId = selected.substring('member:'.length);
-
     return moment.expectedParticipantIds.contains(selectedMemberId);
-  }
-
-  List<FamilyMoment> _visibleRecurringMoments(FamilyInsightReport report) {
-    final snapshot = report.snapshot;
-
-    final moments =
-        snapshot.moments
-            .where((moment) => moment.type == MomentType.recurring)
-            .toList()
-          ..sort((first, second) {
-            final firstRhythm = snapshot.rhythmForMoment(first.id);
-            final secondRhythm = snapshot.rhythmForMoment(second.id);
-
-            final statusResult =
-                _rhythmRank(
-                  firstRhythm?.status ?? RhythmStatus.stillLearning,
-                ).compareTo(
-                  _rhythmRank(
-                    secondRhythm?.status ?? RhythmStatus.stillLearning,
-                  ),
-                );
-
-            if (statusResult != 0) {
-              return statusResult;
-            }
-
-            return first.title.compareTo(second.title);
-          });
-
-    return moments.take(8).toList(growable: false);
   }
 
   int _rhythmRank(RhythmStatus status) {
@@ -357,6 +423,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
   }) {
     final memberNodes = <_MemberNode>[];
     final momentNodes = <_MomentNode>[];
+    final simulation = widget.simulation;
 
     final visibleMemberIndex = <String, int>{
       for (var index = 0; index < members.length; index++)
@@ -365,26 +432,31 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
 
     final orderedMoments = List<FamilyMoment>.from(moments)
       ..sort((first, second) {
-        final firstCenter = _connectionCenter(first, visibleMemberIndex);
+        final firstChanged =
+            simulation?.changedMomentIds.contains(first.id) ?? false;
+        final secondChanged =
+            simulation?.changedMomentIds.contains(second.id) ?? false;
 
-        final secondCenter = _connectionCenter(second, visibleMemberIndex);
-
-        final result = firstCenter.compareTo(secondCenter);
-
-        if (result != 0) {
-          return result;
+        if (firstChanged != secondChanged) {
+          return firstChanged ? -1 : 1;
         }
 
-        return first.title.compareTo(second.title);
+        final firstCenter = _connectionCenter(first, visibleMemberIndex);
+        final secondCenter = _connectionCenter(second, visibleMemberIndex);
+        final result = firstCenter.compareTo(secondCenter);
+
+        return result != 0 ? result : first.title.compareTo(second.title);
       });
 
     final memberLeft = 38.0;
     final memberRight = size.width - 38.0;
 
     for (var index = 0; index < members.length; index++) {
+      final member = members[index];
+
       memberNodes.add(
         _MemberNode(
-          member: members[index],
+          member: member,
           center: Offset(
             _distributedPosition(
               index: index,
@@ -395,6 +467,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
             74,
           ),
           color: _memberColor(index),
+          isChanged: simulation?.changedMemberIds.contains(member.id) ?? false,
         ),
       );
     }
@@ -404,14 +477,13 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
     for (var index = 0; index < orderedMoments.length; index++) {
       final row = index ~/ columns;
       final column = index % columns;
-
       final countInRow = math
           .min(columns, orderedMoments.length - row * columns)
           .toInt();
-
       final moment = orderedMoments[index];
       final rhythm = widget.report.snapshot.rhythmForMoment(moment.id);
       final instances = widget.report.snapshot.instancesForMoment(moment.id);
+      final status = _displayStatus(moment);
 
       momentNodes.add(
         _MomentNode(
@@ -427,9 +499,10 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
             ),
             orderedMoments.length <= 4 ? 222.0 : 185.0 + row * 92.0,
           ),
-          visual: twinRhythmVisual(
-            rhythm?.status ?? RhythmStatus.stillLearning,
-          ),
+          visual: twinRhythmVisual(status),
+          isChanged: simulation?.changedMomentIds.contains(moment.id) ?? false,
+          isHypothetical:
+              simulation?.hypotheticalMomentIds.contains(moment.id) ?? false,
         ),
       );
     }
@@ -455,6 +528,10 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
             start: memberNode.center,
             end: momentNode.center,
             color: momentNode.visual.color,
+            isSimulated: _isSimulatedEdge(
+              moment: momentNode.moment,
+              memberId: memberId,
+            ),
           ),
         );
       }
@@ -465,6 +542,26 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
       momentNodes: momentNodes,
       edges: edges,
     );
+  }
+
+  bool _isSimulatedEdge({
+    required FamilyMoment moment,
+    required String memberId,
+  }) {
+    final simulation = widget.simulation;
+
+    if (simulation == null) {
+      return false;
+    }
+
+    final baseMoment = widget.report.snapshot.momentById(moment.id);
+
+    if (baseMoment == null) {
+      return true;
+    }
+
+    return !baseMoment.expectedParticipantIds.contains(memberId) &&
+        moment.expectedParticipantIds.contains(memberId);
   }
 
   double _connectionCenter(FamilyMoment moment, Map<String, int> memberIndex) {
@@ -478,7 +575,6 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
     }
 
     final total = indexes.fold<int>(0, (sum, value) => sum + value);
-
     return total / indexes.length;
   }
 
@@ -545,7 +641,6 @@ class _MemberNodeWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = selectedNodeKey == 'member:${node.member.id}';
-
     final opacity = selectedNodeKey == null || connected ? 1.0 : 0.28;
 
     return Positioned(
@@ -577,10 +672,12 @@ class _MemberNodeWidget extends StatelessWidget {
                       color: node.color,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: selected
+                        color: node.isChanged
+                            ? CalendarPalette.milestone
+                            : selected
                             ? CalendarPalette.ink
                             : CalendarPalette.surface,
-                        width: selected ? 3 : 2.5,
+                        width: node.isChanged || selected ? 3 : 2.5,
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -621,7 +718,6 @@ class _MemberNodeWidget extends StatelessWidget {
 
   String _initial(String name) {
     final trimmed = name.trim();
-
     return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
   }
 }
@@ -642,12 +738,11 @@ class _MomentNodeWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = selectedNodeKey == 'moment:${node.moment.id}';
-
     final opacity = selectedNodeKey == null || connected ? 1.0 : 0.24;
 
     return Positioned(
       left: node.center.dx - 42,
-      top: node.center.dy - 18,
+      top: node.center.dy - 21,
       width: 84,
       child: AnimatedOpacity(
         opacity: opacity,
@@ -665,28 +760,43 @@ class _MomentNodeWidget extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: 36,
-                    height: 36,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: node.visual.color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: selected
-                            ? CalendarPalette.ink
-                            : CalendarPalette.surface,
-                        width: selected ? 3 : 2.5,
+                  SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: CustomPaint(
+                      painter: node.isHypothetical
+                          ? const _DashedCirclePainter(
+                              color: CalendarPalette.milestone,
+                            )
+                          : null,
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          width: 36,
+                          height: 36,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: node.visual.color,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: node.isChanged && !node.isHypothetical
+                                  ? CalendarPalette.milestone
+                                  : selected
+                                  ? CalendarPalette.ink
+                                  : CalendarPalette.surface,
+                              width: node.isChanged || selected ? 3 : 2.5,
+                            ),
+                          ),
+                          child: Icon(
+                            twinCategoryIcon(node.moment.category),
+                            size: 17,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
-                    child: Icon(
-                      twinCategoryIcon(node.moment.category),
-                      size: 17,
-                      color: Colors.white,
-                    ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Text(
                     node.moment.title,
                     maxLines: 2,
@@ -722,14 +832,6 @@ class _FocusedEdgePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final edge in edges) {
       final selected = _edgeIsSelected(edge);
-
-      final alpha = selectedNodeKey == null
-          ? 28
-          : selected
-          ? 175
-          : 8;
-
-      final width = selected ? 1.8 : 0.9;
       final vector = edge.end - edge.start;
       final distance = vector.distance;
 
@@ -741,12 +843,55 @@ class _FocusedEdgePainter extends CustomPainter {
       final start = edge.start + direction * 23;
       final end = edge.end - direction * 18;
 
+      if (edge.isSimulated) {
+        final paint = Paint()
+          ..color = CalendarPalette.milestone.withAlpha(
+            selectedNodeKey == null || selected ? 190 : 38,
+          )
+          ..strokeWidth = selected ? 2.2 : 1.6
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
+
+        _drawDashedLine(canvas, start, end, paint);
+        continue;
+      }
+
+      final alpha = selectedNodeKey == null
+          ? 28
+          : selected
+          ? 175
+          : 8;
+
       final paint = Paint()
         ..color = edge.color.withAlpha(alpha)
-        ..strokeWidth = width
+        ..strokeWidth = selected ? 1.8 : 0.9
         ..strokeCap = StrokeCap.round;
 
       canvas.drawLine(start, end, paint);
+    }
+  }
+
+  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
+    final vector = end - start;
+    final distance = vector.distance;
+
+    if (distance <= 1) {
+      return;
+    }
+
+    final direction = vector / distance;
+    var drawn = 0.0;
+    const dashLength = 6.0;
+    const gapLength = 4.0;
+
+    while (drawn < distance) {
+      final dashEnd = math.min(drawn + dashLength, distance);
+      canvas.drawLine(
+        start + direction * drawn,
+        start + direction * dashEnd,
+        paint,
+      );
+      drawn += dashLength + gapLength;
     }
   }
 
@@ -765,6 +910,38 @@ class _FocusedEdgePainter extends CustomPainter {
   bool shouldRepaint(covariant _FocusedEdgePainter oldDelegate) {
     return oldDelegate.edges != edges ||
         oldDelegate.selectedNodeKey != selectedNodeKey;
+  }
+}
+
+class _DashedCirclePainter extends CustomPainter {
+  const _DashedCirclePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final path = Path()..addOval(rect.deflate(1.5));
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+
+      while (distance < metric.length) {
+        final end = math.min(distance + 5, metric.length);
+        canvas.drawPath(metric.extractPath(distance, end), paint);
+        distance += 8;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedCirclePainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 
@@ -796,6 +973,64 @@ class _LegendDot extends StatelessWidget {
   }
 }
 
+class _LegendDashed extends StatelessWidget {
+  const _LegendDashed({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 16,
+          height: 8,
+          child: CustomPaint(painter: _MiniDashedPainter(color: color)),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: Theme.of(
+            context,
+          ).textTheme.labelSmall?.copyWith(color: CalendarPalette.inkSoft),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniDashedPainter extends CustomPainter {
+  const _MiniDashedPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawLine(
+      Offset(0, size.height / 2),
+      Offset(5, size.height / 2),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(9, size.height / 2),
+      Offset(15, size.height / 2),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniDashedPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
+
 class _TwinMapLayout {
   const _TwinMapLayout({
     required this.memberNodes,
@@ -813,11 +1048,13 @@ class _MemberNode {
     required this.member,
     required this.center,
     required this.color,
+    required this.isChanged,
   });
 
   final Member member;
   final Offset center;
   final Color color;
+  final bool isChanged;
 }
 
 class _MomentNode {
@@ -827,6 +1064,8 @@ class _MomentNode {
     required this.instances,
     required this.center,
     required this.visual,
+    required this.isChanged,
+    required this.isHypothetical,
   });
 
   final FamilyMoment moment;
@@ -834,6 +1073,8 @@ class _MomentNode {
   final List<MomentInstance> instances;
   final Offset center;
   final TwinStatusVisual visual;
+  final bool isChanged;
+  final bool isHypothetical;
 }
 
 class _TwinEdge {
@@ -843,6 +1084,7 @@ class _TwinEdge {
     required this.start,
     required this.end,
     required this.color,
+    required this.isSimulated,
   });
 
   final String memberId;
@@ -850,4 +1092,5 @@ class _TwinEdge {
   final Offset start;
   final Offset end;
   final Color color;
+  final bool isSimulated;
 }

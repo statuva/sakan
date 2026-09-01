@@ -84,7 +84,7 @@ class HomeTogetherNowCard extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
                 itemCount: visibleMembers.length,
-                separatorBuilder: (_, __) =>
+                separatorBuilder: (_, _) =>
                     const SizedBox(width: AppSpacing.sm),
                 itemBuilder: (context, index) {
                   final member = visibleMembers[index];
@@ -192,7 +192,7 @@ class _MemberPresenceAvatar extends StatelessWidget {
     return Image.network(
       photoUrl,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) {
+      errorBuilder: (_, _, _) {
         return Center(
           child: Text(
             _initial(member.displayName),
