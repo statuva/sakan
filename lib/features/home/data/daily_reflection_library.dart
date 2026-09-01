@@ -3,9 +3,10 @@ import 'package:sakan/features/home/domain/daily_reflection.dart';
 abstract final class DailyReflectionLibrary {
   static const List<DailyReflection> items = <DailyReflection>[
     DailyReflection(
-      id: 'family-quote-01', 
+      id: 'family-quote-01',
       kind: DailyReflectionKind.familyQuote,
-      englishText: 'I loved watching her at the dinner table as she talked with enthusiasm about her work. This, I told myself, was “home.” ',
+      englishText:
+          'I loved watching her at the dinner table as she talked with enthusiasm about her work. This, I told myself, was “home.” ',
       source: 'haruki Murakami',
     ),
   ];
@@ -16,7 +17,7 @@ abstract final class DailyReflectionLibrary {
   }) {
     return pickFrom(entries: items, familyId: familyId, date: date);
   }
- 
+
   static DailyReflection? pickFrom({
     required List<DailyReflection> entries,
     required String familyId,
