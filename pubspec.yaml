@@ -78,10 +78,9 @@ flutter:
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
   assets:
-    - assets/images/
-    - assets/icons/
-    - assets/animations/
-    - assets/fonts/
+    - assets/images/sakan_wordmark.png
+    - assets/images/sakan_ai_star.png
+
   fonts:
     - family: Satoshi
       fonts:

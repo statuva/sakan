@@ -82,7 +82,7 @@ class HomeWhatMattersCard extends StatelessWidget {
             headline,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               color: AppColors.textPrimary,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w400,
               height: 1.15,
             ),
           ),
