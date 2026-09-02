@@ -146,8 +146,8 @@ class ReminderNotificationService {
 
     await androidImplementation?.createNotificationChannel(_androidChannel);
 
-    final launchDetails =
-        await _notifications.getNotificationAppLaunchDetails();
+    final launchDetails = await _notifications
+        .getNotificationAppLaunchDetails();
 
     if (launchDetails?.didNotificationLaunchApp == true &&
         launchDetails?.notificationResponse?.payload != null) {
@@ -173,15 +173,15 @@ class ReminderNotificationService {
       return false;
     }
 
-    final alreadyEnabled =
-        await androidImplementation.areNotificationsEnabled();
+    final alreadyEnabled = await androidImplementation
+        .areNotificationsEnabled();
 
     if (alreadyEnabled == true) {
       return true;
     }
 
-    final granted =
-        await androidImplementation.requestNotificationsPermission();
+    final granted = await androidImplementation
+        .requestNotificationsPermission();
 
     if (granted != null) {
       return granted;
@@ -321,8 +321,7 @@ class ReminderNotificationService {
     final now = DateTime.now();
 
     final schedulableReminders = reminders.where((reminder) {
-      return !reminder.isFinished &&
-          reminder.dueAt.toLocal().isAfter(now);
+      return !reminder.isFinished && reminder.dueAt.toLocal().isAfter(now);
     }).toList();
 
     final expectedNotificationIds = schedulableReminders

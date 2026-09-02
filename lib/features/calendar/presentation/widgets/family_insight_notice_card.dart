@@ -73,7 +73,7 @@ class FamilyInsightNoticeCard extends StatelessWidget {
             insight.headline,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               color: CalendarPalette.ink,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: AppSpacing.sm),

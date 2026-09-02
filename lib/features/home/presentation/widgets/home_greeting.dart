@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
 
 class HomeGreeting extends StatelessWidget {
   const HomeGreeting({required this.displayName, required this.now, super.key});
@@ -13,35 +12,20 @@ class HomeGreeting extends StatelessWidget {
   Widget build(BuildContext context) {
     final firstName = _firstName(displayName);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Sakan',
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.3,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Text.rich(
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: '${_greetingFor(now)},\n'),
           TextSpan(
-            children: [
-              TextSpan(text: '${_greetingFor(now)},\n'),
-              TextSpan(
-                text: '$firstName.',
-                style: const TextStyle(color: AppColors.primary),
-              ),
-            ],
+            text: '$firstName.',
+            style: const TextStyle(color: AppColors.primary),
           ),
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w600,
-            height: 1.15,
-          ),
-        ),
-      ],
+        ],
+      ),
+      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+        color: AppColors.textPrimary,
+        height: 1.15,
+      ),
     );
   }
 

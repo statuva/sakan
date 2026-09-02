@@ -10,6 +10,7 @@ import '../../../shared/models/member.dart';
 import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/rhythm_record.dart';
 import '../../../shared/widgets/cards/app_card.dart';
+import '../../../shared/widgets/branding/sakan_brand.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 import '../../calendar/presentation/widgets/calendar_palette.dart';
@@ -276,14 +277,6 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
       ),
       children: [
         Text(
-          'Sakan',
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: CalendarPalette.forest,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
           simulation == null ? 'Digital Twin' : 'Digital Twin Simulation',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
             color: CalendarPalette.ink,
@@ -454,7 +447,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.auto_awesome_outlined),
+                  : const SakanAiStar(size: 21),
               label: Text(
                 _isRunningSimulation
                     ? 'Running Simulation…'

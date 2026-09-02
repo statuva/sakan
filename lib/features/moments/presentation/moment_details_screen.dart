@@ -12,6 +12,7 @@ import '../../../shared/utils/moment_visuals.dart';
 import '../../../shared/widgets/cards/app_card.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
+import '../../../shared/widgets/people/sakan_member_avatar.dart';
 import 'moment_form_screen.dart';
 
 class MomentDetailsScreen extends StatefulWidget {
@@ -281,11 +282,6 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
                           label: _frequencyLabel(moment.expectedIntervalDays),
                           color: Theme.of(context).colorScheme.secondary,
                         ),
-                      if (moment.isArchived)
-                        _InformationLabel(
-                          label: 'Archived',
-                          color: Theme.of(context).colorScheme.error,
-                        ),
                     ],
                   ),
                   if (canEdit) ...[
@@ -341,22 +337,30 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
             const _SectionTitle(title: 'Associated Members'),
             const SizedBox(height: AppSpacing.sm),
             AppCard(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.lg,
+              ),
               child: associatedMembers.isEmpty
                   ? const Text(
                       'No active family members are currently associated with this Moment.',
                     )
-                  : Wrap(
-                      spacing: AppSpacing.xs,
-                      runSpacing: AppSpacing.xs,
-                      children: associatedMembers.map((member) {
-                        return Chip(
-                          avatar: CircleAvatar(
-                            child: Text(_initial(member.displayName)),
-                          ),
-                          label: Text(member.displayName),
-                          side: BorderSide.none,
-                        );
-                      }).toList(),
+                  : SizedBox(
+                      height: 78,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: associatedMembers.length,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(width: AppSpacing.sm),
+                        itemBuilder: (context, index) {
+                          return SakanMemberAvatar(
+                            member: associatedMembers[index],
+                            diameter: 50,
+                            width: 62,
+                          );
+                        },
+                      ),
                     ),
             ),
             const SizedBox(height: AppSpacing.xl),
@@ -507,11 +511,6 @@ class _MomentDetailsScreenState extends State<MomentDetailsScreen> {
       MomentCategory.familyTime => Icons.family_restroom_outlined,
       MomentCategory.memory => Icons.photo_library_outlined,
     };
-  }
-
-  String _initial(String name) {
-    final trimmed = name.trim();
-    return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
   }
 }
 
