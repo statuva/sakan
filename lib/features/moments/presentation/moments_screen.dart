@@ -240,26 +240,9 @@ class _MomentsHeader extends StatelessWidget {
         ],
 
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Sakan',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-
-              const SizedBox(height: 3),
-
-              Text(
-                'Family Moments',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+          child: Text(
+            'Family Moments',
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
         ),
 
