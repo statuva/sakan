@@ -9,6 +9,7 @@ import '../../../../shared/models/member.dart';
 import '../../../../shared/models/model_enums.dart';
 import '../../../../shared/models/moment_instance.dart';
 import '../../../../shared/models/rhythm_record.dart';
+import '../../../../shared/widgets/people/sakan_member_avatar.dart';
 import '../../../calendar/presentation/widgets/calendar_palette.dart';
 import '../../domain/twin_simulation_result.dart';
 import '../digital_twin_visuals.dart';
@@ -466,7 +467,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
             ),
             74,
           ),
-          color: _memberColor(index),
+          color: sakanMemberAvatarColor(member),
           isChanged: simulation?.changedMemberIds.contains(member.id) ?? false,
         ),
       );
@@ -589,19 +590,6 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
     }
 
     return start + ((end - start) * index / (count - 1));
-  }
-
-  Color _memberColor(int index) {
-    const colors = <Color>[
-      CalendarPalette.forestDark,
-      Color(0xFF2F6FD8),
-      Color(0xFF6C3CC8),
-      Color(0xFFC32967),
-      Color(0xFFA95B00),
-      Color(0xFF17877F),
-    ];
-
-    return colors[index % colors.length];
   }
 }
 

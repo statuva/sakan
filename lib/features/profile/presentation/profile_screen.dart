@@ -7,6 +7,7 @@ import 'package:sakan/app/app_dependencies.dart';
 import 'package:sakan/core/theme/app_spacing.dart';
 import 'package:sakan/shared/models/member.dart';
 import 'package:sakan/shared/models/model_enums.dart';
+import 'package:sakan/shared/widgets/people/sakan_member_avatar.dart';
 
 import 'edit_profile_screen.dart';
 import 'family_settings_screen.dart';
@@ -113,9 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: Text('No signed-in user')),
-      );
+      return const Scaffold(body: Center(child: Text('No signed-in user')));
     }
 
     return Scaffold(
@@ -127,17 +126,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             .get(),
         builder: (context, userSnapshot) {
           if (userSnapshot.hasError) {
-            return const Center(
-              child: Text('We could not load your profile.'),
-            );
+            return const Center(child: Text('We could not load your profile.'));
           }
 
           if (!userSnapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final userData =
-              userSnapshot.data!.data() as Map<String, dynamic>?;
+          final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
 
           final currentFamilyId = userData?['currentFamilyId'] as String?;
 
@@ -189,13 +185,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   children: [
                     Center(
-                      child: CircleAvatar(
-                        radius: 42,
-                        child: Text(
-                          member.displayName.isNotEmpty
-                              ? member.displayName[0].toUpperCase()
-                              : '?',
-                        ),
+                      child: SakanMemberAvatar(
+                        member: member,
+                        diameter: 84,
+                        width: 96,
+                        showName: false,
                       ),
                     ),
                     const SizedBox(height: AppSpacing.md),
@@ -266,8 +260,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) =>
-                                const NotificationSettingsScreen(),
+                            builder: (_) => const NotificationSettingsScreen(),
                           ),
                         );
                       },
@@ -300,8 +293,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  const FamilySettingsScreen(),
+                              builder: (_) => const FamilySettingsScreen(),
                             ),
                           );
                         },
@@ -311,30 +303,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const Divider(),
                     const SizedBox(height: AppSpacing.md),
                     OutlinedButton.icon(
-                      onPressed:
-                          _isSigningOut ? null : _confirmSignOut,
+                      onPressed: _isSigningOut ? null : _confirmSignOut,
                       icon: _isSigningOut
                           ? SizedBox.square(
                               dimension: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .error,
+                                color: Theme.of(context).colorScheme.error,
                               ),
                             )
                           : const Icon(Icons.logout_rounded),
                       label: Text(
-                        _isSigningOut
-                            ? 'Signing out...'
-                            : 'Sign out',
+                        _isSigningOut ? 'Signing out...' : 'Sign out',
                       ),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor:
-                            Theme.of(context).colorScheme.error,
+                        foregroundColor: Theme.of(context).colorScheme.error,
                         side: BorderSide(
-                          color:
-                              Theme.of(context).colorScheme.error,
+                          color: Theme.of(context).colorScheme.error,
                         ),
                       ),
                     ),
