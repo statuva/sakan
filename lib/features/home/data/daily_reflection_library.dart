@@ -9,6 +9,16 @@ abstract final class DailyReflectionLibrary {
           'I loved watching her at the dinner table as she talked with enthusiasm about her work. This, I told myself, was “home.” ',
       source: 'haruki Murakami',
     ),
+
+    DailyReflection(
+      id: 'hadith-01',
+      kind: DailyReflectionKind.hadith,
+      englishText:
+          'All of you are shepherds and each of you is responsible for his flock. A man is the shepherd of the people of his house and he is responsible. A woman is the shepherd of the house of her husband and she is responsible. Each of you is a shepherd and each is responsible for his flock.',
+      arabicText:
+          'كُلُّكُمْ رَاعٍ وَمَسْئُولٌ عَنْ رَعِيَّتِهِ، فَالإِمَامُ رَاعٍ وَمَسْئُولٌ عَنْ رَعِيَّتِهِ، وَالرَّجُلُ فِي أَهْلِهِ رَاعٍ وَهُوَ مَسْئُولٌ عَنْ رَعِيَّتِهِ، وَالْمَرْأَةُ فِي بَيْتِ زَوْجِهَا رَاعِيَةٌ وَهِيَ مَسْئُولَةٌ عَنْ رَعِيَّتِهِا',
+      source: 'رواه البخاري ومسلم',
+    ),
   ];
 
   static DailyReflection? forFamilyDate({
