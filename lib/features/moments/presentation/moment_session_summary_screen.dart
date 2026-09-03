@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../app/app_dependencies.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/models/current_family_context.dart';
+import '../../../shared/models/family_insight_report.dart';
 import '../../../shared/models/family_memory.dart';
 import '../../../shared/models/family_moment.dart';
-import '../../../shared/models/member.dart';
 import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/moment_instance.dart';
-import '../../../shared/models/moment_participant.dart';
+import '../../../shared/models/rhythm_record.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
+import '../../digital_twin/services/digital_twin_interpretation_service.dart';
 import '../../memories/presentation/add_memory_screen.dart';
 import '../../memories/presentation/memory_details_screen.dart';
+import 'widgets/moment_session_visuals.dart';
 
 class MomentSessionSummaryScreen extends StatefulWidget {
   const MomentSessionSummaryScreen({
@@ -32,13 +35,12 @@ class MomentSessionSummaryScreen extends StatefulWidget {
 
 class _MomentSessionSummaryScreenState
     extends State<MomentSessionSummaryScreen> {
-  CurrentFamilyContext? _familyContext;
-  FamilyMoment? _moment;
-  FamilyMemory? _memory;
+  static const DigitalTwinInterpretationService _interpretationService =
+      DigitalTwinInterpretationService();
 
+  CurrentFamilyContext? _familyContext;
   Stream<MomentInstance?>? _instanceStream;
-  Stream<List<MomentParticipant>>? _participantsStream;
-  Stream<List<Member>>? _membersStream;
+  Stream<FamilyInsightReport>? _reportStream;
 
   bool _isLoading = true;
   bool _isOpeningMemory = false;
@@ -63,49 +65,16 @@ class _MomentSessionSummaryScreenState
         throw StateError('This Moment belongs to a different family.');
       }
 
-      final instance = await AppDependencies.momentInstanceRepository
-          .getInstance(
-            familyId: widget.familyId,
-            instanceId: widget.instanceId,
-          );
-
-      if (instance == null) {
-        throw StateError('This Moment occurrence could not be found.');
-      }
-
-      final results = await Future.wait<Object?>([
-        AppDependencies.calendarRepository.getMoment(
-          familyId: widget.familyId,
-          momentId: instance.momentId,
-        ),
-        AppDependencies.memoryRepository.getMemoryForInstance(
-          familyId: widget.familyId,
-          instanceId: widget.instanceId,
-        ),
-      ]);
-
       if (!mounted) return;
 
       setState(() {
         _familyContext = familyContext;
-        _moment = results[0] as FamilyMoment?;
-        _memory = results[1] as FamilyMemory?;
-
         _instanceStream = AppDependencies.momentInstanceRepository
             .watchInstance(
               familyId: widget.familyId,
               instanceId: widget.instanceId,
             );
-
-        _participantsStream = AppDependencies.momentInstanceRepository
-            .watchParticipants(
-              familyId: widget.familyId,
-              instanceId: widget.instanceId,
-            );
-
-        _membersStream = AppDependencies.currentFamilyService
-            .watchFamilyMembers(widget.familyId);
-
+        _reportStream = AppDependencies.familyInsightService.watchReport();
         _isLoading = false;
       });
     } catch (error) {
@@ -120,19 +89,23 @@ class _MomentSessionSummaryScreenState
     }
   }
 
-  Future<void> _openMemory(MomentInstance instance) async {
-    if (_isOpeningMemory) return;
-
-    final memory = _memory;
-
-    if (memory != null) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => MemoryDetailsScreen(memory: memory)),
-      );
+  Future<void> _openMemory({
+    required MomentInstance instance,
+    required FamilyMoment moment,
+    required FamilyMemory? memory,
+  }) async {
+    if (_isOpeningMemory) {
       return;
     }
 
-    final moment = _moment;
+    if (memory != null) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => MemoryDetailsScreen(memory: memory),
+        ),
+      );
+      return;
+    }
 
     if (_familyContext?.isAdult != true) {
       return;
@@ -144,25 +117,13 @@ class _MomentSessionSummaryScreenState
 
     try {
       final saved = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
+        MaterialPageRoute<bool>(
           builder: (_) =>
               AddMemoryScreen(initialMoment: moment, initialInstance: instance),
         ),
       );
 
       if (saved == true && mounted) {
-        final savedMemory = await AppDependencies.memoryRepository
-            .getMemoryForInstance(
-              familyId: widget.familyId,
-              instanceId: widget.instanceId,
-            );
-
-        if (!mounted) return;
-
-        setState(() {
-          _memory = savedMemory;
-        });
-
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Family Memory saved.')));
@@ -186,11 +147,10 @@ class _MomentSessionSummaryScreenState
       );
     }
 
-    if (_instanceStream == null ||
-        _participantsStream == null ||
-        _membersStream == null) {
+    if (_familyContext == null ||
+        _instanceStream == null ||
+        _reportStream == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Moment Summary')),
         body: SafeArea(
           child: AppErrorState(
             message: _errorMessage ?? 'The Moment summary is unavailable.',
@@ -211,7 +171,7 @@ class _MomentSessionSummaryScreenState
             !instanceSnapshot.hasData) {
           return const Scaffold(
             body: SafeArea(
-              child: AppLoadingState(message: 'Loading Moment summary…'),
+              child: AppLoadingState(message: 'Reading recorded outcomes…'),
             ),
           );
         }
@@ -222,27 +182,45 @@ class _MomentSessionSummaryScreenState
           return _errorScaffold('This Moment occurrence no longer exists.');
         }
 
-        return StreamBuilder<List<Member>>(
-          stream: _membersStream,
-          builder: (context, memberSnapshot) {
-            final members = memberSnapshot.data ?? <Member>[];
+        return StreamBuilder<FamilyInsightReport>(
+          stream: _reportStream,
+          builder: (context, reportSnapshot) {
+            if (reportSnapshot.hasError) {
+              return _errorScaffold('We could not update the Moment summary.');
+            }
 
-            final membersById = <String, Member>{
-              for (final member in members) member.id: member,
-            };
+            if (reportSnapshot.connectionState == ConnectionState.waiting &&
+                !reportSnapshot.hasData) {
+              return const Scaffold(
+                body: SafeArea(
+                  child: AppLoadingState(
+                    message: 'Updating the family rhythm…',
+                  ),
+                ),
+              );
+            }
 
-            return StreamBuilder<List<MomentParticipant>>(
-              stream: _participantsStream,
-              builder: (context, participantSnapshot) {
-                final participants =
-                    participantSnapshot.data ?? <MomentParticipant>[];
+            final report = reportSnapshot.data;
 
-                return _buildSummary(
-                  instance: instance,
-                  participants: participants,
-                  membersById: membersById,
-                );
-              },
+            if (report == null) {
+              return _errorScaffold('The family report is unavailable.');
+            }
+
+            final moment =
+                report.snapshot.momentById(instance.momentId) ??
+                _definitionFromInstance(instance);
+            final rhythm = report.snapshot.rhythmForMoment(instance.momentId);
+            final memory = report.snapshot.memoryForInstance(instance.id);
+            final instances = report.snapshot.instancesForMoment(
+              instance.momentId,
+            );
+
+            return _buildSummary(
+              instance: instance,
+              moment: moment,
+              rhythm: rhythm,
+              memory: memory,
+              instances: instances,
             );
           },
         );
@@ -252,143 +230,172 @@ class _MomentSessionSummaryScreenState
 
   Scaffold _buildSummary({
     required MomentInstance instance,
-    required List<MomentParticipant> participants,
-    required Map<String, Member> membersById,
+    required FamilyMoment moment,
+    required RhythmRecord? rhythm,
+    required FamilyMemory? memory,
+    required List<MomentInstance> instances,
   }) {
-    final start = instance.actualStartAt?.toLocal();
-    final end = instance.actualEndAt?.toLocal();
-
-    final durationMinutes =
-        instance.actualDurationMinutes ?? _durationMinutes(start, end);
-
-    final checkedInParticipants = participants
-        .where((participant) => participant.checkedInAt != null)
-        .toList();
-
-    final checkedInIds = checkedInParticipants
-        .map((participant) => participant.memberId)
-        .toSet();
-
-    final reportedOnlyIds = instance.reportedParticipantIds
-        .where((memberId) => !checkedInIds.contains(memberId))
-        .toList();
+    final durationMinutes = instance.actualDurationMinutes ?? 0;
+    final recordedCount = instance.allRecordedParticipantIds.length;
+    final expectedCount = instance.expectedParticipantIds.length;
+    final interpretationText = moment.type == MomentType.recurring
+        ? _interpretationService
+              .interpretMoment(
+                moment: moment,
+                rhythm: rhythm,
+                instances: instances,
+              )
+              .summary
+        : 'This one-time Moment is now part of the family history. '
+              'It is not used to calculate a recurring rhythm.';
+    final summary = _sessionSummary(
+      instance: instance,
+      interpretation: interpretationText,
+    );
+    final completed = instance.status == MomentInstanceStatus.completed;
+    final statusColor = completed ? AppColors.success : AppColors.textSecondary;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Moment Summary')),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
             AppSpacing.xl,
             AppSpacing.lg,
             AppSpacing.xl,
-            96,
           ),
           children: [
+            Center(
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: AppColors.secondary.withAlpha(20),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  completed
+                      ? Icons.celebration_outlined
+                      : Icons.event_busy_outlined,
+                  size: 36,
+                  color: AppColors.secondary,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              instance.titleSnapshot,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              completed ? 'Complete!' : _statusLabel(instance.status),
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineMedium?.copyWith(color: statusColor),
+            ),
+            const SizedBox(height: AppSpacing.xl),
             Container(
-              padding: const EdgeInsets.all(AppSpacing.xl),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.xs,
+              ),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(24),
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                border: Border.all(color: AppColors.border),
               ),
               child: Column(
                 children: [
-                  Icon(
-                    instance.status == MomentInstanceStatus.completed
-                        ? Icons.check_circle_rounded
-                        : Icons.event_busy_outlined,
-                    size: 56,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  _SummaryRow(
+                    icon: Icons.timer_outlined,
+                    label: 'Duration',
+                    value: momentSessionDurationLabel(durationMinutes),
                   ),
-                  const SizedBox(height: AppSpacing.md),
-                  Text(
-                    instance.titleSnapshot,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
+                  const Divider(height: 1),
+                  _SummaryRow(
+                    icon: Icons.group_outlined,
+                    label: 'Participants',
+                    value: '$recordedCount of $expectedCount',
+                  ),
+                  const Divider(height: 1),
+                  _SummaryRow(
+                    icon: Icons.verified_outlined,
+                    label: 'Confirmation',
+                    value: momentSessionConfirmationLabel(
+                      instance.confirmationLevel,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _statusLabel(instance.status),
-                    style: Theme.of(context).textTheme.titleMedium,
+                  const Divider(height: 1),
+                  _SummaryRow(
+                    icon: Icons.insights_outlined,
+                    label: moment.type == MomentType.recurring
+                        ? 'Current rhythm'
+                        : 'Moment type',
+                    value: moment.type == MomentType.recurring
+                        ? momentSessionRhythmLabel(
+                            rhythm?.status ?? RhythmStatus.stillLearning,
+                          )
+                        : 'One-time',
+                  ),
+                  const Divider(height: 1),
+                  _SummaryRow(
+                    icon: Icons.auto_stories_outlined,
+                    label: 'Memory',
+                    value: memory == null ? 'Not saved' : 'Saved',
                   ),
                 ],
               ),
             ),
-
-            const SizedBox(height: AppSpacing.xl),
-
-            _SummaryGrid(
-              items: <_SummaryItem>[
-                _SummaryItem(
-                  label: 'Started',
-                  value: start == null
-                      ? 'Not recorded'
-                      : DateFormat('h:mm a').format(start),
-                  icon: Icons.play_circle_outline,
-                ),
-                _SummaryItem(
-                  label: 'Ended',
-                  value: end == null
-                      ? 'Not recorded'
-                      : DateFormat('h:mm a').format(end),
-                  icon: Icons.stop_circle_outlined,
-                ),
-                _SummaryItem(
-                  label: 'Duration',
-                  value: _durationLabel(durationMinutes),
-                  icon: Icons.timer_outlined,
-                ),
-                _SummaryItem(
-                  label: 'Recorded',
-                  value:
-                      '${instance.allRecordedParticipantIds.length} of '
-                      '${instance.expectedParticipantIds.length}',
-                  icon: Icons.group_outlined,
-                ),
-              ],
-            ),
-
-            const SizedBox(height: AppSpacing.xl),
-
-            Text('Confirmation', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: AppSpacing.md),
             Container(
-              padding: const EdgeInsets.all(AppSpacing.lg),
+              padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: _confirmationColor(
-                  instance.confirmationLevel,
-                ).withAlpha(24),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: _confirmationColor(
-                    instance.confirmationLevel,
-                  ).withAlpha(80),
-                ),
+                color: const Color(0xFFEDF2E5),
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                border: Border.all(color: AppColors.primary.withAlpha(45)),
               ),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Icons.verified_outlined,
-                    color: _confirmationColor(instance.confirmationLevel),
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome_outlined,
+                      size: 19,
+                      color: AppColors.primary,
+                    ),
                   ),
-                  const SizedBox(width: AppSpacing.md),
+                  const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${_confirmationLabel(instance.confirmationLevel)} confidence',
-                          style: Theme.of(context).textTheme.titleMedium,
+                          'SAKAN SUMMARY',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.4,
+                              ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 5),
                         Text(
-                          _confirmationExplanation(
-                            instance: instance,
-                            selfCheckInCount: checkedInParticipants.length,
-                            durationMinutes: durationMinutes,
-                          ),
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          summary,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: AppColors.textPrimary,
+                                height: 1.4,
+                              ),
                         ),
                       ],
                     ),
@@ -396,130 +403,86 @@ class _MomentSessionSummaryScreenState
                 ],
               ),
             ),
-
-            if (instance.evidenceSignals.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.xl),
-              Text(
-                'Evidence Recorded',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: instance.evidenceSignals
-                    .map(
-                      (signal) => Chip(
-                        avatar: Icon(_evidenceIcon(signal), size: 17),
-                        label: Text(_evidenceLabel(signal)),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
-
             const SizedBox(height: AppSpacing.xl),
-
-            Text('Participants', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: AppSpacing.sm),
-
-            if (checkedInParticipants.isEmpty && reportedOnlyIds.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(AppSpacing.lg),
-                  child: Text('No participant evidence was recorded.'),
-                ),
-              )
-            else ...[
-              ...checkedInParticipants.map(
-                (participant) => Card(
-                  margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.person_outline),
-                    ),
-                    title: Text(
-                      membersById[participant.memberId]?.displayName ??
-                          'Family member',
-                    ),
-                    subtitle: Text(_participantTimeText(participant)),
-                    trailing: const Chip(label: Text('Self check-in')),
-                  ),
-                ),
-              ),
-              ...reportedOnlyIds.map(
-                (memberId) => Card(
-                  margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.person_outline),
-                    ),
-                    title: Text(
-                      membersById[memberId]?.displayName ?? 'Family member',
-                    ),
-                    subtitle: const Text('Reported during Today Review'),
-                    trailing: const Chip(label: Text('Reported')),
-                  ),
-                ),
-              ),
-            ],
-
-            if (instance.reviewNote?.trim().isNotEmpty == true) ...[
-              const SizedBox(height: AppSpacing.lg),
-              Text(
-                'Review Note',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Text(instance.reviewNote!),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: AppSpacing.xl),
-
-            if (instance.status == MomentInstanceStatus.completed &&
-                _familyContext?.isAdult == true)
-              FilledButton.tonalIcon(
+            if (completed && (memory != null || _familyContext!.isAdult)) ...[
+              FilledButton(
                 onPressed: _isOpeningMemory
                     ? null
                     : () {
-                        _openMemory(instance);
+                        _openMemory(
+                          instance: instance,
+                          moment: moment,
+                          memory: memory,
+                        );
                       },
-                icon: Icon(
-                  _memory == null
-                      ? Icons.bookmark_add_outlined
-                      : Icons.auto_stories_outlined,
+                child: Text(memory == null ? 'Add Memory' : 'View Memory'),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonal(
+                onPressed: () => Navigator.of(context).pop(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.linen,
+                  foregroundColor: AppColors.textPrimary,
                 ),
-                label: Text(_memory == null ? 'Create Memory' : 'View Memory'),
+                child: const Text('Done'),
               ),
-
-            if (instance.status == MomentInstanceStatus.completed &&
-                _familyContext?.isAdult != true &&
-                _memory != null)
-              FilledButton.tonalIcon(
-                onPressed: () {
-                  _openMemory(instance);
-                },
-                icon: const Icon(Icons.auto_stories_outlined),
-                label: const Text('View Memory'),
-              ),
-
-            const SizedBox(height: AppSpacing.sm),
-
-            FilledButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('Done'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  String _sessionSummary({
+    required MomentInstance instance,
+    required String interpretation,
+  }) {
+    final count = instance.allRecordedParticipantIds.length;
+    final expected = instance.expectedParticipantIds.length;
+    final duration = momentSessionDurationLabel(
+      instance.actualDurationMinutes ?? 0,
+    );
+
+    final facts = count == 0
+        ? 'No participant check-in was recorded, and the session lasted $duration.'
+        : '$count of $expected expected ${count == 1 ? 'member was' : 'members were'} recorded, and the session lasted $duration.';
+
+    return '$facts $interpretation';
+  }
+
+  FamilyMoment _definitionFromInstance(MomentInstance instance) {
+    return FamilyMoment(
+      id: instance.momentId,
+      familyId: instance.familyId,
+      title: instance.titleSnapshot,
+      type: instance.typeSnapshot,
+      category: instance.categorySnapshot,
+      importanceLevel: instance.importanceLevelSnapshot,
+      expectedParticipantIds: instance.expectedParticipantIds,
+      startAt: instance.scheduledStartAt,
+      endAt: instance.scheduledEndAt,
+      location: instance.locationSnapshot,
+      evidenceType: EvidenceType.manual,
+      status: MomentStatus.scheduled,
+      createdBy: instance.createdBy,
+      createdAt: instance.createdAt,
+      updatedAt: instance.updatedAt,
+    );
+  }
+
+  String _statusLabel(MomentInstanceStatus status) {
+    return switch (status) {
+      MomentInstanceStatus.proposed => 'Proposed',
+      MomentInstanceStatus.scheduled => 'Scheduled',
+      MomentInstanceStatus.inviting => 'Ready Room open',
+      MomentInstanceStatus.active => 'Still active',
+      MomentInstanceStatus.completed => 'Complete!',
+      MomentInstanceStatus.missed => 'Missed',
+      MomentInstanceStatus.cancelled => 'Cancelled',
+    };
   }
 
   Scaffold _errorScaffold(String message) {
@@ -530,189 +493,54 @@ class _MomentSessionSummaryScreenState
       ),
     );
   }
-
-  int _durationMinutes(DateTime? start, DateTime? end) {
-    if (start == null || end == null) {
-      return 0;
-    }
-
-    final minutes = end.difference(start).inMinutes;
-    return minutes < 0 ? 0 : minutes;
-  }
-
-  String _durationLabel(int minutes) {
-    if (minutes < 60) {
-      return '$minutes min';
-    }
-
-    final hours = minutes ~/ 60;
-    final remaining = minutes % 60;
-
-    return remaining == 0 ? '$hours h' : '$hours h $remaining min';
-  }
-
-  String _participantTimeText(MomentParticipant participant) {
-    final checkedIn = participant.checkedInAt?.toLocal();
-    final checkedOut = participant.checkedOutAt?.toLocal();
-
-    if (checkedIn == null) {
-      return 'No check-in time recorded';
-    }
-
-    if (checkedOut == null) {
-      return 'Checked in at '
-          '${DateFormat('h:mm a').format(checkedIn)}';
-    }
-
-    return '${DateFormat('h:mm a').format(checkedIn)}–'
-        '${DateFormat('h:mm a').format(checkedOut)}';
-  }
-
-  String _statusLabel(MomentInstanceStatus status) {
-    return switch (status) {
-      MomentInstanceStatus.completed => 'Completed',
-      MomentInstanceStatus.cancelled => 'Cancelled',
-      MomentInstanceStatus.missed => 'Missed',
-      MomentInstanceStatus.active => 'Active',
-      MomentInstanceStatus.inviting => 'Inviting',
-      MomentInstanceStatus.scheduled => 'Scheduled',
-      MomentInstanceStatus.proposed => 'Proposed',
-    };
-  }
-
-  String _confirmationLabel(MomentConfirmationLevel level) {
-    return switch (level) {
-      MomentConfirmationLevel.low => 'Low',
-      MomentConfirmationLevel.medium => 'Medium',
-      MomentConfirmationLevel.high => 'High',
-    };
-  }
-
-  Color _confirmationColor(MomentConfirmationLevel level) {
-    return switch (level) {
-      MomentConfirmationLevel.low => Theme.of(context).colorScheme.error,
-      MomentConfirmationLevel.medium => Colors.orange,
-      MomentConfirmationLevel.high => Colors.green,
-    };
-  }
-
-  String _confirmationExplanation({
-    required MomentInstance instance,
-    required int selfCheckInCount,
-    required int durationMinutes,
-  }) {
-    if (instance.confirmationLevel == MomentConfirmationLevel.high) {
-      return 'Multiple self check-ins and recorded '
-          'duration strongly support this occurrence.';
-    }
-
-    if (instance.evidenceSignals.contains(MomentEvidenceSignal.todayReview)) {
-      return 'This occurrence was reported during '
-          'Today Review. Reported participation is '
-          'useful, but weaker than multiple self check-ins.';
-    }
-
-    if (instance.confirmationLevel == MomentConfirmationLevel.medium) {
-      return '$selfCheckInCount self check-in(s) and '
-          '$durationMinutes recorded minute(s) provide '
-          'partial confirmation.';
-    }
-
-    return 'This occurrence currently has limited '
-        'participation or duration evidence.';
-  }
-
-  String _evidenceLabel(MomentEvidenceSignal signal) {
-    return switch (signal) {
-      MomentEvidenceSignal.scheduled => 'Scheduled',
-      MomentEvidenceSignal.hostStarted => 'Host started',
-      MomentEvidenceSignal.manualCheckIn => 'Manual check-in',
-      MomentEvidenceSignal.multipleCheckIns => 'Multiple check-ins',
-      MomentEvidenceSignal.durationRecorded => 'Duration recorded',
-      MomentEvidenceSignal.bluetoothNearby => 'Bluetooth nearby',
-      MomentEvidenceSignal.qrCheckIn => 'QR check-in',
-      MomentEvidenceSignal.todayReview => 'Today Review',
-      MomentEvidenceSignal.familyNote => 'Family note',
-      MomentEvidenceSignal.memoryCreated => 'Memory created',
-    };
-  }
-
-  IconData _evidenceIcon(MomentEvidenceSignal signal) {
-    return switch (signal) {
-      MomentEvidenceSignal.scheduled => Icons.calendar_today_outlined,
-      MomentEvidenceSignal.hostStarted => Icons.play_circle_outline,
-      MomentEvidenceSignal.manualCheckIn => Icons.touch_app_outlined,
-      MomentEvidenceSignal.multipleCheckIns => Icons.groups_outlined,
-      MomentEvidenceSignal.durationRecorded => Icons.timer_outlined,
-      MomentEvidenceSignal.bluetoothNearby => Icons.bluetooth_outlined,
-      MomentEvidenceSignal.qrCheckIn => Icons.qr_code_rounded,
-      MomentEvidenceSignal.todayReview => Icons.fact_check_outlined,
-      MomentEvidenceSignal.familyNote => Icons.notes_outlined,
-      MomentEvidenceSignal.memoryCreated => Icons.auto_stories_outlined,
-    };
-  }
 }
 
-class _SummaryGrid extends StatelessWidget {
-  const _SummaryGrid({required this.items});
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
-  final List<_SummaryItem> items;
+  final IconData icon;
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final itemWidth = (constraints.maxWidth - AppSpacing.sm) / 2;
-
-        return Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
-          children: items
-              .map(
-                (item) => SizedBox(
-                  width: itemWidth,
-                  child: Card(
-                    margin: EdgeInsets.zero,
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            item.icon,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            item.label,
-                            style: Theme.of(context).textTheme.labelMedium,
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            item.value,
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              )
-              .toList(),
-        );
-      },
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: AppColors.secondary.withAlpha(18),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 17, color: AppColors.secondary),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppColors.textPrimary),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            value,
+            textAlign: TextAlign.end,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
-}
-
-class _SummaryItem {
-  const _SummaryItem({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
 }

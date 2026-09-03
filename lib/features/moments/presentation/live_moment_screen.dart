@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/app_dependencies.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/models/current_family_context.dart';
 import '../../../shared/models/member.dart';
@@ -12,7 +14,9 @@ import '../../../shared/models/moment_instance.dart';
 import '../../../shared/models/moment_participant.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
+import '../../../shared/widgets/people/sakan_member_avatar.dart';
 import 'moment_session_summary_screen.dart';
+import 'widgets/moment_session_visuals.dart';
 
 class LiveMomentScreen extends StatefulWidget {
   const LiveMomentScreen({
@@ -30,16 +34,13 @@ class LiveMomentScreen extends StatefulWidget {
 
 class _LiveMomentScreenState extends State<LiveMomentScreen> {
   CurrentFamilyContext? _familyContext;
-
   Stream<MomentInstance?>? _instanceStream;
   Stream<List<MomentParticipant>>? _participantsStream;
   Stream<List<Member>>? _membersStream;
 
   Timer? _timer;
-
   bool _isLoading = true;
   bool _isUpdating = false;
-
   String? _errorMessage;
 
   @override
@@ -73,26 +74,39 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
         throw StateError('This live Moment belongs to a different family.');
       }
 
+      final instance = await AppDependencies.momentInstanceRepository
+          .getInstance(
+            familyId: widget.familyId,
+            instanceId: widget.instanceId,
+          );
+
+      if (instance == null) {
+        throw StateError('This live Moment no longer exists.');
+      }
+
+      if (instance.status == MomentInstanceStatus.active) {
+        await _joinCurrentUserIfNeeded(
+          familyContext: familyContext,
+          instance: instance,
+        );
+      }
+
       if (!mounted) return;
 
       setState(() {
         _familyContext = familyContext;
-
         _instanceStream = AppDependencies.momentInstanceRepository
             .watchInstance(
               familyId: widget.familyId,
               instanceId: widget.instanceId,
             );
-
         _participantsStream = AppDependencies.momentInstanceRepository
             .watchParticipants(
               familyId: widget.familyId,
               instanceId: widget.instanceId,
             );
-
         _membersStream = AppDependencies.currentFamilyService
             .watchFamilyMembers(widget.familyId);
-
         _isLoading = false;
       });
     } catch (error) {
@@ -107,49 +121,38 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
     }
   }
 
-  Future<void> _checkIn() async {
-    final contextData = _familyContext;
+  Future<void> _joinCurrentUserIfNeeded({
+    required CurrentFamilyContext familyContext,
+    required MomentInstance instance,
+  }) async {
+    final participants = await AppDependencies.momentInstanceRepository
+        .getParticipants(familyId: instance.familyId, instanceId: instance.id);
 
-    if (contextData == null || _isUpdating) {
+    MomentParticipant? currentParticipant;
+
+    for (final participant in participants) {
+      if (participant.memberId == familyContext.userId) {
+        currentParticipant = participant;
+        break;
+      }
+    }
+
+    if (currentParticipant?.state == ParticipantMomentState.checkedIn) {
       return;
     }
 
-    setState(() {
-      _isUpdating = true;
-    });
-
-    try {
-      await AppDependencies.momentInstanceRepository.checkIn(
-        familyId: widget.familyId,
-        instanceId: widget.instanceId,
-        memberId: contextData.userId,
-        method: MomentCheckInMethod.manual,
-      );
-
-      if (!mounted) return;
-
-      _showMessage('You are checked in.');
-    } catch (error) {
-      if (!mounted) return;
-
-      _showMessage(
-        error is StateError
-            ? error.message.toString()
-            : 'We could not check you in.',
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUpdating = false;
-        });
-      }
-    }
+    await AppDependencies.momentInstanceRepository.checkIn(
+      familyId: instance.familyId,
+      instanceId: instance.id,
+      memberId: familyContext.userId,
+      method: MomentCheckInMethod.manual,
+    );
   }
 
   Future<void> _checkOut() async {
-    final contextData = _familyContext;
+    final familyContext = _familyContext;
 
-    if (contextData == null || _isUpdating) {
+    if (familyContext == null || _isUpdating) {
       return;
     }
 
@@ -159,18 +162,27 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
 
     try {
       await AppDependencies.momentInstanceRepository.checkOut(
-        familyId: widget.familyId,
-        instanceId: widget.instanceId,
-        memberId: contextData.userId,
-      );
+  familyId: widget.familyId,
+  instanceId: widget.instanceId,
+  memberId: familyContext.userId,
+);
 
-      if (!mounted) return;
+if (!mounted) return;
 
-      _showMessage('You left the live Moment.');
+final navigator = Navigator.of(
+  context,
+  rootNavigator: true,
+);
+
+context.go('/home');
+
+if (navigator.canPop()) {
+  navigator.pop();
+}
     } catch (_) {
-      if (!mounted) return;
-
-      _showMessage('We could not update your participation.');
+      if (mounted) {
+        _showMessage('We could not leave this Moment. Please try again.');
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -181,9 +193,9 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
   }
 
   Future<void> _endMoment(MomentInstance instance) async {
-    final contextData = _familyContext;
+    final familyContext = _familyContext;
 
-    if (contextData == null || _isUpdating) {
+    if (familyContext == null || _isUpdating) {
       return;
     }
 
@@ -193,21 +205,15 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
         return AlertDialog(
           title: const Text('End this Moment?'),
           content: Text(
-            'Sakan will record the duration and '
-            'participant check-ins for '
-            '“${instance.titleSnapshot}”.',
+            'Sakan will record the elapsed time and family check-ins for “${instance.titleSnapshot}”.',
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Keep Going'),
             ),
             FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('End Moment'),
             ),
           ],
@@ -227,16 +233,16 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
       await AppDependencies.momentOutcomeService.endLiveMoment(
         familyId: widget.familyId,
         instanceId: widget.instanceId,
-        endedBy: contextData.userId,
+        endedBy: familyContext.userId,
       );
     } catch (error) {
-      if (!mounted) return;
-
-      _showMessage(
-        error is StateError
-            ? error.message.toString()
-            : 'We could not end this Moment.',
-      );
+      if (mounted) {
+        _showMessage(
+          error is StateError
+              ? error.message.toString()
+              : 'We could not end this Moment.',
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -247,9 +253,9 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
   }
 
   Future<void> _cancelMoment(MomentInstance instance) async {
-    final contextData = _familyContext;
+    final familyContext = _familyContext;
 
-    if (contextData == null || _isUpdating) {
+    if (familyContext == null || _isUpdating) {
       return;
     }
 
@@ -259,20 +265,15 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
         return AlertDialog(
           title: const Text('Cancel live Moment?'),
           content: Text(
-            '“${instance.titleSnapshot}” will be '
-            'closed without being recorded as completed.',
+            '“${instance.titleSnapshot}” will close without being recorded as completed.',
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Keep Going'),
             ),
             FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Cancel Moment'),
             ),
           ],
@@ -292,12 +293,12 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
       await AppDependencies.momentInstanceRepository.cancelInstance(
         familyId: widget.familyId,
         instanceId: widget.instanceId,
-        cancelledBy: contextData.userId,
+        cancelledBy: familyContext.userId,
       );
     } catch (_) {
-      if (!mounted) return;
-
-      _showMessage('We could not cancel this Moment.');
+      if (mounted) {
+        _showMessage('We could not cancel this Moment.');
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -330,7 +331,6 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
         _participantsStream == null ||
         _membersStream == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Live Moment')),
         body: SafeArea(
           child: AppErrorState(
             message: _errorMessage ?? 'The live Moment is unavailable.',
@@ -381,13 +381,13 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
         return StreamBuilder<List<Member>>(
           stream: _membersStream,
           builder: (context, memberSnapshot) {
-            final members = memberSnapshot.data ?? <Member>[];
+            final members = memberSnapshot.data ?? const <Member>[];
 
             return StreamBuilder<List<MomentParticipant>>(
               stream: _participantsStream,
               builder: (context, participantSnapshot) {
                 final participants =
-                    participantSnapshot.data ?? <MomentParticipant>[];
+                    participantSnapshot.data ?? const <MomentParticipant>[];
 
                 return _buildLiveScaffold(
                   instance: instance,
@@ -407,251 +407,447 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
     required List<Member> members,
     required List<MomentParticipant> participants,
   }) {
-    final contextData = _familyContext!;
-
+    final familyContext = _familyContext!;
     final membersById = <String, Member>{
       for (final member in members) member.id: member,
     };
-
     final participantsById = <String, MomentParticipant>{
       for (final participant in participants) participant.memberId: participant,
     };
 
-    final visibleMemberIds = <String>{
-      ...instance.expectedParticipantIds,
-      ...participantsById.keys,
-    }.toList();
+    final visibleMemberIds =
+        <String>{
+          ...instance.expectedParticipantIds,
+          ...participantsById.keys,
+        }.toList()..sort((first, second) {
+          final firstName = membersById[first]?.displayName ?? first;
+          final secondName = membersById[second]?.displayName ?? second;
+          return firstName.compareTo(secondName);
+        });
 
-    visibleMemberIds.sort((first, second) {
-      final firstName = membersById[first]?.displayName ?? first;
-      final secondName = membersById[second]?.displayName ?? second;
-
-      return firstName.compareTo(secondName);
-    });
-
-    final currentParticipant = participantsById[contextData.userId];
-
-    final currentCheckedIn =
-        currentParticipant?.state == ParticipantMomentState.checkedIn;
-
+    final checkedInCount = participants
+        .where((item) => item.state == ParticipantMomentState.checkedIn)
+        .length;
     final elapsed = instance.actualStartAt == null
         ? Duration.zero
         : DateTime.now().difference(instance.actualStartAt!.toLocal());
-
-    final canEnd = contextData.isAdult;
+    final categoryColor = momentSessionCategoryColor(instance.categorySnapshot);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Live Moment'),
-        actions: [
-          if (canEnd)
-            PopupMenuButton<String>(
-              enabled: !_isUpdating,
-              onSelected: (value) {
-                if (value == 'cancel') {
-                  _cancelMoment(instance);
-                }
-              },
-              itemBuilder: (context) {
-                return const [
-                  PopupMenuItem<String>(
-                    value: 'cancel',
-                    child: Row(
-                      children: [
-                        Icon(Icons.cancel_outlined),
-                        SizedBox(width: 10),
-                        Text('Cancel Moment'),
-                      ],
-                    ),
-                  ),
-                ];
-              },
-            ),
-        ],
-      ),
+      backgroundColor: AppColors.background,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.xl,
-            AppSpacing.lg,
-            AppSpacing.xl,
-            120,
-          ),
+        child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.xl),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(26),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.sm,
+                AppSpacing.sm,
+                0,
               ),
-              child: Column(
+              child: Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withAlpha(28),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.circle, size: 9, color: Colors.redAccent),
-                        SizedBox(width: 7),
-                        Text(
-                          'LIVE',
-                          style: TextStyle(
-                            color: Colors.redAccent,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.8,
+                  InkWell(
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                    onTap: () {
+                      _showParticipantsSheet(
+                        instance: instance,
+                        membersById: membersById,
+                        visibleMemberIds: visibleMemberIds,
+                        participantsById: participantsById,
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 11,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.group_outlined,
+                            size: 17,
+                            color: AppColors.secondary,
                           ),
+                          const SizedBox(width: 5),
+                          Text(
+                            '$checkedInCount/${visibleMemberIds.length}',
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(
+                                  color: AppColors.textPrimary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  PopupMenuButton<String>(
+                    enabled: !_isUpdating,
+                    icon: const Icon(Icons.more_horiz_rounded),
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'checkOut':
+                          _checkOut();
+                          break;
+                        case 'end':
+                          _endMoment(instance);
+                          break;
+                        case 'cancel':
+                          _cancelMoment(instance);
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) {
+                      return [
+                        const PopupMenuItem<String>(
+                          value: 'checkOut',
+                          child: Text('Leave Moment'),
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  Text(
-                    instance.titleSnapshot,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (instance.locationSnapshot?.trim().isNotEmpty == true) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      instance.locationSnapshot!,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                  const SizedBox(height: AppSpacing.xl),
-                  Text(
-                    _formatDuration(elapsed),
-                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'Started '
-                    '${DateFormat('h:mm a').format(instance.actualStartAt!.toLocal())}',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                        if (familyContext.isAdult)
+                          const PopupMenuItem<String>(
+                            value: 'end',
+                            child: Text('End Moment'),
+                          ),
+                        if (familyContext.isAdult)
+                          const PopupMenuItem<String>(
+                            value: 'cancel',
+                            child: Text('Cancel Moment'),
+                          ),
+                      ];
+                    },
                   ),
                 ],
               ),
             ),
-
-            const SizedBox(height: AppSpacing.xl),
-
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Participants',
-                    style: Theme.of(context).textTheme.titleLarge,
+            const SizedBox(height: AppSpacing.xs),
+            Container(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(
+                color: categoryColor.withAlpha(22),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                momentSessionCategoryIcon(instance.categorySnapshot),
+                color: categoryColor,
+                size: 29,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+              child: Text(
+                instance.titleSnapshot,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Session active',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              _formatElapsed(elapsed),
+              style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                color: AppColors.textPrimary,
+                fontSize: 48,
+                height: 1,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'elapsed',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+              child: Row(
+                children: [
+                  const Expanded(child: Divider()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                    ),
+                    child: Icon(
+                      Icons.favorite_border_rounded,
+                      size: 18,
+                      color: AppColors.secondary.withAlpha(190),
+                    ),
+                  ),
+                  const Expanded(child: Divider()),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+              child: Text(
+                'Enjoy this Moment.\nSakan is recording only time and check-ins.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textPrimary,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.xs),
+                child: SizedBox.expand(
+                  child: Image.asset(
+                    'assets/images/sakan_tree.png',
+                    fit: BoxFit.contain,
+                    alignment: Alignment.bottomCenter,
+                    errorBuilder: (_, _, _) {
+                      return Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(top: AppSpacing.md),
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: <Color>[
+                              AppColors.background,
+                              Color(0xFFE7E0CC),
+                              Color(0xFFD8C8A5),
+                            ],
+                          ),
+                        ),
+                        child: const Align(
+                          alignment: Alignment.bottomCenter,
+                          child: Padding(
+                            padding: EdgeInsets.only(bottom: AppSpacing.xl),
+                            child: Icon(
+                              Icons.park_outlined,
+                              size: 96,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
-                Text(
-                  '${participants.where((item) => item.state == ParticipantMomentState.checkedIn).length} checked in',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
+              ),
             ),
-
-            const SizedBox(height: AppSpacing.md),
-
-            ...visibleMemberIds.map((memberId) {
-              final member = membersById[memberId];
-              final participant = participantsById[memberId];
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: _ParticipantCard(
-                  name: member?.displayName ?? 'Family member',
-                  isCurrentUser: memberId == contextData.userId,
-                  participant: participant,
-                ),
-              );
-            }),
-
-            const SizedBox(height: AppSpacing.lg),
-
-            if (!currentCheckedIn)
-              FilledButton.icon(
-                onPressed: _isUpdating ? null : _checkIn,
-                icon: const Icon(Icons.touch_app_outlined),
-                label: const Text('I’m Here'),
-              )
-            else
-              OutlinedButton.icon(
-                onPressed: _isUpdating ? null : _checkOut,
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('Leave Moment'),
-              ),
-
-            if (canEnd) ...[
-              const SizedBox(height: AppSpacing.sm),
-              FilledButton.tonalIcon(
-                onPressed: _isUpdating
-                    ? null
-                    : () {
-                        _endMoment(instance);
-                      },
-                icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('End Moment'),
-              ),
-            ],
-
-            if (_isUpdating) ...[
-              const SizedBox(height: AppSpacing.md),
-              const LinearProgressIndicator(),
-            ],
           ],
         ),
       ),
     );
   }
 
-  Scaffold _closedScaffold(MomentInstance instance) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Family Moment')),
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+  Future<void> _showParticipantsSheet({
+    required MomentInstance instance,
+    required Map<String, Member> membersById,
+    required List<String> visibleMemberIds,
+    required Map<String, MomentParticipant> participantsById,
+  }) async {
+    final familyContext = _familyContext!;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.62,
+          minChildSize: 0.4,
+          maxChildSize: 0.88,
+          builder: (context, controller) {
+            return ListView(
+              controller: controller,
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.md,
+                AppSpacing.lg,
+                AppSpacing.xl,
+              ),
               children: [
-                const Icon(Icons.event_busy_outlined, size: 62),
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.disabled,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: AppSpacing.lg),
                 Text(
-                  instance.titleSnapshot,
-                  textAlign: TextAlign.center,
+                  'Participants',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
-                const SizedBox(height: AppSpacing.sm),
+                const SizedBox(height: 4),
                 Text(
-                  instance.status == MomentInstanceStatus.cancelled
-                      ? 'This Moment was cancelled.'
-                      : 'This Moment was marked as missed.',
-                  textAlign: TextAlign.center,
+                  '${instance.titleSnapshot} · ${visibleMemberIds.length} expected',
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                const SizedBox(height: AppSpacing.xl),
-                FilledButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('Done'),
+                const SizedBox(height: AppSpacing.lg),
+                ...visibleMemberIds.map((memberId) {
+                  final member = membersById[memberId];
+                  final participant = participantsById[memberId];
+                  final visual = _participantVisual(participant);
+
+                  if (member == null) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                    child: Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(AppRadius.card),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          SakanMemberAvatar(
+                            member: member,
+                            diameter: 42,
+                            width: 46,
+                            showName: false,
+                            presence: visual.presence,
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  member.displayName,
+                                  style: Theme.of(context).textTheme.bodyLarge,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  memberId == familyContext.userId
+                                      ? '${visual.label} · You'
+                                      : visual.label,
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: visual.color),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(visual.icon, color: visual.color, size: 19),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: AppSpacing.md),
+                OutlinedButton.icon(
+                  onPressed: _isUpdating
+                      ? null
+                      : () async {
+                          Navigator.of(sheetContext).pop();
+                          await _checkOut();
+                        },
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text('Leave Moment'),
                 ),
               ],
-            ),
-          ),
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
+  }
+
+  _ParticipantVisual _participantVisual(MomentParticipant? participant) {
+    if (participant?.state == ParticipantMomentState.checkedIn) {
+      return const _ParticipantVisual(
+        label: 'Checked in',
+        icon: Icons.check_circle_rounded,
+        color: AppColors.success,
+        presence: SakanMemberPresence.checkedIn,
+      );
+    }
+
+    if (participant?.state == ParticipantMomentState.ready) {
+      return const _ParticipantVisual(
+        label: 'Joined the Ready Room',
+        icon: Icons.check_circle_outline_rounded,
+        color: AppColors.success,
+        presence: SakanMemberPresence.ready,
+      );
+    }
+
+    if (participant?.state == ParticipantMomentState.nearby ||
+        participant?.nearbyDetectedAt != null) {
+      return const _ParticipantVisual(
+        label: 'Detected nearby',
+        icon: Icons.bluetooth_connected_rounded,
+        color: AppColors.info,
+        presence: SakanMemberPresence.nearby,
+      );
+    }
+
+    if (participant?.state == ParticipantMomentState.left) {
+      return const _ParticipantVisual(
+        label: 'Left the Moment',
+        icon: Icons.logout_rounded,
+        color: AppColors.textSecondary,
+        presence: SakanMemberPresence.unknown,
+      );
+    }
+
+    if (participant?.state == ParticipantMomentState.declined) {
+      return const _ParticipantVisual(
+        label: 'Not joining',
+        icon: Icons.remove_circle_outline_rounded,
+        color: AppColors.secondary,
+        presence: SakanMemberPresence.unknown,
+      );
+    }
+
+    return const _ParticipantVisual(
+      label: 'Waiting',
+      icon: Icons.hourglass_empty_rounded,
+      color: AppColors.textSecondary,
+      presence: SakanMemberPresence.unknown,
+    );
+  }
+
+  String _formatElapsed(Duration elapsed) {
+    final safeSeconds = elapsed.inSeconds < 0 ? 0 : elapsed.inSeconds;
+    final hours = safeSeconds ~/ 3600;
+    final minutes = (safeSeconds % 3600) ~/ 60;
+    final seconds = safeSeconds % 60;
+
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:'
+          '${seconds.toString().padLeft(2, '0')}';
+    }
+
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
   }
 
   Scaffold _notActiveScaffold(MomentInstance instance) {
@@ -664,23 +860,60 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.schedule_outlined, size: 62),
-                const SizedBox(height: AppSpacing.lg),
+                const Icon(
+                  Icons.hourglass_empty_rounded,
+                  size: 58,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(height: AppSpacing.md),
                 Text(
-                  instance.titleSnapshot,
+                  instance.status == MomentInstanceStatus.inviting
+                      ? 'The Ready Room is still open.'
+                      : 'This Moment has not started yet.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
-                const SizedBox(height: AppSpacing.sm),
-                const Text(
-                  'This occurrence has not started yet.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.xl),
+                const SizedBox(height: AppSpacing.md),
                 FilledButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Go Back'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Scaffold _closedScaffold(MomentInstance instance) {
+    final missed = instance.status == MomentInstanceStatus.missed;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Family Moment')),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  missed ? Icons.event_busy_outlined : Icons.cancel_outlined,
+                  size: 58,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  missed
+                      ? 'This Moment was recorded as missed.'
+                      : 'This Moment was cancelled.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Done'),
                 ),
               ],
@@ -699,137 +932,18 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
       ),
     );
   }
-
-  String _formatDuration(Duration duration) {
-    final safeDuration = duration.isNegative ? Duration.zero : duration;
-
-    final hours = safeDuration.inHours;
-    final minutes = safeDuration.inMinutes.remainder(60);
-    final seconds = safeDuration.inSeconds.remainder(60);
-
-    String twoDigits(int value) {
-      return value.toString().padLeft(2, '0');
-    }
-
-    return '${twoDigits(hours)}:'
-        '${twoDigits(minutes)}:'
-        '${twoDigits(seconds)}';
-  }
 }
 
-class _ParticipantCard extends StatelessWidget {
-  const _ParticipantCard({
-    required this.name,
-    required this.isCurrentUser,
-    required this.participant,
-  });
-
-  final String name;
-  final bool isCurrentUser;
-  final MomentParticipant? participant;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = participant?.state ?? ParticipantMomentState.invited;
-
-    final status = _statusVisual(state);
-
-    return Card(
-      margin: EdgeInsets.zero,
-      child: ListTile(
-        leading: CircleAvatar(
-          child: Text(name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase()),
-        ),
-        title: Row(
-          children: [
-            Flexible(child: Text(name)),
-            if (isCurrentUser) ...[
-              const SizedBox(width: 7),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  'You',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-            ],
-          ],
-        ),
-        subtitle: participant?.checkedInAt == null
-            ? null
-            : Text(
-                'Checked in '
-                '${DateFormat('h:mm a').format(participant!.checkedInAt!.toLocal())}',
-              ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-          decoration: BoxDecoration(
-            color: status.color.withAlpha(20),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(status.icon, size: 15, color: status.color),
-              const SizedBox(width: 5),
-              Text(
-                status.label,
-                style: TextStyle(
-                  color: status.color,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  _ParticipantStatusVisual _statusVisual(ParticipantMomentState state) {
-    return switch (state) {
-      ParticipantMomentState.checkedIn => const _ParticipantStatusVisual(
-        label: 'Here',
-        icon: Icons.check_circle_rounded,
-        color: Colors.green,
-      ),
-      ParticipantMomentState.nearby => const _ParticipantStatusVisual(
-        label: 'Nearby',
-        icon: Icons.bluetooth_connected_rounded,
-        color: Colors.blue,
-      ),
-      ParticipantMomentState.left => const _ParticipantStatusVisual(
-        label: 'Left',
-        icon: Icons.logout_rounded,
-        color: Colors.orange,
-      ),
-      ParticipantMomentState.declined => const _ParticipantStatusVisual(
-        label: 'Declined',
-        icon: Icons.cancel_outlined,
-        color: Colors.redAccent,
-      ),
-      ParticipantMomentState.invited => const _ParticipantStatusVisual(
-        label: 'Invited',
-        icon: Icons.schedule_outlined,
-        color: Colors.grey,
-      ),
-    };
-  }
-}
-
-class _ParticipantStatusVisual {
-  const _ParticipantStatusVisual({
+class _ParticipantVisual {
+  const _ParticipantVisual({
     required this.label,
     required this.icon,
     required this.color,
+    required this.presence,
   });
 
   final String label;
   final IconData icon;
   final Color color;
+  final SakanMemberPresence presence;
 }

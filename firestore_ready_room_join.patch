@@ -1,0 +1,59 @@
+diff --git a/firestore.rules b/firestore.rules
+index e17df6f..c25af08 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -8,13 +8,15 @@
+       && request.resource.data.memberId == request.auth.uid
+       && request.resource.data.state in [
+         'invited',
++        'ready',
+         'nearby',
+         'checkedIn',
+         'declined',
+         'left'
+       ];
+ 
+-    allow update: if isFamilyMember(familyId)
++    allow update: if (
++      isFamilyMember(familyId)
+       && memberId == request.auth.uid
+       && resource.data.memberId == request.auth.uid
+       && request.resource.data.memberId
+@@ -25,6 +27,7 @@
+         == resource.data.instanceId
+       && request.resource.data.state in [
+         'invited',
++        'ready',
+         'nearby',
+         'checkedIn',
+         'declined',
+@@ -41,7 +44,28 @@
+           'nearbyDetectedAt',
+           'confirmedAt',
+           'updatedAt'
+-        ]);
++        ])
++    ) || (
++      isAdultOrAdmin(familyId)
++      && resource.data.state == 'ready'
++      && request.resource.data.state in [
++        'invited',
++        'nearby'
++      ]
++      && request.resource.data.memberId
++        == resource.data.memberId
++      && request.resource.data.familyId
++        == resource.data.familyId
++      && request.resource.data.instanceId
++        == resource.data.instanceId
++      && request.resource.data
++        .diff(resource.data)
++        .affectedKeys()
++        .hasOnly([
++          'state',
++          'updatedAt'
++        ])
++    );
+ 
+     allow delete: if isFamilyAdmin(familyId)
+       || (

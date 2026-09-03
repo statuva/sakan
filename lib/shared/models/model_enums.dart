@@ -53,7 +53,18 @@ enum MomentInstanceSource {
 }
 
 /// One member's state inside a concrete Moment occurrence.
-enum ParticipantMomentState { invited, nearby, checkedIn, declined, left }
+///
+/// `ready` means the member joined the Ready Room before the shared timer
+/// started. It is intentionally different from `checkedIn`, which is real
+/// participation evidence recorded only after the Moment becomes active.
+enum ParticipantMomentState {
+  invited,
+  ready,
+  nearby,
+  checkedIn,
+  declined,
+  left,
+}
 
 /// How a member confirmed participation.
 enum MomentCheckInMethod { manual, bluetooth, qr, todayReview }

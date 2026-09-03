@@ -16,7 +16,10 @@ import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 import '../../daily_review/presentation/today_review_screen.dart';
 import '../../moments/presentation/live_moment_screen.dart';
+import '../../moments/presentation/moment_session_preview_screen.dart';
+import '../../moments/presentation/moment_waiting_room_screen.dart';
 import '../../moments/presentation/moments_screen.dart';
+import '../../moments/services/moment_session_preparation_service.dart';
 import '../../moments/presentation/schedule_moment_occurrence_screen.dart';
 import '../../profile/presentation/my_reminders_screen.dart';
 import '../data/daily_reflection_library.dart';
@@ -143,7 +146,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHome(FamilyInsightReport report) {
     final familyContext = _familyContext!;
     final snapshot = report.snapshot;
-    final insight = HomePrioritySelector.select(report);
+    final readyRoom = _readyRoomForCurrentUser(
+      instances: snapshot.instances,
+      currentUserId: familyContext.userId,
+    );
+    final insight = readyRoom == null
+        ? HomePrioritySelector.select(report)
+        : _readyRoomInsight(readyRoom);
     final reflection = DailyReflectionLibrary.forFamilyDate(
       familyId: familyContext.familyId,
       date: snapshot.generatedAt,
@@ -193,7 +202,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   context.go('/calendar');
                 },
               ),
-              if (familyContext.isAdult && snapshot.activeInstance == null) ...[
+              if (familyContext.isAdult &&
+                  snapshot.activeInstance == null &&
+                  readyRoom == null) ...[
                 const SizedBox(height: AppSpacing.md),
                 SizedBox(
                   width: double.infinity,
@@ -237,11 +248,15 @@ class _HomeScreenState extends State<HomeScreen> {
               : report.snapshot.instanceById(insight.relatedInstanceId!);
 
           if (instance == null) {
-            _showMessage('The active Moment could not be found.');
+            _showMessage('The shared Moment could not be found.');
             return;
           }
 
-          await _openLiveMoment(instance);
+          if (instance.status == MomentInstanceStatus.inviting) {
+            await _openReadyRoom(instance: instance, report: report);
+          } else {
+            await _openLiveMoment(instance);
+          }
           return;
 
         case FamilyInsightActionType.startMomentNow:
@@ -329,46 +344,13 @@ class _HomeScreenState extends State<HomeScreen> {
         report.snapshot.momentById(instance.momentId) ??
         _definitionFromInstance(instance);
 
-    final confirmed = await showDialog<bool>(
+    await openMomentSessionPreview(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text('Start ${instance.titleSnapshot}?'),
-          content: const Text(
-            'The shared timer will begin and you will be checked in automatically.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('Start Moment'),
-            ),
-          ],
-        );
-      },
+      moment: moment,
+      existingInstance: instance,
+      source: MomentInstanceSource.familyInsight,
+      useRootNavigator: true,
     );
-
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
-    final active = await AppDependencies.momentInstanceRepository
-        .startMomentNow(
-          moment: moment,
-          startedBy: _familyContext!.userId,
-          source: MomentInstanceSource.familyInsight,
-          existingInstanceId: instance.id,
-        );
-
-    if (!mounted) return;
-    await _openLiveMoment(active);
   }
 
   Future<void> _createInsightReminder({
@@ -427,6 +409,79 @@ class _HomeScreenState extends State<HomeScreen> {
         : 'Reminder added. Notifications are currently disabled.';
 
     _showMessage(message);
+  }
+
+  MomentInstance? _readyRoomForCurrentUser({
+    required List<MomentInstance> instances,
+    required String currentUserId,
+  }) {
+    final readyRooms =
+        instances.where((instance) {
+          return instance.status == MomentInstanceStatus.inviting &&
+              instance.expectedParticipantIds.contains(currentUserId);
+        }).toList()..sort(
+          (first, second) => second.updatedAt.compareTo(first.updatedAt),
+        );
+
+    return readyRooms.isEmpty ? null : readyRooms.first;
+  }
+
+  FamilyInsightItem _readyRoomInsight(MomentInstance instance) {
+    return FamilyInsightItem(
+      id: 'ready_room_${instance.id}',
+      kind: FamilyInsightKind.activeMoment,
+      actionType: FamilyInsightActionType.joinActiveMoment,
+      priority: -1,
+      headline: '${instance.titleSnapshot} is getting ready',
+      summary:
+          'The Ready Room is open. Join before an adult starts the shared timer.',
+      reasons: const <String>[
+        'Joining now lets the host see that you are ready.',
+      ],
+      suggestedActions: const <String>['Join Session'],
+      confidence: ConfidenceLevel.high,
+      relatedMomentId: instance.momentId,
+      relatedInstanceId: instance.id,
+      recommendedActionAt: DateTime.now().toUtc(),
+    );
+  }
+
+  Future<void> _openReadyRoom({
+    required MomentInstance instance,
+    required FamilyInsightReport report,
+  }) async {
+    final moment =
+        report.snapshot.momentById(instance.momentId) ??
+        _definitionFromInstance(instance);
+    final preparationService = MomentSessionPreparationService();
+    final preparedSession = await preparationService.loadPreparedSession(
+      familyId: instance.familyId,
+      instanceId: instance.id,
+    );
+
+    if (!mounted) return;
+
+    if (preparedSession == null) {
+      _showMessage('The Ready Room is no longer open.');
+      return;
+    }
+
+    final active = await Navigator.of(context, rootNavigator: true)
+        .push<MomentInstance>(
+          MaterialPageRoute<MomentInstance>(
+            builder: (_) => MomentWaitingRoomScreen(
+              moment: moment,
+              source: instance.source,
+              preparedSession: preparedSession,
+            ),
+          ),
+        );
+
+    if (!mounted || active == null) {
+      return;
+    }
+
+    await _openLiveMoment(active);
   }
 
   FamilyMoment _definitionFromInstance(MomentInstance instance) {
