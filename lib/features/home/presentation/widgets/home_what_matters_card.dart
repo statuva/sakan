@@ -169,6 +169,11 @@ class HomeWhatMattersCard extends StatelessWidget {
   }
 
   String _actionLabel(FamilyInsightItem item) {
+    if (item.actionType == FamilyInsightActionType.joinActiveMoment &&
+        item.headline.endsWith(' is getting ready')) {
+      return 'Join Session';
+    }
+
     final subject = _subjectFromHeadline(item.headline);
 
     return switch (item.actionType) {
@@ -187,6 +192,7 @@ class HomeWhatMattersCard extends StatelessWidget {
     const endings = <String>[
       ' is happening now',
       ' can start now',
+      ' is getting ready',
       ' is later today',
       ' is today',
       ' is tomorrow',

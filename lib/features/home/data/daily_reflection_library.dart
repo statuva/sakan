@@ -19,6 +19,13 @@ abstract final class DailyReflectionLibrary {
           'كُلُّكُمْ رَاعٍ وَمَسْئُولٌ عَنْ رَعِيَّتِهِ، فَالإِمَامُ رَاعٍ وَمَسْئُولٌ عَنْ رَعِيَّتِهِ، وَالرَّجُلُ فِي أَهْلِهِ رَاعٍ وَهُوَ مَسْئُولٌ عَنْ رَعِيَّتِهِ، وَالْمَرْأَةُ فِي بَيْتِ زَوْجِهَا رَاعِيَةٌ وَهِيَ مَسْئُولَةٌ عَنْ رَعِيَّتِهِا',
       source: 'رواه البخاري ومسلم',
     ),
+
+    DailyReflection(
+      id: 'family-quote-02',
+      kind: DailyReflectionKind.familyQuote,
+      englishText: 'Family is not an important thing. It’s everything. ',
+      source: 'Michael J. Fox',
+    ),
   ];
 
   static DailyReflection? forFamilyDate({

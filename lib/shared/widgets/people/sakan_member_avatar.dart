@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../models/member.dart';
 
-enum SakanMemberPresence { none, unknown, nearby, checkedIn }
+enum SakanMemberPresence { none, unknown, ready, nearby, checkedIn }
 
 Color sakanMemberAvatarColor(Member member) {
   final key = member.id.trim().isNotEmpty ? member.id : member.displayName;
@@ -158,6 +158,7 @@ class SakanMemberAvatar extends StatelessWidget {
     return switch (value) {
       SakanMemberPresence.none => Colors.transparent,
       SakanMemberPresence.unknown => AppColors.disabled,
+      SakanMemberPresence.ready => AppColors.success,
       SakanMemberPresence.nearby => AppColors.info,
       SakanMemberPresence.checkedIn => AppColors.success,
     };
@@ -169,6 +170,7 @@ class SakanMemberAvatar extends StatelessWidget {
     return switch (presence) {
       SakanMemberPresence.none => name,
       SakanMemberPresence.unknown => '$name, presence unknown',
+      SakanMemberPresence.ready => '$name, joined the Ready Room',
       SakanMemberPresence.nearby => '$name, detected nearby',
       SakanMemberPresence.checkedIn => '$name, checked in',
     };

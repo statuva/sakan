@@ -235,7 +235,7 @@ service cloud.firestore {
 
   allow delete: if isFamilyAdmin(familyId);
 
-  match /participants/{memberId} {
+   match /participants/{memberId} {
     allow read: if isFamilyMember(familyId);
 
     allow create: if isFamilyMember(familyId)
@@ -245,13 +245,15 @@ service cloud.firestore {
       && request.resource.data.memberId == request.auth.uid
       && request.resource.data.state in [
         'invited',
+        'ready',
         'nearby',
         'checkedIn',
         'declined',
         'left'
       ];
 
-    allow update: if isFamilyMember(familyId)
+    allow update: if (
+      isFamilyMember(familyId)
       && memberId == request.auth.uid
       && resource.data.memberId == request.auth.uid
       && request.resource.data.memberId
@@ -262,6 +264,7 @@ service cloud.firestore {
         == resource.data.instanceId
       && request.resource.data.state in [
         'invited',
+        'ready',
         'nearby',
         'checkedIn',
         'declined',
@@ -278,7 +281,28 @@ service cloud.firestore {
           'nearbyDetectedAt',
           'confirmedAt',
           'updatedAt'
-        ]);
+        ])
+    ) || (
+      isAdultOrAdmin(familyId)
+      && resource.data.state == 'ready'
+      && request.resource.data.state in [
+        'invited',
+        'nearby'
+      ]
+      && request.resource.data.memberId
+        == resource.data.memberId
+      && request.resource.data.familyId
+        == resource.data.familyId
+      && request.resource.data.instanceId
+        == resource.data.instanceId
+      && request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasOnly([
+          'state',
+          'updatedAt'
+        ])
+    );
 
     allow delete: if isFamilyAdmin(familyId)
       || (
@@ -286,6 +310,7 @@ service cloud.firestore {
         && memberId == request.auth.uid
       );
   }
+
 }
 
 match /dailyReviews/{reviewId} {

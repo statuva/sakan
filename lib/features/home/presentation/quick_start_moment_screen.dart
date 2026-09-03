@@ -7,12 +7,11 @@ import '../../../shared/models/current_family_context.dart';
 import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/member.dart';
 import '../../../shared/models/model_enums.dart';
-import '../../../shared/models/moment_instance.dart';
 import '../../../shared/widgets/cards/app_card.dart';
 import '../../../shared/widgets/controls/app_pill_segmented_control.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
-import '../../moments/presentation/live_moment_screen.dart';
+import '../../moments/presentation/moment_session_preview_screen.dart';
 
 class QuickStartMomentScreen extends StatefulWidget {
   const QuickStartMomentScreen({super.key});
@@ -27,7 +26,7 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
   Stream<List<Member>>? _membersStream;
 
   bool _isLoading = true;
-  bool _isStarting = false;
+  bool _isOpening = false;
   String? _errorMessage;
 
   @override
@@ -117,7 +116,7 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
             }
 
             final members =
-                (memberSnapshot.data ?? <Member>[])
+                (memberSnapshot.data ?? const <Member>[])
                     .where((member) => member.isActive)
                     .toList()
                   ..sort(
@@ -143,7 +142,7 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
                 }
 
                 final moments = _startableDefinitions(
-                  momentSnapshot.data ?? <FamilyMoment>[],
+                  momentSnapshot.data ?? const <FamilyMoment>[],
                 );
 
                 return _buildContent(members: members, moments: moments);
@@ -171,14 +170,11 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
           children: [
             Text(
               'Begin something together',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 6),
             Text(
-              'Choose an existing Family Moment, or create a simple one-time Moment and begin immediately.',
+              'Choose a Family Moment, review the session preview, and start the timer only when everyone is ready.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: AppColors.textSecondary,
                 height: 1.45,
@@ -186,7 +182,7 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
             ),
             const SizedBox(height: AppSpacing.lg),
             OutlinedButton.icon(
-              onPressed: _isStarting || members.isEmpty
+              onPressed: _isOpening || members.isEmpty
                   ? null
                   : () {
                       _openCreateNewMoment(members);
@@ -197,10 +193,7 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
             const SizedBox(height: AppSpacing.xl),
             Text(
               'Existing Moments',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: AppSpacing.sm),
             if (moments.isEmpty)
@@ -215,17 +208,17 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
                   padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                   child: _ExistingMomentCard(
                     moment: moment,
-                    onTap: _isStarting
+                    onTap: _isOpening
                         ? null
                         : () {
-                            _confirmAndStartExisting(moment);
+                            _openExistingPreview(moment);
                           },
                   ),
                 ),
               ),
           ],
         ),
-        if (_isStarting)
+        if (_isOpening)
           const Positioned(
             left: 0,
             right: 0,
@@ -260,101 +253,26 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
     return result;
   }
 
-  Future<void> _confirmAndStartExisting(FamilyMoment moment) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Start this Moment now?'),
-          content: Text(
-            'A new spontaneous occurrence of “${moment.title}” will begin. Any future scheduled occurrence will stay unchanged.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('Start Now'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
-    await _startExistingMoment(moment);
-  }
-
-  Future<void> _startExistingMoment(FamilyMoment moment) async {
-    final familyContext = _familyContext;
-
-    if (familyContext == null || _isStarting) {
-      return;
-    }
+  Future<void> _openExistingPreview(FamilyMoment moment) async {
+    if (_isOpening) return;
 
     setState(() {
-      _isStarting = true;
-      _errorMessage = null;
+      _isOpening = true;
     });
 
-    MomentInstance? temporaryOccurrence;
-
-    try {
-      await _ensureNoActiveMoment(familyContext.familyId);
-
-      final start = DateTime.now();
-      final end = start.add(_durationFor(moment));
-
-      temporaryOccurrence = await AppDependencies.momentInstanceRepository
-          .scheduleOccurrence(
-            moment: moment,
-            scheduledStartAt: start,
-            scheduledEndAt: end,
-            createdBy: familyContext.userId,
-            source: MomentInstanceSource.spontaneous,
-          );
-
-      final active = await AppDependencies.momentInstanceRepository
-          .startMomentNow(
-            moment: moment,
-            startedBy: familyContext.userId,
-            source: MomentInstanceSource.spontaneous,
-            existingInstanceId: temporaryOccurrence.id,
-          );
-
-      if (!mounted) return;
-      _openLiveMoment(active);
-    } catch (error) {
-      await _cancelTemporaryOccurrence(temporaryOccurrence);
-
-      if (!mounted) return;
-      _showMessage(
-        error is StateError
-            ? error.message.toString()
-            : 'We could not start this Moment.',
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isStarting = false;
-        });
-      }
-    }
+    await openMomentSessionPreview(
+      context: context,
+      moment: moment,
+      source: MomentInstanceSource.spontaneous,
+      replaceCurrentRoute: true,
+      useRootNavigator: true,
+    );
   }
 
   Future<void> _openCreateNewMoment(List<Member> members) async {
     final familyContext = _familyContext;
 
-    if (familyContext == null || _isStarting) {
+    if (familyContext == null || _isOpening) {
       return;
     }
 
@@ -378,19 +296,18 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
       return;
     }
 
-    await _createAndStartMoment(draft);
+    _openNewMomentPreview(draft);
   }
 
-  Future<void> _createAndStartMoment(_QuickMomentDraft draft) async {
+  Future<void> _openNewMomentPreview(_QuickMomentDraft draft) async {
     final familyContext = _familyContext;
 
-    if (familyContext == null || _isStarting) {
+    if (familyContext == null || _isOpening) {
       return;
     }
 
     setState(() {
-      _isStarting = true;
-      _errorMessage = null;
+      _isOpening = true;
     });
 
     final nowLocal = DateTime.now();
@@ -416,132 +333,14 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
       updatedAt: nowUtc,
     );
 
-    var definitionSaved = false;
-    MomentInstance? temporaryOccurrence;
-
-    try {
-      await _ensureNoActiveMoment(familyContext.familyId);
-
-      await AppDependencies.calendarRepository.saveMoment(moment);
-      definitionSaved = true;
-
-      temporaryOccurrence = await AppDependencies.momentInstanceRepository
-          .scheduleOccurrence(
-            moment: moment,
-            scheduledStartAt: nowLocal,
-            scheduledEndAt: nowLocal.add(
-              Duration(minutes: draft.durationMinutes),
-            ),
-            createdBy: familyContext.userId,
-            source: MomentInstanceSource.spontaneous,
-          );
-
-      final active = await AppDependencies.momentInstanceRepository
-          .startMomentNow(
-            moment: moment,
-            startedBy: familyContext.userId,
-            source: MomentInstanceSource.spontaneous,
-            existingInstanceId: temporaryOccurrence.id,
-          );
-
-      if (!mounted) return;
-      _openLiveMoment(active);
-    } catch (error) {
-      await _cancelTemporaryOccurrence(temporaryOccurrence);
-
-      if (definitionSaved) {
-        try {
-          await AppDependencies.calendarRepository.deleteMoment(
-            familyId: moment.familyId,
-            momentId: moment.id,
-          );
-        } catch (_) {
-          // The user still receives the original start error. A leftover
-          // definition can be safely removed from the Moment Library later.
-        }
-      }
-
-      if (!mounted) return;
-      _showMessage(
-        error is StateError
-            ? error.message.toString()
-            : 'We could not create and start this Moment.',
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isStarting = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _ensureNoActiveMoment(String familyId) async {
-    final active = await AppDependencies.momentInstanceRepository
-        .watchActiveInstance(familyId: familyId)
-        .first;
-
-    if (active != null) {
-      throw StateError(
-        '${active.titleSnapshot} is already live. End it before starting another Moment.',
-      );
-    }
-  }
-
-  Future<void> _cancelTemporaryOccurrence(MomentInstance? occurrence) async {
-    final familyContext = _familyContext;
-
-    if (occurrence == null || familyContext == null || occurrence.isActive) {
-      return;
-    }
-
-    try {
-      await AppDependencies.momentInstanceRepository.cancelInstance(
-        familyId: occurrence.familyId,
-        instanceId: occurrence.id,
-        cancelledBy: familyContext.userId,
-      );
-    } catch (_) {
-      // Best-effort cleanup only.
-    }
-  }
-
-  Duration _durationFor(FamilyMoment moment) {
-    final startMinutes = moment.resolvedPreferredStartMinutes;
-    final endMinutes = moment.resolvedPreferredEndMinutes;
-
-    if (endMinutes == null) {
-      return const Duration(minutes: 60);
-    }
-
-    var durationMinutes = endMinutes - startMinutes;
-
-    if (durationMinutes <= 0) {
-      durationMinutes += 24 * 60;
-    }
-
-    if (durationMinutes < 15 || durationMinutes > 240) {
-      return const Duration(minutes: 60);
-    }
-
-    return Duration(minutes: durationMinutes);
-  }
-
-  void _openLiveMoment(MomentInstance instance) {
-    Navigator.of(context, rootNavigator: true).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => LiveMomentScreen(
-          familyId: instance.familyId,
-          instanceId: instance.id,
-        ),
-      ),
+    await openMomentSessionPreview(
+      context: context,
+      moment: moment,
+      source: MomentInstanceSource.spontaneous,
+      saveDefinitionBeforeStart: true,
+      replaceCurrentRoute: true,
+      useRootNavigator: true,
     );
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -553,6 +352,8 @@ class _ExistingMomentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = _categoryColor(moment.category);
+
     return AppCard(
       onTap: onTap,
       child: Row(
@@ -561,13 +362,10 @@ class _ExistingMomentCard extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: _categoryColor(moment.category).withAlpha(24),
+              color: color.withAlpha(24),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(
-              _categoryIcon(moment.category),
-              color: _categoryColor(moment.category),
-            ),
+            child: Icon(_categoryIcon(moment.category), color: color),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -576,9 +374,7 @@ class _ExistingMomentCard extends StatelessWidget {
               children: [
                 Text(
                   moment.title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -591,7 +387,7 @@ class _ExistingMomentCard extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.play_arrow_rounded, color: AppColors.primary),
+          const Icon(Icons.chevron_right_rounded, color: AppColors.primary),
         ],
       ),
     );
@@ -615,7 +411,6 @@ class _CreateQuickMomentSheet extends StatefulWidget {
 class _CreateQuickMomentSheetState extends State<_CreateQuickMomentSheet> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
-
   final Set<String> _participantIds = <String>{};
 
   MomentCategory _category = MomentCategory.familyTime;
@@ -624,7 +419,6 @@ class _CreateQuickMomentSheetState extends State<_CreateQuickMomentSheet> {
   @override
   void initState() {
     super.initState();
-
     _participantIds.addAll(widget.members.map((member) => member.id));
     _participantIds.add(widget.currentUserId);
   }
@@ -652,14 +446,12 @@ class _CreateQuickMomentSheetState extends State<_CreateQuickMomentSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Create and Start',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                'Create a Moment',
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
               const SizedBox(height: 6),
               Text(
-                'This creates a simple one-time Family Moment and starts it immediately.',
+                'Review it first, then open the Ready Room before the timer begins.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: AppColors.textSecondary,
                   height: 1.4,
@@ -703,9 +495,7 @@ class _CreateQuickMomentSheetState extends State<_CreateQuickMomentSheet> {
               const SizedBox(height: AppSpacing.lg),
               Text(
                 'Expected participants',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: AppSpacing.xs),
               Wrap(
@@ -753,7 +543,10 @@ class _CreateQuickMomentSheetState extends State<_CreateQuickMomentSheet> {
                 },
               ),
               const SizedBox(height: AppSpacing.xl),
-              FilledButton(onPressed: _submit, child: const Text('Start Now')),
+              FilledButton(
+                onPressed: _submit,
+                child: const Text('Continue to Preview'),
+              ),
             ],
           ),
         ),
@@ -767,7 +560,6 @@ class _CreateQuickMomentSheetState extends State<_CreateQuickMomentSheet> {
     }
 
     _participantIds.add(widget.currentUserId);
-
     final minimumParticipants = widget.members.length >= 2 ? 2 : 1;
 
     if (_participantIds.length < minimumParticipants) {
