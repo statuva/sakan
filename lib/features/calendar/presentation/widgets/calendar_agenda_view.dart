@@ -4,21 +4,20 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/models/family_moment.dart';
 import '../../../../shared/models/model_enums.dart';
-import '../../../../shared/models/rhythm_record.dart';
 import 'calendar_moment_style.dart';
 import 'calendar_palette.dart';
 
 class CalendarAgendaView extends StatelessWidget {
   const CalendarAgendaView({
     required this.moments,
-    required this.rhythmsByMomentId,
+    required this.occurrenceLabelsByMomentId,
     required this.currentUserId,
     required this.onMomentTap,
     super.key,
   });
 
   final List<FamilyMoment> moments;
-  final Map<String, RhythmRecord> rhythmsByMomentId;
+  final Map<String, String> occurrenceLabelsByMomentId;
   final String currentUserId;
   final ValueChanged<FamilyMoment> onMomentTap;
 
@@ -64,10 +63,10 @@ class CalendarAgendaView extends StatelessWidget {
             moment,
             currentUserId: currentUserId,
           );
-          final status = calendarStatusStyle(
-            moment: moment,
-            rhythm: rhythmsByMomentId[moment.id],
-          );
+          final statusLabel =
+              occurrenceLabelsByMomentId[moment.id] ?? 'Upcoming';
+          final statusVisual = _occurrenceVisual(statusLabel);
+
           final localStart = moment.startAt.toLocal();
 
           return Padding(
@@ -127,14 +126,14 @@ class CalendarAgendaView extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: status.softColor,
+                            color: statusVisual.softColor,
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            status.label,
+                            statusLabel,
                             style: Theme.of(context).textTheme.labelSmall
                                 ?.copyWith(
-                                  color: status.color,
+                                  color: statusVisual.color,
                                   fontWeight: FontWeight.w700,
                                 ),
                           ),
@@ -167,4 +166,56 @@ class CalendarAgendaView extends StatelessWidget {
     if (days > 1 && days <= 14) return 'In $days days';
     return DateFormat('d MMM').format(date);
   }
+}
+
+_CalendarOccurrenceVisual _occurrenceVisual(String label) {
+  if (label == 'Live now') {
+    return const _CalendarOccurrenceVisual(
+      color: CalendarPalette.strengthening,
+      softColor: CalendarPalette.strengtheningSoft,
+    );
+  }
+
+  if (label.startsWith('Completed')) {
+    return const _CalendarOccurrenceVisual(
+      color: CalendarPalette.stable,
+      softColor: CalendarPalette.stableSoft,
+    );
+  }
+
+  if (label.startsWith('Missed')) {
+    return const _CalendarOccurrenceVisual(
+      color: CalendarPalette.missed,
+      softColor: CalendarPalette.missedSoft,
+    );
+  }
+
+  if (label.startsWith('Cancelled')) {
+    return const _CalendarOccurrenceVisual(
+      color: CalendarPalette.slate,
+      softColor: CalendarPalette.slateSoft,
+    );
+  }
+
+  if (label == 'Getting ready') {
+    return const _CalendarOccurrenceVisual(
+      color: CalendarPalette.forest,
+      softColor: CalendarPalette.forestSoft,
+    );
+  }
+
+  return const _CalendarOccurrenceVisual(
+    color: CalendarPalette.upcoming,
+    softColor: CalendarPalette.upcomingSoft,
+  );
+}
+
+class _CalendarOccurrenceVisual {
+  const _CalendarOccurrenceVisual({
+    required this.color,
+    required this.softColor,
+  });
+
+  final Color color;
+  final Color softColor;
 }

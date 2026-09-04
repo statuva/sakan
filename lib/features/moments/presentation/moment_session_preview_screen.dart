@@ -100,6 +100,11 @@ class _MomentSessionPreviewScreenState
           'Only an adult or family admin can prepare a shared Moment.',
         );
       }
+      if (!widget.moment.isSharedSession) {
+        throw StateError(
+          'External events are confirmed through attendance review, not a live session.',
+        );
+      }
 
       if (!mounted) return;
 

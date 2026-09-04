@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../../shared/models/family_moment.dart';
 import '../../../../shared/models/model_enums.dart';
-import '../../../../shared/models/rhythm_record.dart';
 import 'calendar_palette.dart';
 
 class CalendarMomentStyle {
@@ -72,71 +71,49 @@ class CalendarStatusStyle {
   final Color softColor;
 }
 
-CalendarStatusStyle calendarStatusStyle({
-  required FamilyMoment moment,
-  RhythmRecord? rhythm,
-}) {
-  // Concrete occurrence outcomes always outrank the reusable rhythm label.
-  // This prevents a completed recurring occurrence from appearing merely as
-  // "Stable" instead of "Completed" on the Calendar.
-  if (moment.status != MomentStatus.scheduled) {
-    return switch (moment.status) {
-      MomentStatus.active => const CalendarStatusStyle(
-        label: 'Live',
-        color: CalendarPalette.strengthening,
-        softColor: CalendarPalette.strengtheningSoft,
-      ),
-      MomentStatus.completed => const CalendarStatusStyle(
-        label: 'Completed',
-        color: CalendarPalette.stable,
-        softColor: CalendarPalette.stableSoft,
-      ),
-      MomentStatus.cancelled => const CalendarStatusStyle(
-        label: 'Cancelled',
-        color: CalendarPalette.slate,
-        softColor: CalendarPalette.slateSoft,
-      ),
-      MomentStatus.missed => const CalendarStatusStyle(
-        label: 'Missed',
-        color: CalendarPalette.missed,
-        softColor: CalendarPalette.missedSoft,
-      ),
-      MomentStatus.scheduled => throw StateError('Unreachable status.'),
-    };
+CalendarStatusStyle calendarOccurrenceStatusStyle(String label) {
+  if (label == 'Live now') {
+    return const CalendarStatusStyle(
+      label: 'Live now',
+      color: CalendarPalette.strengthening,
+      softColor: CalendarPalette.strengtheningSoft,
+    );
   }
 
-  if (moment.type == MomentType.recurring && rhythm != null) {
-    return switch (rhythm.status) {
-      RhythmStatus.stillLearning => const CalendarStatusStyle(
-        label: 'Still Learning',
-        color: CalendarPalette.slate,
-        softColor: CalendarPalette.slateSoft,
-      ),
-      RhythmStatus.stable => const CalendarStatusStyle(
-        label: 'Stable',
-        color: CalendarPalette.stable,
-        softColor: CalendarPalette.stableSoft,
-      ),
-      RhythmStatus.drifting => const CalendarStatusStyle(
-        label: 'Drifting',
-        color: CalendarPalette.drifting,
-        softColor: CalendarPalette.driftingSoft,
-      ),
-      RhythmStatus.recovering => const CalendarStatusStyle(
-        label: 'Recovering',
-        color: CalendarPalette.recovering,
-        softColor: CalendarPalette.recoveringSoft,
-      ),
-      RhythmStatus.strengthening => const CalendarStatusStyle(
-        label: 'Strengthening',
-        color: CalendarPalette.strengthening,
-        softColor: CalendarPalette.strengtheningSoft,
-      ),
-    };
+  if (label.startsWith('Completed')) {
+    return CalendarStatusStyle(
+      label: label,
+      color: CalendarPalette.stable,
+      softColor: CalendarPalette.stableSoft,
+    );
   }
 
-  return const CalendarStatusStyle(
-    label: 'Upcoming',
+  if (label.startsWith('Missed')) {
+    return CalendarStatusStyle(
+      label: label,
+      color: CalendarPalette.missed,
+      softColor: CalendarPalette.missedSoft,
+    );
+  }
+
+  if (label.startsWith('Cancelled')) {
+    return CalendarStatusStyle(
+      label: label,
+      color: CalendarPalette.slate,
+      softColor: CalendarPalette.slateSoft,
+    );
+  }
+
+  if (label == 'Getting ready') {
+    return CalendarStatusStyle(
+      label: label,
+      color: CalendarPalette.forest,
+      softColor: CalendarPalette.forestSoft,
+    );
+  }
+
+  return CalendarStatusStyle(
+    label: label,
     color: CalendarPalette.upcoming,
     softColor: CalendarPalette.upcomingSoft,
   );

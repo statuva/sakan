@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/models/family_moment.dart';
-import '../../../../shared/models/rhythm_record.dart';
 import 'calendar_moment_style.dart';
 import 'calendar_palette.dart';
 
@@ -11,7 +10,7 @@ class CalendarDaySheet extends StatelessWidget {
   const CalendarDaySheet({
     required this.date,
     required this.moments,
-    required this.rhythmsByMomentId,
+    required this.occurrenceLabelsByMomentId,
     required this.currentUserId,
     required this.onMomentTap,
     super.key,
@@ -19,7 +18,7 @@ class CalendarDaySheet extends StatelessWidget {
 
   final DateTime date;
   final List<FamilyMoment> moments;
-  final Map<String, RhythmRecord> rhythmsByMomentId;
+  final Map<String, String> occurrenceLabelsByMomentId;
   final String currentUserId;
   final ValueChanged<FamilyMoment> onMomentTap;
 
@@ -70,10 +69,8 @@ class CalendarDaySheet extends StatelessWidget {
                   moment,
                   currentUserId: currentUserId,
                 );
-                final status = calendarStatusStyle(
-                  moment: moment,
-                  rhythm: rhythmsByMomentId[moment.id],
-                );
+                final statusLabel =
+                    occurrenceLabelsByMomentId[moment.id] ?? 'Upcoming';
                 final local = moment.startAt.toLocal();
 
                 return Padding(
@@ -133,14 +130,14 @@ class CalendarDaySheet extends StatelessWidget {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: status.softColor,
+                              color: style.softColor,
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
-                              status.label,
+                              statusLabel,
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
-                                    color: status.color,
+                                    color: style.color,
                                     fontWeight: FontWeight.w700,
                                   ),
                             ),

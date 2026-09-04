@@ -14,7 +14,6 @@ abstract interface class MomentInstanceRepository {
   Stream<List<MomentInstance>> watchUpcomingInstances({
     required String familyId,
   });
-
   Stream<MomentInstance?> watchActiveInstance({required String familyId});
 
   Stream<MomentInstance?> watchInstance({
@@ -46,6 +45,15 @@ abstract interface class MomentInstanceRepository {
     required FamilyMoment moment,
     required String createdBy,
     MomentInstanceSource source = MomentInstanceSource.calendar,
+  });
+
+  /// Creates/updates one exact occurrence using a deterministic ID.
+  Future<MomentInstance> scheduleOccurrence({
+    required FamilyMoment moment,
+    required DateTime scheduledStartAt,
+    DateTime? scheduledEndAt,
+    required String createdBy,
+    MomentInstanceSource source = MomentInstanceSource.manual,
   });
 
   Future<int> cancelOpenInstancesForMoment({

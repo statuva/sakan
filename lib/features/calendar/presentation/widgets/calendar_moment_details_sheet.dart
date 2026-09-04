@@ -6,7 +6,6 @@ import '../../../../shared/models/family_memory.dart';
 import '../../../../shared/models/family_moment.dart';
 import '../../../../shared/models/model_enums.dart';
 import '../../../../shared/models/moment_instance.dart';
-import '../../../../shared/models/rhythm_record.dart';
 import 'calendar_moment_style.dart';
 import 'calendar_palette.dart';
 
@@ -14,10 +13,10 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
   const CalendarMomentDetailsSheet({
     required this.moment,
     required this.instance,
-    required this.rhythm,
     required this.memory,
     required this.currentUserId,
     required this.canEditDefinition,
+    required this.occurrenceLabel,
     this.primaryActionLabel,
     this.primaryActionIcon,
     this.onPrimaryAction,
@@ -33,8 +32,8 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
   /// Calendar projection of the concrete occurrence.
   final FamilyMoment moment;
   final MomentInstance instance;
-  final RhythmRecord? rhythm;
   final FamilyMemory? memory;
+  final String occurrenceLabel;
 
   final String currentUserId;
   final bool canEditDefinition;
@@ -63,7 +62,7 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
 
     final style = calendarMomentStyle(moment, currentUserId: currentUserId);
 
-    final status = calendarStatusStyle(moment: moment, rhythm: rhythm);
+    final status = calendarOccurrenceStatusStyle(occurrenceLabel);
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -178,7 +177,7 @@ class CalendarMomentDetailsSheet extends StatelessWidget {
               title: 'Definition',
               value: moment.type == MomentType.recurring
                   ? 'Recurring every '
-                        '${moment.expectedIntervalDays ?? rhythm?.expectedIntervalDays ?? 7} days'
+                        '${moment.expectedIntervalDays ?? 7} days'
                   : 'One-time',
             ),
 

@@ -37,6 +37,9 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
   MomentType _type = MomentType.recurring;
   MomentCategory _category = MomentCategory.tradition;
+  MomentFormat _format = MomentFormat.sharedSession;
+
+  final Set<String> _subjectMemberIds = <String>{};
 
   int _importanceLevel = 4;
   int _intervalDays = 7;
@@ -106,6 +109,8 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
         _type = initialMoment.type;
         _category = initialMoment.category;
+        _format = initialMoment.format;
+
         _importanceLevel = initialMoment.importanceLevel;
         _intervalDays = initialMoment.expectedIntervalDays ?? 7;
 
@@ -128,6 +133,10 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
         _selectedParticipantIds
           ..clear()
           ..addAll(initialMoment.expectedParticipantIds);
+
+        _subjectMemberIds
+          ..clear()
+          ..addAll(initialMoment.subjectMemberIds);
       } else {
         final tomorrow = DateTime.now().add(const Duration(days: 1));
         _oneTimeDate = DateUtils.dateOnly(tomorrow);
@@ -285,6 +294,8 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
         title: _titleController.text.trim(),
         type: _type,
         category: _category,
+        format: _format,
+        subjectMemberIds: _subjectMemberIds.toList(),
         importanceLevel: _importanceLevel,
         expectedParticipantIds: _selectedParticipantIds.toList(),
         startAt: startLocal.toUtc(),
@@ -606,6 +617,36 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                                 }
                               },
                       ),
+
+                      const SizedBox(height: AppSpacing.lg),
+
+                      DropdownButtonFormField<MomentFormat>(
+                        initialValue: _format,
+                        decoration: const InputDecoration(
+                          labelText: 'How does this Moment happen?',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: MomentFormat.sharedSession,
+                            child: Text('Shared session in Sakan'),
+                          ),
+                          DropdownMenuItem(
+                            value: MomentFormat.externalEvent,
+                            child: Text('External event / attendance'),
+                          ),
+                        ],
+                        onChanged: _isSaving
+                            ? null
+                            : (value) {
+                                if (value == null) return;
+
+                                setState(() {
+                                  _format = value;
+                                });
+                              },
+                      ),
+
+                      const SizedBox(height: AppSpacing.lg),
                       const SizedBox(height: AppSpacing.lg),
                       Align(
                         alignment: Alignment.centerLeft,
@@ -686,6 +727,49 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                                         _selectedParticipantIds.remove(
                                           member.id,
                                         );
+                                      }
+                                    });
+                                  },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+
+                const SizedBox(height: AppSpacing.lg),
+
+                Text(
+                  'Who is this Moment about? (optional)',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+
+                const SizedBox(height: AppSpacing.xs),
+
+                Text(
+                  'Use this for birthdays, graduations, ceremonies, and Moments centered on a specific family member.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+
+                const SizedBox(height: AppSpacing.sm),
+
+                AppCard(
+                  child: Column(
+                    children: _members
+                        .where((member) => member.isActive)
+                        .map(
+                          (member) => CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            title: Text(member.displayName),
+                            value: _subjectMemberIds.contains(member.id),
+                            onChanged: _isSaving
+                                ? null
+                                : (selected) {
+                                    setState(() {
+                                      if (selected == true) {
+                                        _subjectMemberIds.add(member.id);
+                                      } else {
+                                        _subjectMemberIds.remove(member.id);
                                       }
                                     });
                                   },

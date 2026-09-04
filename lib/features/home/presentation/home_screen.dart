@@ -30,6 +30,7 @@ import 'widgets/home_greeting.dart';
 import 'widgets/home_reminders_card.dart';
 import 'widgets/home_together_now_card.dart';
 import 'widgets/home_what_matters_card.dart';
+import '../../../shared/services/personalized_family_focus_selector.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -151,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
       currentUserId: familyContext.userId,
     );
     final insight = readyRoom == null
-        ? HomePrioritySelector.select(report)
+        ? PersonalizedFamilyFocusSelector.select(report)
         : _readyRoomInsight(readyRoom);
     final reflection = DailyReflectionLibrary.forFamilyDate(
       familyId: familyContext.familyId,

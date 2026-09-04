@@ -17,6 +17,8 @@ class FamilyMoment {
     required this.createdBy,
     required this.createdAt,
     required this.updatedAt,
+    this.format = MomentFormat.sharedSession,
+    this.subjectMemberIds = const <String>[],
     this.endAt,
     this.expectedIntervalDays,
     this.location,
@@ -35,59 +37,42 @@ class FamilyMoment {
   final String id;
   final String familyId;
   final String title;
-
   final MomentType type;
   final MomentCategory category;
 
+  /// Determines whether this Moment uses Sakan's live-session flow or is
+  /// confirmed as an external real-world event.
+  final MomentFormat format;
+
+  /// Members the Moment is specifically about, not merely expected to attend.
+  /// Example: Ali for "Ali's Graduation" or "Ali's Birthday".
+  final List<String> subjectMemberIds;
+
   final int importanceLevel;
   final List<String> expectedParticipantIds;
-
-  /// For one-time Moments, this is the actual planned date and time.
-  ///
-  /// For recurring Moments, this is the next exact occurrence when one has
-  /// been scheduled. Flexible-day recurring Moments keep this only as a
-  /// compatibility anchor; they do not create a MomentInstance until the
-  /// family confirms an exact date.
   final DateTime startAt;
   final DateTime? endAt;
-
-  /// Approximate interval used by rhythm calculations.
-  /// Calendar-aware recurrence fields below control the actual next date.
   final int? expectedIntervalDays;
-
-  /// Preferred recurring time stored as minutes after midnight.
   final int? preferredStartMinutes;
   final int? preferredEndMinutes;
-
-  /// DateTime weekday values: Monday = 1, Sunday = 7.
   final int? preferredWeekday;
-
-  /// Used for monthly, quarterly, and yearly recurrence.
   final int? preferredDayOfMonth;
-
-  /// Used for yearly recurrence: January = 1, December = 12.
   final int? preferredMonth;
-
-  /// When true, Sakan stores the recurring definition but waits for the
-  /// family to confirm an exact occurrence date.
   final bool isDayFlexible;
-
-  /// Definition lifecycle. Occurrence completion/missed state belongs to
-  /// MomentInstance, not to this reusable definition.
   final bool isArchived;
-
   final String? location;
   final String? notes;
-
   final EvidenceType evidenceType;
-
-  /// Kept for backward compatibility with existing Firestore documents.
-  /// New definition forms no longer expose occurrence status to users.
   final MomentStatus status;
-
   final String createdBy;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  bool get isSharedSession => format == MomentFormat.sharedSession;
+  bool get isExternalEvent => format == MomentFormat.externalEvent;
+
+  bool isSubject(String memberId) => subjectMemberIds.contains(memberId);
+  bool expects(String memberId) => expectedParticipantIds.contains(memberId);
 
   int get resolvedPreferredStartMinutes {
     final local = startAt.toLocal();
@@ -95,10 +80,7 @@ class FamilyMoment {
   }
 
   int? get resolvedPreferredEndMinutes {
-    if (preferredEndMinutes != null) {
-      return preferredEndMinutes;
-    }
-
+    if (preferredEndMinutes != null) return preferredEndMinutes;
     final localEnd = endAt?.toLocal();
     return localEnd == null ? null : localEnd.hour * 60 + localEnd.minute;
   }
@@ -114,6 +96,12 @@ class FamilyMoment {
       MomentType.singular,
     );
 
+    final category = _enumValueOrFallback(
+      MomentCategory.values,
+      map['category'],
+      MomentCategory.familyTime,
+    );
+
     final startAt = (map['startAt'] as Timestamp).toDate();
     final endAt = map['endAt'] == null
         ? null
@@ -121,7 +109,6 @@ class FamilyMoment {
 
     final localStart = startAt.toLocal();
     final localEnd = endAt?.toLocal();
-
     final intervalDays = _intOrNull(map['expectedIntervalDays']);
 
     final status = _enumValueOrFallback(
@@ -130,15 +117,24 @@ class FamilyMoment {
       MomentStatus.scheduled,
     );
 
+    final explicitFormat = map['format'];
+    final format = explicitFormat == null
+        ? _legacyFormatForCategory(category)
+        : _enumValueOrFallback(
+            MomentFormat.values,
+            explicitFormat,
+            MomentFormat.sharedSession,
+          );
+
     return FamilyMoment(
       id: id,
       familyId: map['familyId'] as String,
       title: map['title'] as String,
       type: type,
-      category: _enumValueOrFallback(
-        MomentCategory.values,
-        map['category'],
-        MomentCategory.familyTime,
+      category: category,
+      format: format,
+      subjectMemberIds: List<String>.from(
+        map['subjectMemberIds'] ?? const <String>[],
       ),
       importanceLevel: _intOrNull(map['importanceLevel']) ?? 3,
       expectedParticipantIds: List<String>.from(
@@ -196,6 +192,8 @@ class FamilyMoment {
       'title': title,
       'type': type.name,
       'category': category.name,
+      'format': format.name,
+      'subjectMemberIds': subjectMemberIds,
       'importanceLevel': importanceLevel,
       'expectedParticipantIds': expectedParticipantIds,
       'startAt': Timestamp.fromDate(startAt),
@@ -222,6 +220,8 @@ class FamilyMoment {
     String? title,
     MomentType? type,
     MomentCategory? category,
+    MomentFormat? format,
+    List<String>? subjectMemberIds,
     int? importanceLevel,
     List<String>? expectedParticipantIds,
     DateTime? startAt,
@@ -246,6 +246,8 @@ class FamilyMoment {
       title: title ?? this.title,
       type: type ?? this.type,
       category: category ?? this.category,
+      format: format ?? this.format,
+      subjectMemberIds: subjectMemberIds ?? this.subjectMemberIds,
       importanceLevel: importanceLevel ?? this.importanceLevel,
       expectedParticipantIds:
           expectedParticipantIds ?? this.expectedParticipantIds,
@@ -283,13 +285,19 @@ class FamilyMoment {
     );
   }
 
-  static EvidenceType _evidenceTypeFromMap(Object? rawValue) {
-    // Compatibility for documents created before the physical Hub feature
-    // was removed.
-    if (rawValue == 'hubVerified') {
-      return EvidenceType.manual;
-    }
+  static MomentFormat _legacyFormatForCategory(MomentCategory category) {
+    return switch (category) {
+      MomentCategory.milestone ||
+      MomentCategory.responsibility ||
+      MomentCategory.care => MomentFormat.externalEvent,
+      MomentCategory.tradition ||
+      MomentCategory.familyTime ||
+      MomentCategory.memory => MomentFormat.sharedSession,
+    };
+  }
 
+  static EvidenceType _evidenceTypeFromMap(Object? rawValue) {
+    if (rawValue == 'hubVerified') return EvidenceType.manual;
     return _enumValueOrFallback(
       EvidenceType.values,
       rawValue,
@@ -308,12 +316,9 @@ class FamilyMoment {
   ) {
     if (rawValue is String) {
       for (final value in values) {
-        if (value.name == rawValue) {
-          return value;
-        }
+        if (value.name == rawValue) return value;
       }
     }
-
     return fallback;
   }
 }
