@@ -81,6 +81,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         aiConsent: _preferences.aiConsent,
         analyticsConsent: _preferences.analyticsConsent,
       );
+      AppDependencies.clearAiCaches();
 
       if (!mounted) return;
 
@@ -160,10 +161,12 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'Sakan uses observable family moments, '
-                    'calendar events, schedules, and rhythm '
-                    'history to explain patterns and suggest '
-                    'practical family actions.',
+                    'When you allow AI, Sakan sends a bounded set of recent '
+                    'Moment, rhythm, reminder, and Memory metadata to OpenAI. '
+                    'A family note is sent only when you explicitly create a '
+                    'reflection for that Memory. Photos, contact details, and '
+                    'invitation codes are never sent. AI is currently available '
+                    'only to confirmed adults.',
                   ),
                 ],
               ),
@@ -194,8 +197,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
             SwitchListTile(
               title: const Text('Allow AI Analysis'),
               subtitle: const Text(
-                'Allow Sakan to use your family data '
-                'to generate explanations and recommendations.',
+                'Allow protected OpenAI processing for chat, explanations, '
+                'simulations, Memory reflections, and weekly narratives. '
+                'This is off by default and can be turned off again anytime.',
               ),
               value: _preferences.aiConsent,
               onChanged: _isSaving

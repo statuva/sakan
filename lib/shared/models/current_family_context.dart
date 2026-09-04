@@ -15,11 +15,15 @@ class CurrentFamilyContext {
   final Family family;
   final Member member;
 
-  bool get isAdmin {
-    return member.role == FamilyRole.admin;
-  }
+  bool get isAdmin => member.role == FamilyRole.admin;
 
   bool get isAdult {
     return member.role == FamilyRole.admin || member.role == FamilyRole.adult;
+  }
+
+  bool get canUseAi {
+    final adultAge =
+        member.ageGroup == AgeGroup.adult || member.ageGroup == AgeGroup.senior;
+    return member.isActive && isAdult && adultAge;
   }
 }

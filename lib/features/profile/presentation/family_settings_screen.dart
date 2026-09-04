@@ -29,6 +29,7 @@ class _FamilySettingsScreenState extends State<FamilySettingsScreen> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+  String? _updatingMemberId;
   String? _errorMessage;
 
   @override
@@ -133,6 +134,47 @@ class _FamilySettingsScreenState extends State<FamilySettingsScreen> {
     if (!mounted) return;
 
     _showMessage('Invitation code copied.');
+  }
+
+  Future<void> _updateMemberRole(Member member, FamilyRole role) async {
+    final familyContext = _familyContext;
+    if (familyContext == null ||
+        member.id == familyContext.userId ||
+        member.role == FamilyRole.admin ||
+        _updatingMemberId != null) {
+      return;
+    }
+
+    if (role == FamilyRole.adult &&
+        member.ageGroup != AgeGroup.adult &&
+        member.ageGroup != AgeGroup.senior) {
+      _showMessage('Adult access can be granted only to an adult profile.');
+      return;
+    }
+
+    setState(() => _updatingMemberId = member.id);
+    try {
+      await AppDependencies.profileRepository.updateMemberRole(
+        familyId: familyContext.familyId,
+        memberId: member.id,
+        role: role,
+      );
+      if (mounted) {
+        _showMessage(
+          role == FamilyRole.adult
+              ? 'Adult access granted to ${member.displayName}.'
+              : '${member.displayName} now has child access.',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        _showMessage('We could not update this member’s access.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _updatingMemberId = null);
+      }
+    }
   }
 
   void _showMessage(String message) {
@@ -287,6 +329,31 @@ class _FamilySettingsScreenState extends State<FamilySettingsScreen> {
                                 '${_roleLabel(member.role)} · '
                                 '${_relationshipLabel(member.relationship)}',
                               ),
+                              trailing:
+                                  member.id == _familyContext!.userId ||
+                                      member.role == FamilyRole.admin
+                                  ? null
+                                  : DropdownButton<FamilyRole>(
+                                      value: member.role,
+                                      underline: const SizedBox.shrink(),
+                                      onChanged: _updatingMemberId == null
+                                          ? (role) {
+                                              if (role != null) {
+                                                _updateMemberRole(member, role);
+                                              }
+                                            }
+                                          : null,
+                                      items: const [
+                                        DropdownMenuItem(
+                                          value: FamilyRole.child,
+                                          child: Text('Child access'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: FamilyRole.adult,
+                                          child: Text('Adult access'),
+                                        ),
+                                      ],
+                                    ),
                             ),
                           ),
                         ),

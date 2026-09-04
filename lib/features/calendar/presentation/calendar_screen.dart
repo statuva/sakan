@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sakan/shared/services/recurring_occurrence_service.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../../app/app_dependencies.dart';
@@ -10,6 +11,10 @@ import '../../../shared/models/family_memory.dart';
 import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/moment_instance.dart';
+import '../../../shared/ai/ai_models.dart';
+import '../../../shared/services/calendar_occurrence_label.dart';
+import '../../../shared/services/personalized_family_focus_selector.dart';
+import '../../../shared/utils/care_action_id.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 import '../../daily_review/presentation/today_review_screen.dart';
@@ -19,6 +24,7 @@ import '../../memories/presentation/memory_details_screen.dart';
 import '../../moments/presentation/live_moment_screen.dart';
 import '../../moments/presentation/moment_form_screen.dart';
 import '../../moments/presentation/moment_session_summary_screen.dart';
+import '../../moments/presentation/schedule_moment_occurrence_screen.dart';
 import '../../moments/presentation/moments_screen.dart';
 import '../../profile/presentation/my_reminders_screen.dart';
 import 'calendar_instance_projection.dart';
@@ -34,7 +40,6 @@ import 'widgets/calendar_palette.dart';
 import 'widgets/calendar_support_cards.dart';
 import 'widgets/calendar_week_view.dart';
 import 'widgets/family_insight_section.dart';
-import 'package:sakan/shared/services/recurring_occurrence_service.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -242,6 +247,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     required Map<String, String> occurrenceLabelsByCalendarId,
   }) {
     final familyContext = _familyContext!;
+    final visibleInsight = PersonalizedFamilyFocusSelector.select(report);
+    final aiNarrative = visibleInsight == null || !familyContext.canUseAi
+        ? null
+        : AppDependencies.aiFamilyInsightService.enrich(
+            insight: visibleInsight,
+            familyId: familyContext.familyId,
+            memberId: familyContext.userId,
+          );
     final activeInstance = report.snapshot.activeInstance;
     final memories = List<FamilyMemory>.from(report.snapshot.memories)
       ..sort((first, second) => second.occurredAt.compareTo(first.occurredAt));
@@ -414,7 +427,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
               const SizedBox(height: AppSpacing.xl),
 
               FamilyInsightSection(
-                report: report,
+                insight: visibleInsight,
+                aiNarrative: aiNarrative,
                 onPerformAction: (insight) {
                   return _performInsightAction(
                     insight: insight,
@@ -847,7 +861,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
         await Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => MomentFormScreen(initialMoment: moment),
+            builder: (_) => ScheduleMomentOccurrenceScreen(moment: moment),
           ),
         );
         return;
@@ -893,36 +907,68 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ? recommendedTime
         : DateTime.now().add(const Duration(minutes: 30));
 
-    final action = CareAction(
-      id:
-          'care_${familyContext.userId}_'
-          '${DateTime.now().microsecondsSinceEpoch}',
-      familyId: familyContext.familyId,
-      momentId: insight.relatedMomentId,
-      title: insight.suggestedActions.isEmpty
-          ? insight.headline
-          : insight.suggestedActions.first,
-      reason: <String>[insight.summary, ...insight.reasons].join('\n'),
-      assignedMemberId: familyContext.userId,
-      dueAt: dueAt.toUtc(),
-      status: CareActionStatus.pending,
-      source: CareActionSource.calendar,
-      evidenceType: EvidenceType.scheduledOnly,
-      createdAt: now,
-      updatedAt: now,
-    );
-
     setState(() {
       _isSavingInsightReminder = true;
     });
 
     try {
-      await AppDependencies.careActionRepository.createCareAction(action);
+      SakanAiResult? aiCopy;
+      try {
+        aiCopy = await AppDependencies.aiFamilyInsightService.enrich(
+          insight: insight,
+          familyId: familyContext.familyId,
+          memberId: familyContext.userId,
+        );
+      } catch (_) {
+        aiCopy = null;
+      }
+
+      final action = CareAction(
+        id: CareActionId.forInsight(
+          familyId: familyContext.familyId,
+          memberId: familyContext.userId,
+          momentId: insight.relatedMomentId,
+          instanceId: insight.relatedInstanceId,
+          purpose: 'prepare',
+        ),
+        familyId: familyContext.familyId,
+        momentId: insight.relatedMomentId,
+        instanceId: insight.relatedInstanceId,
+        title:
+            aiCopy?.reminderTitle ??
+            (insight.suggestedActions.isEmpty
+                ? insight.headline
+                : insight.suggestedActions.first),
+        reason:
+            aiCopy?.reminderReason ??
+            <String>[insight.summary, ...insight.reasons].join('\n'),
+        assignedMemberId: familyContext.userId,
+        dueAt: dueAt.toUtc(),
+        status: CareActionStatus.pending,
+        source: CareActionSource.calendar,
+        evidenceType: EvidenceType.scheduledOnly,
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final storedAction = await AppDependencies.careActionRepository
+          .createCareActionIfAbsent(action);
+
+      if (storedAction.isFinished) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('This preparation reminder was already completed.'),
+            ),
+          );
+        }
+        return;
+      }
 
       final notificationService = AppDependencies.reminderNotificationService;
 
       final notificationScheduled = await notificationService.scheduleReminder(
-        action,
+        storedAction,
         requestPermission: true,
       );
 
@@ -1038,5 +1084,8 @@ String _calendarOccurrenceLabelForInstance({
   required MomentInstance instance,
   FamilyMoment? definition,
 }) {
-  return definition?.title ?? instance.titleSnapshot;
+  return CalendarOccurrenceLabel.forInstance(
+    instance: instance,
+    definition: definition,
+  );
 }

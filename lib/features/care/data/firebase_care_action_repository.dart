@@ -45,8 +45,25 @@ class FirebaseCareActionRepository implements CareActionRepository {
   @override
   Future<void> createCareAction(CareAction action) {
     _validateAction(action);
-
     return _actions(action.familyId).doc(action.id).set(action.toMap());
+  }
+
+  /// Creates an AI/recommendation reminder once and returns the stored value.
+  /// A retry never resurrects or overwrites a reminder the member completed.
+  Future<CareAction> createCareActionIfAbsent(CareAction action) async {
+    _validateAction(action);
+    final reference = _actions(action.familyId).doc(action.id);
+
+    return _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(reference);
+      final existing = snapshot.data();
+      if (snapshot.exists && existing != null) {
+        return CareAction.fromMap(snapshot.id, existing);
+      }
+
+      transaction.set(reference, action.toMap());
+      return action;
+    });
   }
 
   @override
@@ -72,7 +89,6 @@ class FirebaseCareActionRepository implements CareActionRepository {
         .toList();
 
     actions.sort((first, second) => first.dueAt.compareTo(second.dueAt));
-
     return actions;
   }
 
@@ -80,14 +96,9 @@ class FirebaseCareActionRepository implements CareActionRepository {
     if (action.familyId.trim().isEmpty) {
       throw ArgumentError('Reminder family ID cannot be empty.');
     }
-
     if (action.assignedMemberId.trim().isEmpty) {
-      throw ArgumentError(
-        'A reminder must be assigned '
-        'to a member.',
-      );
+      throw ArgumentError('A reminder must be assigned to a member.');
     }
-
     if (action.title.trim().isEmpty) {
       throw ArgumentError('Reminder title cannot be empty.');
     }

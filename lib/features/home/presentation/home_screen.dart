@@ -12,6 +12,8 @@ import '../../../shared/models/family_insight_report.dart';
 import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/moment_instance.dart';
+import '../../../shared/ai/ai_models.dart';
+import '../../../shared/utils/care_action_id.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 import '../../daily_review/presentation/today_review_screen.dart';
@@ -166,8 +168,17 @@ class _HomeScreenState extends State<HomeScreen> {
       currentUserId: familyContext.userId,
     );
     final insight = readyRoom == null
-        ? PersonalizedFamilyFocusSelector.select(report)
+        ? HomePrioritySelector.selectFrom(
+            PersonalizedFamilyFocusSelector.selectAll(report),
+          )
         : _readyRoomInsight(readyRoom);
+    final aiNarrative = insight == null || !familyContext.canUseAi
+        ? null
+        : AppDependencies.aiFamilyInsightService.enrich(
+            insight: insight,
+            familyId: familyContext.familyId,
+            memberId: familyContext.userId,
+          );
     final reflection = DailyReflectionLibrary.forFamilyDate(
       familyId: familyContext.familyId,
       date: snapshot.generatedAt,
@@ -227,6 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: AppSpacing.xl),
               HomeWhatMattersCard(
                 insight: insight,
+                aiNarrative: aiNarrative,
                 nextInstance: snapshot.nextInstance,
                 isPerformingAction: _isPerformingAction,
                 onAction: insight == null
@@ -655,17 +667,36 @@ class _HomeScreenState extends State<HomeScreen> {
         ? null
         : report.snapshot.instanceById(insight.relatedInstanceId!);
 
+    SakanAiResult? aiCopy;
+    try {
+      aiCopy = await AppDependencies.aiFamilyInsightService.enrich(
+        insight: insight,
+        familyId: _familyContext!.familyId,
+        memberId: _familyContext!.userId,
+      );
+    } catch (_) {
+      aiCopy = null;
+    }
+
     final action = CareAction(
-      id:
-          'care_${_familyContext!.userId}_'
-          '${DateTime.now().microsecondsSinceEpoch}',
+      id: CareActionId.forInsight(
+        familyId: _familyContext!.familyId,
+        memberId: _familyContext!.userId,
+        momentId: insight.relatedMomentId,
+        instanceId: insight.relatedInstanceId,
+        purpose: 'prepare',
+      ),
       familyId: _familyContext!.familyId,
       momentId: insight.relatedMomentId,
       instanceId: insight.relatedInstanceId,
-      title: insight.suggestedActions.isEmpty
-          ? 'Prepare for ${relatedInstance?.titleSnapshot ?? insight.headline}'
-          : insight.suggestedActions.first,
-      reason: <String>[insight.summary, ...insight.reasons].join('\n'),
+      title:
+          aiCopy?.reminderTitle ??
+          (insight.suggestedActions.isEmpty
+              ? 'Prepare for ${relatedInstance?.titleSnapshot ?? insight.headline}'
+              : insight.suggestedActions.first),
+      reason:
+          aiCopy?.reminderReason ??
+          <String>[insight.summary, ...insight.reasons].join('\n'),
       assignedMemberId: _familyContext!.userId,
       dueAt: dueAt.toUtc(),
       status: CareActionStatus.pending,
@@ -675,11 +706,19 @@ class _HomeScreenState extends State<HomeScreen> {
       updatedAt: DateTime.now().toUtc(),
     );
 
-    await AppDependencies.careActionRepository.createCareAction(action);
+    final storedAction = await AppDependencies.careActionRepository
+        .createCareActionIfAbsent(action);
+
+    if (storedAction.isFinished) {
+      if (mounted) {
+        _showMessage('This preparation reminder was already completed.');
+      }
+      return;
+    }
 
     final notificationService = AppDependencies.reminderNotificationService;
     final notificationScheduled = await notificationService.scheduleReminder(
-      action,
+      storedAction,
       requestPermission: true,
     );
 

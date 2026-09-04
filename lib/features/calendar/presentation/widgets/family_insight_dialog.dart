@@ -3,21 +3,32 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/models/family_insight_report.dart';
+import '../../../../shared/ai/ai_models.dart';
 import 'calendar_palette.dart';
 
 class FamilyInsightDialog extends StatelessWidget {
   const FamilyInsightDialog({
     required this.insight,
+    required this.aiNarrative,
     required this.onPrimaryAction,
     super.key,
   });
 
   final FamilyInsightItem insight;
+  final SakanAiResult? aiNarrative;
   final VoidCallback? onPrimaryAction;
 
   @override
   Widget build(BuildContext context) {
     final actionLabel = insight.primaryActionLabel;
+    final headline = aiNarrative?.title ?? insight.headline;
+    final summary = aiNarrative?.text ?? insight.summary;
+    final reasons = aiNarrative?.reasons.isNotEmpty == true
+        ? aiNarrative!.reasons
+        : insight.reasons;
+    final suggestedActions = aiNarrative?.suggestedActions.isNotEmpty == true
+        ? aiNarrative!.suggestedActions
+        : insight.suggestedActions;
 
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
@@ -60,7 +71,7 @@ class FamilyInsightDialog extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          insight.headline,
+                          headline,
                           style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(color: CalendarPalette.ink),
                         ),
@@ -78,27 +89,27 @@ class FamilyInsightDialog extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                insight.summary,
+                summary,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: CalendarPalette.inkSoft,
                   height: 1.5,
                 ),
               ),
-              if (insight.reasons.isNotEmpty) ...[
+              if (reasons.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.xl),
                 Text(
                   'Why Sakan surfaced this',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                ...insight.reasons.map(
+                ...reasons.map(
                   (reason) => _DialogItem(
                     icon: Icons.check_circle_outline,
                     text: reason,
                   ),
                 ),
               ],
-              if (insight.suggestedActions.isNotEmpty) ...[
+              if (suggestedActions.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.lg),
                 Text(
                   'Suggested next steps',
@@ -106,10 +117,10 @@ class FamilyInsightDialog extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 ...List.generate(
-                  insight.suggestedActions.length,
+                  suggestedActions.length,
                   (index) => _NumberedAction(
                     number: index + 1,
-                    text: insight.suggestedActions[index],
+                    text: suggestedActions[index],
                   ),
                 ),
               ],
@@ -163,9 +174,12 @@ class FamilyInsightDialog extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
-                  'This recommendation is currently rule-based and comes '
-                  'from Sakan’s recorded family data. External AI wording '
-                  'has not been connected yet.',
+                  aiNarrative == null
+                      ? 'This recommendation uses Sakan’s deterministic '
+                          'family rules because AI is unavailable or disabled.'
+                      : 'AI-generated explanation grounded in Sakan’s '
+                          'permitted family data. The action and timing are '
+                          'still calculated and validated by Sakan.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: CalendarPalette.inkSoft,
                     height: 1.4,

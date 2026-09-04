@@ -1,0 +1,7 @@
+lib/
+node_modules/
+*.log
+.env
+.env.*
+*.pem
+service-account*.json

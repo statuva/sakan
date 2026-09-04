@@ -4,33 +4,36 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/models/family_insight_report.dart';
+import '../../../../shared/ai/ai_models.dart';
 import 'calendar_palette.dart';
 import 'family_insight_dialog.dart';
 import 'family_insight_notice_card.dart';
 
 class FamilyInsightSection extends StatelessWidget {
   const FamilyInsightSection({
-    required this.report,
+    required this.insight,
+    required this.aiNarrative,
     required this.onPerformAction,
     super.key,
   });
 
-  final FamilyInsightReport report;
+  final FamilyInsightItem? insight;
+  final Future<SakanAiResult>? aiNarrative;
 
   final Future<void> Function(FamilyInsightItem insight) onPerformAction;
 
   @override
   Widget build(BuildContext context) {
-    final insight = report.primaryInsight;
-
-    if (insight == null) {
+    final item = insight;
+    if (item == null) {
       return const _NoFamilyInsightCard();
     }
 
     return FamilyInsightNoticeCard(
-      insight: insight,
+      insight: item,
+      aiNarrative: aiNarrative,
       onOpen: () {
-        _openDialog(context, insight);
+        _openDialog(context, item);
       },
     );
   }
@@ -43,14 +46,21 @@ class FamilyInsightSection extends StatelessWidget {
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
-        return FamilyInsightDialog(
-          insight: insight,
-          onPrimaryAction: insight.actionType == FamilyInsightActionType.none
-              ? null
-              : () {
-                  Navigator.of(dialogContext).pop();
-                  unawaited(onPerformAction(insight));
-                },
+        return FutureBuilder<SakanAiResult>(
+          future: aiNarrative,
+          builder: (context, snapshot) {
+            return FamilyInsightDialog(
+              insight: insight,
+              aiNarrative: snapshot.data,
+              onPrimaryAction:
+                  insight.actionType == FamilyInsightActionType.none
+                  ? null
+                  : () {
+                      Navigator.of(dialogContext).pop();
+                      unawaited(onPerformAction(insight));
+                    },
+            );
+          },
         );
       },
     );

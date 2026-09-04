@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/models/family_insight_report.dart';
 import '../../../../shared/models/model_enums.dart';
+import '../../../../shared/ai/ai_models.dart';
 import 'calendar_palette.dart';
 
 class FamilyInsightNoticeCard extends StatelessWidget {
   const FamilyInsightNoticeCard({
     required this.insight,
+    required this.aiNarrative,
     required this.onOpen,
     super.key,
   });
 
   final FamilyInsightItem insight;
+  final Future<SakanAiResult>? aiNarrative;
   final VoidCallback onOpen;
 
   @override
@@ -69,32 +72,51 @@ class FamilyInsightNoticeCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
-          Text(
-            insight.headline,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: CalendarPalette.ink,
-              fontWeight: FontWeight.w600,
-            ),
+          FutureBuilder<SakanAiResult>(
+            future: aiNarrative,
+            builder: (context, snapshot) {
+              return Text(
+                snapshot.data?.title ?? insight.headline,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: CalendarPalette.ink,
+                  fontWeight: FontWeight.w600,
+                ),
+              );
+            },
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            insight.summary,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: CalendarPalette.inkSoft,
-              height: 1.45,
-            ),
+          FutureBuilder<SakanAiResult>(
+            future: aiNarrative,
+            builder: (context, snapshot) {
+              return Text(
+                snapshot.data?.text ?? insight.summary,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: CalendarPalette.inkSoft,
+                  height: 1.45,
+                ),
+              );
+            },
           ),
-          if (insight.reasons.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.md),
-            Wrap(
-              spacing: AppSpacing.xs,
-              runSpacing: AppSpacing.xs,
-              children: insight.reasons
-                  .take(2)
-                  .map((reason) => _FactChip(label: reason, color: accent))
-                  .toList(),
-            ),
-          ],
+          FutureBuilder<SakanAiResult>(
+            future: aiNarrative,
+            builder: (context, snapshot) {
+              final reasons = snapshot.data?.reasons.isNotEmpty == true
+                  ? snapshot.data!.reasons
+                  : insight.reasons;
+              if (reasons.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.md),
+                child: Wrap(
+                  spacing: AppSpacing.xs,
+                  runSpacing: AppSpacing.xs,
+                  children: reasons
+                      .take(2)
+                      .map((reason) => _FactChip(label: reason, color: accent))
+                      .toList(growable: false),
+                ),
+              );
+            },
+          ),
           if (insight.primaryActionLabel != null) ...[
             const SizedBox(height: AppSpacing.md),
             Text(

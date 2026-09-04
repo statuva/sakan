@@ -5,6 +5,7 @@ import '../../../app/app_dependencies.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/models/current_family_context.dart';
+import '../../../shared/ai/ai_models.dart';
 import '../../../shared/utils/moment_visuals.dart';
 import '../../../shared/widgets/cards/app_card.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
@@ -24,6 +25,7 @@ class WeeklyReportScreen extends StatefulWidget {
 class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
   CurrentFamilyContext? _familyContext;
   FamilyWeeklyReport? _report;
+  Future<SakanAiResult>? _aiNarrative;
   String? _errorMessage;
   bool _isLoading = true;
 
@@ -62,6 +64,13 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
       setState(() {
         _familyContext = familyContext;
         _report = report;
+        _aiNarrative = report.hasActivity && familyContext.canUseAi
+            ? AppDependencies.sakanAiGateway.generate(
+                feature: SakanAiFeature.weeklyReport,
+                targetId: report.weekStart.toIso8601String().substring(0, 10),
+                grounding: report.toAiPayload(),
+              )
+            : null;
         _isLoading = false;
       });
     } catch (error) {
@@ -131,20 +140,9 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
               ),
             ),
             const SizedBox(height: AppSpacing.xs),
-            Text(
-              report.headline,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              report.interpretation,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.45,
-              ),
+            _WeeklyAiNarrative(
+              report: report,
+              narrative: _aiNarrative,
             ),
             const SizedBox(height: AppSpacing.xl),
             if (!report.hasActivity)
@@ -164,6 +162,118 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _WeeklyAiNarrative extends StatelessWidget {
+  const _WeeklyAiNarrative({
+    required this.report,
+    required this.narrative,
+  });
+
+  final FamilyWeeklyReport report;
+  final Future<SakanAiResult>? narrative;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<SakanAiResult>(
+      future: narrative,
+      builder: (context, snapshot) {
+        final ai = snapshot.data;
+        final observations = ai?.reasons ?? const <String>[];
+        final nextSteps = ai?.suggestedActions ?? const <String>[];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              ai?.title ?? report.headline,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              ai?.text ?? report.interpretation,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.45,
+              ),
+            ),
+            if (snapshot.connectionState == ConnectionState.waiting) ...[
+              const SizedBox(height: AppSpacing.sm),
+              const LinearProgressIndicator(minHeight: 2),
+            ],
+            if (snapshot.hasError) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'AI interpretation is unavailable right now. '
+                'The calculated report below is still available.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+            if (observations.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.lg),
+              _SectionCard(
+                title: 'What Sakan noticed',
+                subtitle: 'AI interpretation grounded in the numbers below.',
+                child: Column(
+                  children: observations
+                      .map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.insights_outlined,
+                                size: 19,
+                                color: AppColors.primary,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(child: Text(item)),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              ),
+            ],
+            if (nextSteps.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.lg),
+              _SectionCard(
+                title: 'A gentle focus for next week',
+                subtitle: 'Suggestions only. Nothing is scheduled automatically.',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: nextSteps
+                      .map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: Text('• $item'),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              ),
+            ],
+            if (ai != null) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'AI-generated interpretation · charts and totals are calculated by Sakan',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

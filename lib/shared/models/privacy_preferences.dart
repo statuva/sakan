@@ -1,6 +1,6 @@
 class PrivacyPreferences {
   const PrivacyPreferences({
-    this.aiConsent = true,
+    this.aiConsent = false,
     this.analyticsConsent = false,
   });
 
@@ -13,7 +13,7 @@ class PrivacyPreferences {
     }
 
     return PrivacyPreferences(
-      aiConsent: map['aiConsent'] as bool? ?? true,
+      aiConsent: map['aiConsent'] as bool? ?? false,
       analyticsConsent: map['analyticsConsent'] as bool? ?? false,
     );
   }

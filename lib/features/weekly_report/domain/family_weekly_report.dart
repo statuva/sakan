@@ -60,6 +60,7 @@ class WeeklyMomentPattern {
 
     return completedCount / resolvedCount;
   }
+
 }
 
 class FamilyWeeklyReport {
@@ -111,5 +112,64 @@ class FamilyWeeklyReport {
     }
 
     return completedCount / resolvedCount;
+  }
+
+  Map<String, dynamic> toAiPayload() {
+    final boundedPatterns = momentPatterns.take(12).toList(growable: false);
+    return <String, dynamic>{
+      'weekStart': weekStart.toUtc().toIso8601String(),
+      'weekEndExclusive': weekEndExclusive.toUtc().toIso8601String(),
+      'occurrenceCount': occurrenceCount,
+      'completedCount': completedCount,
+      'missedCount': missedCount,
+      'pendingReviewCount': pendingReviewCount,
+      'cancelledCount': cancelledCount,
+      'totalDurationMinutes': totalDurationMinutes,
+      'participationRate': participationRate,
+      'completionRate': completionRate,
+      'baselineHeadline': headline,
+      'baselineInterpretation': interpretation,
+      'dailyActivity': dailyActivity
+          .map(
+            (day) => <String, dynamic>{
+              'date': day.date.toIso8601String(),
+              'occurrenceCount': day.occurrenceCount,
+              'completedCount': day.completedCount,
+              'missedCount': day.missedCount,
+              'pendingReviewCount': day.pendingReviewCount,
+              'cancelledCount': day.cancelledCount,
+            },
+          )
+          .toList(growable: false),
+      'momentPatterns': boundedPatterns
+          .map(
+            (pattern) => <String, dynamic>{
+              'momentId': pattern.momentId,
+              'title': pattern.title,
+              'completedCount': pattern.completedCount,
+              'missedCount': pattern.missedCount,
+              'pendingReviewCount': pattern.pendingReviewCount,
+              'cancelledCount': pattern.cancelledCount,
+              'recordedDurationMinutes': pattern.actualDurationMinutes > 0
+                  ? pattern.actualDurationMinutes
+                  : null,
+              'completionRate': pattern.completionRate,
+              'currentRhythmStatus': pattern.rhythmStatus?.name,
+              'rhythmConfidence': pattern.rhythmConfidence?.name,
+              'currentGapDays': pattern.currentGapDays,
+              'expectedIntervalDays': pattern.expectedIntervalDays,
+              'weeklyEffect': pattern.effect.name,
+              'baselineExplanation': pattern.explanation,
+            },
+          )
+          .toList(growable: false),
+      'omittedPatternCount': momentPatterns.length - boundedPatterns.length,
+      'limitations': const <String>[
+        'Unresolved occurrences are not missed occurrences.',
+        'Null duration or participation means not recorded, not zero.',
+        'Weekly evidence and the current all-history rhythm are separate facts.',
+        'Projected recurring occurrences are expectations, not observed events.',
+      ],
+    };
   }
 }
