@@ -211,6 +211,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
             .map((entry) => entry.calendarMoment)
             .toList(growable: false);
 
+        final agendaMoments = buildAgendaInstanceEntries(filteredEntries)
+            .map((entry) => entry.calendarMoment)
+            .toList(growable: false);
+
         final occurrenceLabelsByCalendarId = <String, String>{
           for (final entry in allEntries)
             entry.calendarMoment.id: _calendarOccurrenceLabelForInstance(
@@ -222,6 +226,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         return _calendarScaffold(
           report: report,
           projectedMoments: projectedMoments,
+          agendaMoments: agendaMoments,
           entryByCalendarId: entryByCalendarId,
           occurrenceLabelsByCalendarId: occurrenceLabelsByCalendarId,
         );
@@ -232,6 +237,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget _calendarScaffold({
     required FamilyInsightReport report,
     required List<FamilyMoment> projectedMoments,
+    required List<FamilyMoment> agendaMoments,
     required Map<String, CalendarInstanceEntry> entryByCalendarId,
     required Map<String, String> occurrenceLabelsByCalendarId,
   }) {
@@ -392,7 +398,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               )
             else
               CalendarAgendaView(
-                moments: projectedMoments,
+                moments: agendaMoments,
                 occurrenceLabelsByMomentId: occurrenceLabelsByCalendarId,
                 currentUserId: familyContext.userId,
                 onMomentTap: (projected) {

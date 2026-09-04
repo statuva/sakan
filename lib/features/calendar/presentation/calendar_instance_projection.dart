@@ -79,6 +79,81 @@ List<CalendarInstanceEntry> buildCalendarInstanceEntries(
   return entries;
 }
 
+List<CalendarInstanceEntry> buildAgendaInstanceEntries(
+  List<CalendarInstanceEntry> entries, {
+  DateTime? now,
+}) {
+  final reference = (now ?? DateTime.now()).toLocal();
+  final today = DateTime(reference.year, reference.month, reference.day);
+  final selectedByMomentId = <String, CalendarInstanceEntry>{};
+
+  for (final entry in entries) {
+    final moment = entry.calendarMoment;
+    final localStart = moment.startAt.toLocal();
+    final startDay = DateTime(localStart.year, localStart.month, localStart.day);
+
+    if (moment.status == MomentStatus.cancelled || startDay.isBefore(today)) {
+      continue;
+    }
+
+    final current = selectedByMomentId[entry.instance.momentId];
+
+    if (current == null || _compareAgendaEntries(entry, current, today) < 0) {
+      selectedByMomentId[entry.instance.momentId] = entry;
+    }
+  }
+
+  final result = selectedByMomentId.values.toList()
+    ..sort(
+      (first, second) =>
+          first.calendarMoment.startAt.compareTo(second.calendarMoment.startAt),
+    );
+
+  return result;
+}
+
+int _compareAgendaEntries(
+  CalendarInstanceEntry first,
+  CalendarInstanceEntry second,
+  DateTime today,
+) {
+  final firstStart = first.calendarMoment.startAt.toLocal();
+  final secondStart = second.calendarMoment.startAt.toLocal();
+  final firstDay = DateTime(firstStart.year, firstStart.month, firstStart.day);
+  final secondDay = DateTime(
+    secondStart.year,
+    secondStart.month,
+    secondStart.day,
+  );
+
+  final dayComparison = firstDay.compareTo(secondDay);
+
+  if (dayComparison != 0) {
+    return dayComparison;
+  }
+
+  final statusComparison = _agendaStatusPriority(
+    first.instance.status,
+  ).compareTo(_agendaStatusPriority(second.instance.status));
+
+  if (firstDay == today && statusComparison != 0) {
+    return statusComparison;
+  }
+
+  return firstStart.compareTo(secondStart);
+}
+
+int _agendaStatusPriority(MomentInstanceStatus status) {
+  return switch (status) {
+    MomentInstanceStatus.active => 0,
+    MomentInstanceStatus.completed => 1,
+    MomentInstanceStatus.missed => 2,
+    MomentInstanceStatus.inviting => 3,
+    MomentInstanceStatus.proposed || MomentInstanceStatus.scheduled => 4,
+    MomentInstanceStatus.cancelled => 5,
+  };
+}
+
 FamilyMoment projectInstanceForCalendar({
   required MomentInstance instance,
   FamilyMoment? definition,

@@ -78,4 +78,87 @@ void main() {
       expect(projected.expectedIntervalDays, 14);
     },
   );
+
+  test('agenda keeps one relevant occurrence per Moment', () {
+    final now = DateTime.utc(2026, 9, 4, 12);
+    final definition = FamilyMoment(
+      id: 'weekly-dinner',
+      familyId: 'family-1',
+      title: 'Weekly Dinner',
+      type: MomentType.recurring,
+      category: MomentCategory.tradition,
+      importanceLevel: 4,
+      expectedParticipantIds: const <String>['adult-1'],
+      startAt: now,
+      expectedIntervalDays: 7,
+      evidenceType: EvidenceType.scheduledOnly,
+      status: MomentStatus.scheduled,
+      createdBy: 'adult-1',
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    MomentInstance occurrence(
+      String id,
+      DateTime start,
+      MomentInstanceStatus status,
+    ) {
+      return MomentInstance(
+        id: id,
+        familyId: 'family-1',
+        momentId: definition.id,
+        titleSnapshot: definition.title,
+        typeSnapshot: definition.type,
+        categorySnapshot: definition.category,
+        importanceLevelSnapshot: definition.importanceLevel,
+        expectedParticipantIds: definition.expectedParticipantIds,
+        source: MomentInstanceSource.calendar,
+        status: status,
+        scheduledStartAt: start,
+        confirmedParticipantIds: const <String>[],
+        reportedParticipantIds: const <String>[],
+        evidenceSignals: const <MomentEvidenceSignal>[],
+        confirmationLevel: MomentConfirmationLevel.low,
+        createdBy: 'adult-1',
+        createdAt: now,
+        updatedAt: now,
+      );
+    }
+
+    final completedToday = occurrence(
+      'today',
+      now.subtract(const Duration(hours: 2)),
+      MomentInstanceStatus.completed,
+    );
+    final nextWeek = occurrence(
+      'next-week',
+      now.add(const Duration(days: 7)),
+      MomentInstanceStatus.scheduled,
+    );
+    final later = occurrence(
+      'later',
+      now.add(const Duration(days: 14)),
+      MomentInstanceStatus.scheduled,
+    );
+    final entries = <MomentInstance>[
+      later,
+      nextWeek,
+      completedToday,
+    ].map((instance) {
+      return CalendarInstanceEntry(
+        instance: instance,
+        definition: definition,
+        calendarMoment: projectInstanceForCalendar(
+          instance: instance,
+          definition: definition,
+        ),
+        rhythm: null,
+      );
+    }).toList();
+
+    final agenda = buildAgendaInstanceEntries(entries, now: now);
+
+    expect(agenda, hasLength(1));
+    expect(agenda.single.instance.id, completedToday.id);
+  });
 }
