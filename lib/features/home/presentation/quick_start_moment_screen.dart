@@ -235,6 +235,10 @@ class _QuickStartMomentScreenState extends State<QuickStartMomentScreen> {
         return false;
       }
 
+      if (!moment.isSharedSession) {
+        return false;
+      }
+
       if (moment.type == MomentType.recurring) {
         return true;
       }

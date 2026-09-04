@@ -13,6 +13,10 @@ import '../../../shared/widgets/cards/app_card.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 import 'log_unplanned_moment_screen.dart';
+import '../../../shared/models/family_moment.dart';
+import '../../../shared/services/moment_review_question_builder.dart';
+import '../../../shared/services/personalized_today_review_policy.dart';
+import '../../../shared/services/calendar_occurrence_label.dart';
 
 class TodayReviewScreen extends StatefulWidget {
   const TodayReviewScreen({super.key});
@@ -26,6 +30,7 @@ class _TodayReviewScreenState extends State<TodayReviewScreen> {
 
   Stream<List<MomentInstance>>? _instancesStream;
   Stream<List<Member>>? _membersStream;
+  Stream<List<FamilyMoment>>? _momentsStream;
 
   final Set<String> _resolvedInstanceIds = <String>{};
 
@@ -85,6 +90,9 @@ class _TodayReviewScreenState extends State<TodayReviewScreen> {
 
         _membersStream = AppDependencies.currentFamilyService
             .watchFamilyMembers(familyContext.familyId);
+        _momentsStream = AppDependencies.calendarRepository.watchMoments(
+          familyId: familyContext.familyId,
+        );
 
         _isLoading = false;
       });
@@ -406,7 +414,8 @@ class _TodayReviewScreenState extends State<TodayReviewScreen> {
 
     if (_familyContext == null ||
         _instancesStream == null ||
-        _membersStream == null) {
+        _membersStream == null ||
+        _momentsStream == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Today Review')),
         body: SafeArea(
@@ -421,180 +430,280 @@ class _TodayReviewScreenState extends State<TodayReviewScreen> {
     return StreamBuilder<List<Member>>(
       stream: _membersStream,
       builder: (context, memberSnapshot) {
+        if (memberSnapshot.hasError) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Today Review')),
+            body: SafeArea(
+              child: AppErrorState(
+                message: 'We could not load your family members.',
+                onRetry: _loadReview,
+              ),
+            ),
+          );
+        }
+
+        if (memberSnapshot.connectionState == ConnectionState.waiting &&
+            !memberSnapshot.hasData) {
+          return const Scaffold(
+            body: SafeArea(
+              child: AppLoadingState(message: 'Loading family members…'),
+            ),
+          );
+        }
+
         final members = memberSnapshot.data ?? <Member>[];
 
-        return StreamBuilder<List<MomentInstance>>(
-          stream: _instancesStream,
-          builder: (context, instanceSnapshot) {
-            if (instanceSnapshot.hasError) {
+        final currentMember = members
+            .where((member) => member.id == _familyContext!.userId)
+            .firstOrNull;
+
+        if (currentMember == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Today Review')),
+            body: SafeArea(
+              child: AppErrorState(
+                message: 'Your family profile could not be found.',
+                onRetry: _loadReview,
+              ),
+            ),
+          );
+        }
+
+        return StreamBuilder<List<FamilyMoment>>(
+          stream: _momentsStream,
+          builder: (context, momentSnapshot) {
+            if (momentSnapshot.hasError) {
               return Scaffold(
                 appBar: AppBar(title: const Text('Today Review')),
                 body: SafeArea(
                   child: AppErrorState(
-                    message: 'We could not load recent Moments.',
+                    message: 'We could not load your Family Moments.',
                     onRetry: _loadReview,
                   ),
                 ),
               );
             }
 
-            if (instanceSnapshot.connectionState == ConnectionState.waiting &&
-                !instanceSnapshot.hasData) {
+            if (momentSnapshot.connectionState == ConnectionState.waiting &&
+                !momentSnapshot.hasData) {
               return const Scaffold(
                 body: SafeArea(
-                  child: AppLoadingState(message: 'Loading recent Moments…'),
+                  child: AppLoadingState(message: 'Loading Family Moments…'),
                 ),
               );
             }
 
-            final allInstances = instanceSnapshot.data ?? <MomentInstance>[];
+            final moments = momentSnapshot.data ?? <FamilyMoment>[];
 
-            final reviewable = _reviewableInstances(allInstances);
+            final momentsById = <String, FamilyMoment>{
+              for (final moment in moments) moment.id: moment,
+            };
 
-            return Scaffold(
-              appBar: AppBar(title: const Text('Today Review')),
-              body: SafeArea(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl,
-                    AppSpacing.md,
-                    AppSpacing.xl,
-                    104,
-                  ),
-                  children: [
-                    AppCard(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.fact_check_outlined,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Tell Sakan what actually happened',
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
+            return StreamBuilder<List<MomentInstance>>(
+              stream: _instancesStream,
+              builder: (context, instanceSnapshot) {
+                if (instanceSnapshot.hasError) {
+                  return Scaffold(
+                    appBar: AppBar(title: const Text('Today Review')),
+                    body: SafeArea(
+                      child: AppErrorState(
+                        message: 'We could not load recent Moments.',
+                        onRetry: _loadReview,
+                      ),
+                    ),
+                  );
+                }
+
+                if (instanceSnapshot.connectionState ==
+                        ConnectionState.waiting &&
+                    !instanceSnapshot.hasData) {
+                  return const Scaffold(
+                    body: SafeArea(
+                      child: AppLoadingState(
+                        message: 'Loading recent Moments…',
+                      ),
+                    ),
+                  );
+                }
+
+                final allInstances =
+                    instanceSnapshot.data ?? <MomentInstance>[];
+
+                final reviewable =
+                    PersonalizedTodayReviewPolicy.filter(
+                      instances: allInstances,
+                      momentsById: momentsById,
+                      currentMember: currentMember,
+                    ).where((instance) {
+                      return !_resolvedInstanceIds.contains(instance.id);
+                    }).toList();
+
+                return Scaffold(
+                  appBar: AppBar(title: const Text('Today Review')),
+                  body: SafeArea(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.xl,
+                        AppSpacing.md,
+                        AppSpacing.xl,
+                        104,
+                      ),
+                      children: [
+                        AppCard(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.fact_check_outlined,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: AppSpacing.md),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'A few Moments still need an outcome',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Sakan only asks about past occurrences '
+                                      'that still need confirmation. '
+                                      'Live sessions already recorded in Sakan '
+                                      'do not need to be reviewed again.',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodyMedium,
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 6),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: AppSpacing.xl),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Needs Review',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ),
+                            Text(
+                              '${reviewable.length}',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: AppSpacing.md),
+
+                        if (reviewable.isEmpty)
+                          AppCard(
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.check_circle_outline,
+                                  size: 52,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                const SizedBox(height: AppSpacing.md),
                                 Text(
-                                  'Review planned Moments from today '
-                                  'and yesterday. This prevents the '
-                                  'Calendar from being treated as proof '
-                                  'that an activity happened.',
+                                  'Nothing unresolved',
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                Text(
+                                  'Sakan has a clear outcome for '
+                                  'the recent Moments relevant to you.',
+                                  textAlign: TextAlign.center,
                                   style: Theme.of(context).textTheme.bodyMedium,
                                 ),
                               ],
                             ),
+                          )
+                        else
+                          ...reviewable.map((instance) {
+                            final moment = momentsById[instance.momentId];
+
+                            if (moment == null) {
+                              return const SizedBox.shrink();
+                            }
+
+                            final reviewCopy =
+                                MomentReviewQuestionBuilder.build(
+                                  moment: moment,
+                                  currentMember: currentMember,
+                                );
+
+                            return Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: AppSpacing.md,
+                              ),
+                              child: _ReviewInstanceCard(
+                                instance: instance,
+                                question: reviewCopy.question,
+                                positiveLabel: reviewCopy.positiveLabel,
+                                negativeLabel: reviewCopy.negativeLabel,
+                                allowReschedule: reviewCopy.allowReschedule,
+                                isDisabled: _isUpdating,
+                                onHappened: () {
+                                  _markHappened(
+                                    instance: instance,
+                                    members: members,
+                                  );
+                                },
+                                onMissed: () {
+                                  _markMissed(instance);
+                                },
+                                onReschedule: () {
+                                  _reschedule(instance);
+                                },
+                              ),
+                            );
+                          }),
+
+                        const SizedBox(height: AppSpacing.xl),
+
+                        OutlinedButton.icon(
+                          onPressed: _isUpdating ? null : _logUnplannedMoment,
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Log Something Else We Did'),
+                        ),
+
+                        const SizedBox(height: AppSpacing.xl),
+
+                        AppPrimaryButton(
+                          label: 'Finish Today Review',
+                          icon: Icons.done_all_rounded,
+                          isLoading: _isSavingReview,
+                          onPressed: _isSavingReview || _isUpdating
+                              ? null
+                              : () {
+                                  _finishReview(reviewable);
+                                },
+                        ),
+
+                        if (_existingReview != null) ...[
+                          const SizedBox(height: AppSpacing.sm),
+                          Text(
+                            'This review was previously saved. '
+                            'Saving again updates it.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.xl),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Needs Review',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ),
-                        Text(
-                          '${reviewable.length}',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
                       ],
                     ),
-
-                    const SizedBox(height: AppSpacing.md),
-
-                    if (reviewable.isEmpty)
-                      AppCard(
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline,
-                              size: 52,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            Text(
-                              'Nothing unresolved',
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            Text(
-                              'You can still log something '
-                              'the family did without planning it.',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      ...reviewable.map(
-                        (instance) => Padding(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                          child: _ReviewInstanceCard(
-                            instance: instance,
-                            isDisabled: _isUpdating,
-                            onHappened: () {
-                              _markHappened(
-                                instance: instance,
-                                members: members,
-                              );
-                            },
-                            onMissed: () {
-                              _markMissed(instance);
-                            },
-                            onReschedule: () {
-                              _reschedule(instance);
-                            },
-                          ),
-                        ),
-                      ),
-
-                    const SizedBox(height: AppSpacing.xl),
-
-                    OutlinedButton.icon(
-                      onPressed: _isUpdating ? null : _logUnplannedMoment,
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Log Something Else We Did'),
-                    ),
-
-                    const SizedBox(height: AppSpacing.xl),
-
-                    AppPrimaryButton(
-                      label: 'Finish Today Review',
-                      icon: Icons.done_all_rounded,
-                      isLoading: _isSavingReview,
-                      onPressed: _isSavingReview || _isUpdating
-                          ? null
-                          : () {
-                              _finishReview(reviewable);
-                            },
-                    ),
-
-                    if (_existingReview != null) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        'This review was previously saved. '
-                        'Saving again updates it.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             );
           },
         );
@@ -606,6 +715,10 @@ class _TodayReviewScreenState extends State<TodayReviewScreen> {
 class _ReviewInstanceCard extends StatelessWidget {
   const _ReviewInstanceCard({
     required this.instance,
+    required this.question,
+    required this.positiveLabel,
+    required this.negativeLabel,
+    required this.allowReschedule,
     required this.isDisabled,
     required this.onHappened,
     required this.onMissed,
@@ -613,7 +726,14 @@ class _ReviewInstanceCard extends StatelessWidget {
   });
 
   final MomentInstance instance;
+
+  final String question;
+  final String positiveLabel;
+  final String negativeLabel;
+  final bool allowReschedule;
+
   final bool isDisabled;
+
   final VoidCallback onHappened;
   final VoidCallback onMissed;
   final VoidCallback onReschedule;
@@ -630,18 +750,20 @@ class _ReviewInstanceCard extends StatelessWidget {
             instance.titleSnapshot,
             style: Theme.of(context).textTheme.titleLarge,
           ),
+
           const SizedBox(height: 6),
+
           Text(
             DateFormat('EEEE, d MMMM · h:mm a').format(start),
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(height: 4),
-          Text(
-            '${instance.expectedParticipantIds.length} '
-            'expected participants',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+
           const SizedBox(height: AppSpacing.lg),
+
+          Text(question, style: Theme.of(context).textTheme.titleMedium),
+
+          const SizedBox(height: AppSpacing.md),
+
           Wrap(
             spacing: AppSpacing.sm,
             runSpacing: AppSpacing.sm,
@@ -649,18 +771,21 @@ class _ReviewInstanceCard extends StatelessWidget {
               FilledButton.icon(
                 onPressed: isDisabled ? null : onHappened,
                 icon: const Icon(Icons.check_circle_outline),
-                label: const Text('Happened'),
+                label: Text(positiveLabel),
               ),
+
               OutlinedButton.icon(
                 onPressed: isDisabled ? null : onMissed,
                 icon: const Icon(Icons.close_rounded),
-                label: const Text('Didn’t Happen'),
+                label: Text(negativeLabel),
               ),
-              TextButton.icon(
-                onPressed: isDisabled ? null : onReschedule,
-                icon: const Icon(Icons.event_repeat_outlined),
-                label: const Text('Reschedule'),
-              ),
+
+              if (allowReschedule)
+                TextButton.icon(
+                  onPressed: isDisabled ? null : onReschedule,
+                  icon: const Icon(Icons.event_repeat_outlined),
+                  label: const Text('Reschedule'),
+                ),
             ],
           ),
         ],

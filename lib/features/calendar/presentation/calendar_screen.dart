@@ -10,7 +10,6 @@ import '../../../shared/models/family_memory.dart';
 import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/moment_instance.dart';
-import '../../../shared/models/rhythm_record.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 import '../../daily_review/presentation/today_review_screen.dart';
@@ -35,6 +34,7 @@ import 'widgets/calendar_palette.dart';
 import 'widgets/calendar_support_cards.dart';
 import 'widgets/calendar_week_view.dart';
 import 'widgets/family_insight_section.dart';
+import 'package:sakan/shared/services/recurring_occurrence_service.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -72,6 +72,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _loadCalendar();
   }
 
+  Future<void> _ensureRecurringRange({
+    required CurrentFamilyContext familyContext,
+    required DateTime focusDate,
+  }) async {
+    if (!familyContext.isAdult) {
+      return;
+    }
+
+    try {
+      final moments = await AppDependencies.calendarRepository
+          .watchMoments(familyId: familyContext.familyId)
+          .first;
+
+      final occurrenceService = RecurringOccurrenceService(
+        AppDependencies.momentInstanceRepository,
+      );
+
+      await occurrenceService.ensureRange(
+        moments: moments,
+        rangeStart: DateTime(focusDate.year, focusDate.month - 1, 1),
+        rangeEnd: DateTime(focusDate.year, focusDate.month + 3, 0, 23, 59, 59),
+        createdBy: familyContext.userId,
+      );
+    } catch (_) {
+      // Never block Calendar if recurrence generation fails.
+    }
+  }
+
   Future<void> _loadCalendar() async {
     setState(() {
       _isLoading = true;
@@ -93,6 +121,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
           // Existing instance-based data remains fully usable.
         }
       }
+      if (mounted) {
+        setState(() {
+          _familyContext = familyContext;
+        });
+      }
+
+      await _ensureRecurringRange(
+        familyContext: familyContext,
+        focusDate: DateTime.now(),
+      );
 
       final reportStream = AppDependencies.familyInsightService.watchReport();
 
@@ -173,16 +211,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
             .map((entry) => entry.calendarMoment)
             .toList(growable: false);
 
-        final rhythmsByCalendarId = <String, RhythmRecord>{
+        final occurrenceLabelsByCalendarId = <String, String>{
           for (final entry in allEntries)
-            if (entry.rhythm != null) entry.calendarMoment.id: entry.rhythm!,
+            entry.calendarMoment.id: _calendarOccurrenceLabelForInstance(
+              instance: entry.instance,
+              definition: entry.definition,
+            ),
         };
 
         return _calendarScaffold(
           report: report,
           projectedMoments: projectedMoments,
           entryByCalendarId: entryByCalendarId,
-          rhythmsByCalendarId: rhythmsByCalendarId,
+          occurrenceLabelsByCalendarId: occurrenceLabelsByCalendarId,
         );
       },
     );
@@ -192,7 +233,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     required FamilyInsightReport report,
     required List<FamilyMoment> projectedMoments,
     required Map<String, CalendarInstanceEntry> entryByCalendarId,
-    required Map<String, RhythmRecord> rhythmsByCalendarId,
+    required Map<String, String> occurrenceLabelsByCalendarId,
   }) {
     final familyContext = _familyContext!;
     final activeInstance = report.snapshot.activeInstance;
@@ -273,7 +314,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     date: day,
                     projectedMoments: projectedMoments,
                     entryByCalendarId: entryByCalendarId,
-                    rhythmsByCalendarId: rhythmsByCalendarId,
+                    occurrenceLabelsByCalendarId: occurrenceLabelsByCalendarId,
                     report: report,
                   );
                 },
@@ -281,6 +322,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   setState(() {
                     _focusedDay = focused;
                   });
+
+                  final familyContext = _familyContext;
+
+                  if (familyContext != null) {
+                    _ensureRecurringRange(
+                      familyContext: familyContext,
+                      focusDate: focused,
+                    );
+                  }
                 },
               )
             else if (_viewMode == CalendarViewMode.week)
@@ -299,27 +349,51 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     date: day,
                     projectedMoments: projectedMoments,
                     entryByCalendarId: entryByCalendarId,
-                    rhythmsByCalendarId: rhythmsByCalendarId,
+                    occurrenceLabelsByCalendarId: occurrenceLabelsByCalendarId,
                     report: report,
                   );
                 },
                 onPreviousWeek: () {
+                  final newFocus = _focusedDay.subtract(
+                    const Duration(days: 7),
+                  );
+
                   setState(() {
-                    _focusedDay = _focusedDay.subtract(const Duration(days: 7));
-                    _selectedDay = _focusedDay;
+                    _focusedDay = newFocus;
+                    _selectedDay = newFocus;
                   });
+
+                  final familyContext = _familyContext;
+
+                  if (familyContext != null) {
+                    _ensureRecurringRange(
+                      familyContext: familyContext,
+                      focusDate: newFocus,
+                    );
+                  }
                 },
                 onNextWeek: () {
+                  final newFocus = _focusedDay.add(const Duration(days: 7));
+
                   setState(() {
-                    _focusedDay = _focusedDay.add(const Duration(days: 7));
-                    _selectedDay = _focusedDay;
+                    _focusedDay = newFocus;
+                    _selectedDay = newFocus;
                   });
+
+                  final familyContext = _familyContext;
+
+                  if (familyContext != null) {
+                    _ensureRecurringRange(
+                      familyContext: familyContext,
+                      focusDate: newFocus,
+                    );
+                  }
                 },
               )
             else
               CalendarAgendaView(
                 moments: projectedMoments,
-                rhythmsByMomentId: rhythmsByCalendarId,
+                occurrenceLabelsByMomentId: occurrenceLabelsByCalendarId,
                 currentUserId: familyContext.userId,
                 onMomentTap: (projected) {
                   final entry = entryByCalendarId[projected.id];
@@ -430,7 +504,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     required DateTime date,
     required List<FamilyMoment> projectedMoments,
     required Map<String, CalendarInstanceEntry> entryByCalendarId,
-    required Map<String, RhythmRecord> rhythmsByCalendarId,
+    required Map<String, String> occurrenceLabelsByCalendarId,
     required FamilyInsightReport report,
   }) async {
     final dayMoments = _momentsForDay(projectedMoments, date);
@@ -447,7 +521,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         return CalendarDaySheet(
           date: date,
           moments: dayMoments,
-          rhythmsByMomentId: rhythmsByCalendarId,
+          occurrenceLabelsByMomentId: occurrenceLabelsByCalendarId,
           currentUserId: _familyContext!.userId,
           onMomentTap: (projected) {
             Navigator.of(sheetContext).pop();
@@ -543,7 +617,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
         return CalendarMomentDetailsSheet(
           moment: entry.calendarMoment,
           instance: instance,
-          rhythm: entry.rhythm,
+          occurrenceLabel: _calendarOccurrenceLabelForInstance(
+            instance: instance,
+            definition: entry.definition,
+          ),
           memory: memory,
           currentUserId: _familyContext!.userId,
           canEditDefinition:
@@ -949,4 +1026,11 @@ extension _FirstOrNullExtension<T> on Iterable<T> {
     final iterator = this.iterator;
     return iterator.moveNext() ? iterator.current : null;
   }
+}
+
+String _calendarOccurrenceLabelForInstance({
+  required MomentInstance instance,
+  FamilyMoment? definition,
+}) {
+  return definition?.title ?? instance.titleSnapshot;
 }

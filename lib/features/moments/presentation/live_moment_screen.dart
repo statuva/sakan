@@ -162,23 +162,20 @@ class _LiveMomentScreenState extends State<LiveMomentScreen> {
 
     try {
       await AppDependencies.momentInstanceRepository.checkOut(
-  familyId: widget.familyId,
-  instanceId: widget.instanceId,
-  memberId: familyContext.userId,
-);
+        familyId: widget.familyId,
+        instanceId: widget.instanceId,
+        memberId: familyContext.userId,
+      );
 
-if (!mounted) return;
+      if (!mounted) return;
 
-final navigator = Navigator.of(
-  context,
-  rootNavigator: true,
-);
+      final navigator = Navigator.of(context, rootNavigator: true);
 
-context.go('/home');
+      context.go('/home');
 
-if (navigator.canPop()) {
-  navigator.pop();
-}
+      if (navigator.canPop()) {
+        navigator.pop();
+      }
     } catch (_) {
       if (mounted) {
         _showMessage('We could not leave this Moment. Please try again.');
