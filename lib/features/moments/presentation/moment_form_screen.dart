@@ -913,6 +913,7 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                   Expanded(
                     child: DropdownButtonFormField<int>(
                       initialValue: _preferredMonth,
+                      isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Month'),
                       items: List.generate(
                         12,
@@ -920,6 +921,8 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                           value: index + 1,
                           child: Text(
                             DateFormat.MMMM().format(DateTime(2026, index + 1)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),

@@ -68,7 +68,7 @@ class CalendarWeekView extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.xs),
         SizedBox(
-          height: 138,
+          height: 176,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: days.length,
