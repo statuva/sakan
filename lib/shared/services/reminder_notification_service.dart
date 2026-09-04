@@ -7,15 +7,27 @@ import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
 import '../models/care_action.dart';
+import '../models/notification_preferences.dart';
 
 typedef ReminderNotificationTapCallback =
     void Function(ReminderNotificationPayload payload);
+typedef WeeklyReportNotificationTapCallback =
+    void Function(WeeklyReportNotificationPayload payload);
 
-class ReminderNotificationPayload {
+sealed class SakanNotificationPayload {
+  const SakanNotificationPayload();
+
+  static SakanNotificationPayload? tryParse(String? rawPayload) {
+    return ReminderNotificationPayload.tryParse(rawPayload) ??
+        WeeklyReportNotificationPayload.tryParse(rawPayload);
+  }
+}
+
+class ReminderNotificationPayload extends SakanNotificationPayload {
   const ReminderNotificationPayload({
     required this.familyId,
     required this.reminderId,
-  });
+  }) : super();
 
   static const String payloadKind = 'sakanReminder';
 
@@ -68,6 +80,58 @@ class ReminderNotificationPayload {
   }
 }
 
+class WeeklyReportNotificationPayload extends SakanNotificationPayload {
+  const WeeklyReportNotificationPayload({
+    required this.familyId,
+    required this.memberId,
+  }) : super();
+
+  static const String payloadKind = 'sakanWeeklyReport';
+
+  final String familyId;
+  final String memberId;
+
+  String encode() {
+    return jsonEncode({
+      'kind': payloadKind,
+      'familyId': familyId,
+      'memberId': memberId,
+    });
+  }
+
+  static WeeklyReportNotificationPayload? tryParse(String? rawPayload) {
+    if (rawPayload == null || rawPayload.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(rawPayload);
+      if (decoded is! Map) {
+        return null;
+      }
+
+      final map = Map<String, dynamic>.from(decoded);
+      final familyId = map['familyId'];
+      final memberId = map['memberId'];
+
+      if (map['kind'] != payloadKind ||
+          familyId is! String ||
+          familyId.trim().isEmpty ||
+          memberId is! String ||
+          memberId.trim().isEmpty) {
+        return null;
+      }
+
+      return WeeklyReportNotificationPayload(
+        familyId: familyId,
+        memberId: memberId,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class ReminderNotificationService {
   ReminderNotificationService._();
 
@@ -89,20 +153,35 @@ class ReminderNotificationService {
         playSound: true,
       );
 
+  static const String _weeklyReportChannelId = 'sakan_weekly_reports';
+  static const String _weeklyReportChannelName = 'Sakan Weekly Reports';
+  static const String _weeklyReportChannelDescription =
+      'Weekly family pattern reports for adult family members.';
+  static const AndroidNotificationChannel _weeklyReportChannel =
+      AndroidNotificationChannel(
+        _weeklyReportChannelId,
+        _weeklyReportChannelName,
+        description: _weeklyReportChannelDescription,
+        importance: Importance.defaultImportance,
+      );
+
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
 
   ReminderNotificationTapCallback? _onReminderTap;
+  WeeklyReportNotificationTapCallback? _onWeeklyReportTap;
   bool _initialized = false;
 
   bool get supportsScheduling {
     return !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   }
 
-  Future<ReminderNotificationPayload?> initialize({
+  Future<SakanNotificationPayload?> initialize({
     ReminderNotificationTapCallback? onReminderTap,
+    WeeklyReportNotificationTapCallback? onWeeklyReportTap,
   }) async {
     _onReminderTap = onReminderTap;
+    _onWeeklyReportTap = onWeeklyReportTap;
 
     if (!supportsScheduling) {
       return null;
@@ -145,13 +224,16 @@ class ReminderNotificationService {
         >();
 
     await androidImplementation?.createNotificationChannel(_androidChannel);
+    await androidImplementation?.createNotificationChannel(
+      _weeklyReportChannel,
+    );
 
     final launchDetails = await _notifications
         .getNotificationAppLaunchDetails();
 
     if (launchDetails?.didNotificationLaunchApp == true &&
         launchDetails?.notificationResponse?.payload != null) {
-      return ReminderNotificationPayload.tryParse(
+      return SakanNotificationPayload.tryParse(
         launchDetails!.notificationResponse!.payload,
       );
     }
@@ -279,32 +361,23 @@ class ReminderNotificationService {
     }
   }
 
-  /// Cancels every pending notification created by Sakan's personal reminder
-  /// system. This prevents one account's reminders from appearing after a
-  /// different family member signs in on the same phone.
-  Future<void> cancelAllReminderNotifications() async {
+  Future<void> cancelAllSakanNotifications() async {
     if (!supportsScheduling || !_initialized) {
       return;
     }
 
     try {
-      final pending = await _notifications.pendingNotificationRequests();
-
-      for (final notification in pending) {
-        final payload = ReminderNotificationPayload.tryParse(
-          notification.payload,
-        );
-
-        if (payload != null) {
-          await _notifications.cancel(id: notification.id);
-        }
-      }
+      await _notifications.cancelAll();
     } catch (error) {
       debugPrint(
-        'Could not cancel Sakan reminder notifications during sign-out: '
+        'Could not cancel Sakan notifications during sign-out: '
         '$error',
       );
     }
+  }
+
+  Future<void> cancelAllReminderNotifications() {
+    return cancelAllSakanNotifications();
   }
 
   Future<void> syncAssignedReminders(List<CareAction> reminders) async {
@@ -353,6 +426,85 @@ class ReminderNotificationService {
     }
   }
 
+  Future<bool> syncWeeklyReportNotification({
+    required String familyId,
+    required String memberId,
+    required bool isAdult,
+    required NotificationPreferences preferences,
+    bool requestPermission = false,
+  }) async {
+    await cancelAllWeeklyReportNotifications();
+
+    if (!supportsScheduling ||
+        !_initialized ||
+        !isAdult ||
+        !preferences.weeklyReports) {
+      return false;
+    }
+
+    final permissionGranted = requestPermission
+        ? await this.requestPermission()
+        : await notificationsEnabled();
+
+    if (!permissionGranted) {
+      return false;
+    }
+
+    try {
+      final scheduledDate = _nextWeeklyReportDate(preferences);
+
+      await _notifications.zonedSchedule(
+        id:
+            0x70000000 |
+            (notificationIdFor('weekly:$familyId:$memberId') & 0x0FFFFFFF),
+        title: 'Your family weekly report is ready',
+        body:
+            'See the completed week’s Moments and how the recorded patterns '
+            'were affected.',
+        scheduledDate: scheduledDate,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _weeklyReportChannelId,
+            _weeklyReportChannelName,
+            channelDescription: _weeklyReportChannelDescription,
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
+            autoCancel: true,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        payload: WeeklyReportNotificationPayload(
+          familyId: familyId,
+          memberId: memberId,
+        ).encode(),
+      );
+
+      return true;
+    } catch (error) {
+      debugPrint('Could not schedule weekly report notification: $error');
+      return false;
+    }
+  }
+
+  Future<void> cancelAllWeeklyReportNotifications() async {
+    if (!supportsScheduling || !_initialized) {
+      return;
+    }
+
+    try {
+      final pending = await _notifications.pendingNotificationRequests();
+      for (final notification in pending) {
+        if (WeeklyReportNotificationPayload.tryParse(notification.payload) !=
+            null) {
+          await _notifications.cancel(id: notification.id);
+        }
+      }
+    } catch (error) {
+      debugPrint('Could not cancel weekly report notifications: $error');
+    }
+  }
+
   Future<bool> openNotificationSettings() async {
     if (!supportsScheduling || !_initialized) {
       return false;
@@ -373,13 +525,70 @@ class ReminderNotificationService {
   }
 
   void _handleNotificationResponse(NotificationResponse response) {
-    final payload = ReminderNotificationPayload.tryParse(response.payload);
+    final payload = SakanNotificationPayload.tryParse(response.payload);
 
-    if (payload == null) {
-      return;
+    switch (payload) {
+      case ReminderNotificationPayload reminder:
+        _onReminderTap?.call(reminder);
+        return;
+      case WeeklyReportNotificationPayload weeklyReport:
+        _onWeeklyReportTap?.call(weeklyReport);
+        return;
+      case null:
+        return;
+    }
+  }
+
+  timezone.TZDateTime _nextWeeklyReportDate(
+    NotificationPreferences preferences,
+  ) {
+    final now = timezone.TZDateTime.now(timezone.local);
+    final weekdayOffset = (DateTime.monday - now.weekday + 7) % 7;
+    var result = timezone.TZDateTime(
+      timezone.local,
+      now.year,
+      now.month,
+      now.day + weekdayOffset,
+      8,
+    );
+
+    if (!result.isAfter(now)) {
+      result = timezone.TZDateTime(
+        timezone.local,
+        result.year,
+        result.month,
+        result.day + 7,
+        8,
+      );
     }
 
-    _onReminderTap?.call(payload);
+    if (!preferences.quietHoursEnabled ||
+        preferences.quietStartMinutes == preferences.quietEndMinutes) {
+      return result;
+    }
+
+    final minute = result.hour * 60 + result.minute;
+    final start = preferences.quietStartMinutes.clamp(0, 1439).toInt();
+    final end = preferences.quietEndMinutes.clamp(0, 1439).toInt();
+    final insideQuietHours = start < end
+        ? minute >= start && minute < end
+        : minute >= start || minute < end;
+
+    if (!insideQuietHours) {
+      return result;
+    }
+
+    final dayOffset = start > end && minute >= start ? 1 : 0;
+    result = timezone.TZDateTime(
+      timezone.local,
+      result.year,
+      result.month,
+      result.day + dayOffset,
+      end ~/ 60,
+      end % 60,
+    );
+
+    return result;
   }
 
   String _notificationBody(CareAction reminder) {

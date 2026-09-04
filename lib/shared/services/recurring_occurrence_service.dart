@@ -1,11 +1,9 @@
 import '../models/family_moment.dart';
 import '../models/model_enums.dart';
 import '../repositories/moment_instance_repository.dart';
+import '../repositories/non_destructive_occurrence_repository.dart';
 import 'moment_schedule_resolver.dart';
 
-/// Materializes only a rolling Calendar window. It never creates an infinite
-/// recurrence series, and scheduleOccurrence uses deterministic IDs so calling
-/// this repeatedly does not create duplicates.
 class RecurringOccurrenceService {
   const RecurringOccurrenceService(this._repository);
 
@@ -25,6 +23,7 @@ class RecurringOccurrenceService {
 
     for (final moment in moments) {
       if (moment.type != MomentType.recurring ||
+          moment.status != MomentStatus.scheduled ||
           moment.isArchived ||
           moment.isDayFlexible ||
           !moment.hasExactRecurringDay) {
@@ -40,15 +39,15 @@ class RecurringOccurrenceService {
           start: start,
           endMinutes: moment.resolvedPreferredEndMinutes,
         );
-
-        await _repository.scheduleOccurrence(
+        final wasCreated = await _materialize(
           moment: moment,
           scheduledStartAt: start,
           scheduledEndAt: end,
           createdBy: createdBy,
-          source: MomentInstanceSource.calendar,
         );
-        writes++;
+        if (wasCreated) {
+          writes++;
+        }
       }
     }
 
@@ -60,80 +59,132 @@ class RecurringOccurrenceService {
     required DateTime rangeStart,
     required DateTime rangeEnd,
   }) {
+    return calculateStartsInRange(
+      moment: moment,
+      rangeStart: rangeStart,
+      rangeEnd: rangeEnd,
+    );
+  }
+
+  static List<DateTime> calculateStartsInRange({
+    required FamilyMoment moment,
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+  }) {
     if (moment.type != MomentType.recurring ||
+        moment.status != MomentStatus.scheduled ||
         moment.isDayFlexible ||
         moment.isArchived) {
       return const <DateTime>[];
     }
 
+    final rangeStartLocal = rangeStart.toLocal();
+    final rangeEndLocal = rangeEnd.toLocal();
+    final anchor = moment.startAt.toLocal();
     final localStart = DateTime(
-      rangeStart.toLocal().year,
-      rangeStart.toLocal().month,
-      rangeStart.toLocal().day,
+      rangeStartLocal.year,
+      rangeStartLocal.month,
+      rangeStartLocal.day,
     );
     final localEnd = DateTime(
-      rangeEnd.toLocal().year,
-      rangeEnd.toLocal().month,
-      rangeEnd.toLocal().day,
+      rangeEndLocal.year,
+      rangeEndLocal.month,
+      rangeEndLocal.day,
       23,
       59,
       59,
+      999,
+      999,
     );
+    final anchorDay = DateTime(anchor.year, anchor.month, anchor.day);
+    final effectiveStart = localStart.isAfter(anchorDay)
+        ? localStart
+        : anchorDay;
+
+    if (effectiveStart.isAfter(localEnd)) {
+      return const <DateTime>[];
+    }
 
     final interval = moment.expectedIntervalDays ?? 7;
-    final minutes = moment.resolvedPreferredStartMinutes;
+    final preferredMinutes = moment.resolvedPreferredStartMinutes;
+    final anchorMinutes = anchor.hour * 60 + anchor.minute;
+    final minutes = preferredMinutes >= 0 && preferredMinutes < 24 * 60
+        ? preferredMinutes
+        : anchorMinutes;
     final results = <DateTime>[];
 
     DateTime atMinutes(DateTime date) =>
         DateTime(date.year, date.month, date.day, minutes ~/ 60, minutes % 60);
 
     if (interval == 1) {
-      var cursor = localStart;
+      var cursor = effectiveStart;
       while (!cursor.isAfter(localEnd)) {
-        results.add(atMinutes(cursor));
-        cursor = cursor.add(const Duration(days: 1));
+        final candidate = atMinutes(cursor);
+        if (!candidate.isBefore(anchor)) {
+          results.add(candidate);
+        }
+        cursor = DateTime(cursor.year, cursor.month, cursor.day + 1);
       }
       return results;
     }
 
     if (interval == 7 || interval == 14) {
-      final weekday =
-          moment.preferredWeekday ?? moment.startAt.toLocal().weekday;
-      var cursor = localStart;
-      while (cursor.weekday != weekday) {
-        cursor = cursor.add(const Duration(days: 1));
+      final preferredWeekday = moment.preferredWeekday;
+      final weekday = preferredWeekday != null &&
+              preferredWeekday >= DateTime.monday &&
+              preferredWeekday <= DateTime.sunday
+          ? preferredWeekday
+          : anchor.weekday;
+      var cadenceAnchor = anchorDay;
+      while (cadenceAnchor.weekday != weekday) {
+        cadenceAnchor = DateTime(
+          cadenceAnchor.year,
+          cadenceAnchor.month,
+          cadenceAnchor.day + 1,
+        );
+      }
+      if (atMinutes(cadenceAnchor).isBefore(anchor)) {
+        cadenceAnchor = DateTime(
+          cadenceAnchor.year,
+          cadenceAnchor.month,
+          cadenceAnchor.day + 7,
+        );
       }
 
-      final anchor = moment.startAt.toLocal();
+      var cursor = effectiveStart;
+      while (cursor.weekday != weekday) {
+        cursor = DateTime(cursor.year, cursor.month, cursor.day + 1);
+      }
+
       while (!cursor.isAfter(localEnd)) {
-        final daysFromAnchor = DateTime(
-          cursor.year,
-          cursor.month,
-          cursor.day,
-        ).difference(DateTime(anchor.year, anchor.month, anchor.day)).inDays;
-        if (interval == 7 || daysFromAnchor % 14 == 0) {
-          results.add(atMinutes(cursor));
+        final daysFromAnchor = _calendarDayDifference(
+          cadenceAnchor,
+          cursor,
+        );
+        if (daysFromAnchor >= 0 &&
+            (interval == 7 || daysFromAnchor % 14 == 0)) {
+          final candidate = atMinutes(cursor);
+          if (!candidate.isBefore(anchor)) {
+            results.add(candidate);
+          }
         }
-        cursor = cursor.add(const Duration(days: 7));
+        cursor = DateTime(cursor.year, cursor.month, cursor.day + 7);
       }
       return results;
     }
 
     if (interval == 30 || interval == 90) {
       final monthStep = interval == 30 ? 1 : 3;
-      var year = localStart.year;
-      var month = localStart.month;
-      final anchor = moment.startAt.toLocal();
+      var year = effectiveStart.year;
+      var month = effectiveStart.month;
       final day = moment.preferredDayOfMonth ?? anchor.day;
 
-      while (DateTime(
-        year,
-        month,
-        1,
-      ).isBefore(DateTime(localEnd.year, localEnd.month + 1, 1))) {
+      while (DateTime(year, month, 1).isBefore(
+        DateTime(localEnd.year, localEnd.month + 1, 1),
+      )) {
         final monthsFromAnchor =
             (year - anchor.year) * 12 + month - anchor.month;
-        if (monthsFromAnchor % monthStep == 0) {
+        if (monthsFromAnchor >= 0 && monthsFromAnchor % monthStep == 0) {
           final maxDay = MomentScheduleResolver.daysInMonth(year, month);
           final candidate = DateTime(
             year,
@@ -142,7 +193,9 @@ class RecurringOccurrenceService {
             minutes ~/ 60,
             minutes % 60,
           );
-          if (!candidate.isBefore(localStart) && !candidate.isAfter(localEnd)) {
+          if (!candidate.isBefore(effectiveStart) &&
+              !candidate.isBefore(anchor) &&
+              !candidate.isAfter(localEnd)) {
             results.add(candidate);
           }
         }
@@ -156,9 +209,14 @@ class RecurringOccurrenceService {
     }
 
     if (interval == 365) {
-      final month = moment.preferredMonth ?? moment.startAt.toLocal().month;
-      final day = moment.preferredDayOfMonth ?? moment.startAt.toLocal().day;
-      for (var year = localStart.year; year <= localEnd.year; year++) {
+      final preferredMonth = moment.preferredMonth;
+      final month = preferredMonth != null &&
+              preferredMonth >= DateTime.january &&
+              preferredMonth <= DateTime.december
+          ? preferredMonth
+          : anchor.month;
+      final day = moment.preferredDayOfMonth ?? anchor.day;
+      for (var year = effectiveStart.year; year <= localEnd.year; year++) {
         final maxDay = MomentScheduleResolver.daysInMonth(year, month);
         final candidate = DateTime(
           year,
@@ -167,22 +225,101 @@ class RecurringOccurrenceService {
           minutes ~/ 60,
           minutes % 60,
         );
-        if (!candidate.isBefore(localStart) && !candidate.isAfter(localEnd)) {
+        if (!candidate.isBefore(effectiveStart) &&
+            !candidate.isBefore(anchor) &&
+            !candidate.isAfter(localEnd)) {
           results.add(candidate);
         }
       }
       return results;
     }
 
-    var cursor = moment.startAt.toLocal();
     final safeInterval = interval <= 0 ? 1 : interval;
-    while (cursor.isBefore(localStart)) {
-      cursor = cursor.add(Duration(days: safeInterval));
+    var cursor = atMinutes(anchorDay);
+    if (cursor.isBefore(anchor)) {
+      cursor = DateTime(
+        cursor.year,
+        cursor.month,
+        cursor.day + safeInterval,
+        minutes ~/ 60,
+        minutes % 60,
+      );
+    }
+    while (cursor.isBefore(effectiveStart)) {
+      cursor = DateTime(
+        cursor.year,
+        cursor.month,
+        cursor.day + safeInterval,
+        minutes ~/ 60,
+        minutes % 60,
+      );
     }
     while (!cursor.isAfter(localEnd)) {
       results.add(cursor);
-      cursor = cursor.add(Duration(days: safeInterval));
+      cursor = DateTime(
+        cursor.year,
+        cursor.month,
+        cursor.day + safeInterval,
+        minutes ~/ 60,
+        minutes % 60,
+      );
     }
     return results;
+  }
+
+  Future<bool> _materialize({
+    required FamilyMoment moment,
+    required DateTime scheduledStartAt,
+    required DateTime? scheduledEndAt,
+    required String createdBy,
+  }) async {
+    final repository = _repository;
+    if (repository is NonDestructiveOccurrenceRepository) {
+      final result = await
+          (repository as NonDestructiveOccurrenceRepository)
+              .materializeOccurrence(
+        moment: moment,
+        scheduledStartAt: scheduledStartAt,
+        scheduledEndAt: scheduledEndAt,
+        createdBy: createdBy,
+        source: MomentInstanceSource.calendar,
+      );
+      return result.wasCreated;
+    }
+
+    final id = _scheduledInstanceId(
+      momentId: moment.id,
+      scheduledStartAt: scheduledStartAt,
+    );
+    final existing = await repository.getInstance(
+      familyId: moment.familyId,
+      instanceId: id,
+    );
+    if (existing != null) {
+      return false;
+    }
+
+    await repository.scheduleOccurrence(
+      moment: moment,
+      scheduledStartAt: scheduledStartAt,
+      scheduledEndAt: scheduledEndAt,
+      createdBy: createdBy,
+      source: MomentInstanceSource.calendar,
+    );
+    return true;
+  }
+
+  String _scheduledInstanceId({
+    required String momentId,
+    required DateTime scheduledStartAt,
+  }) {
+    return 'instance_${momentId}_'
+        '${scheduledStartAt.toUtc().millisecondsSinceEpoch}';
+  }
+
+  static int _calendarDayDifference(DateTime start, DateTime end) {
+    final startOrdinal = DateTime.utc(start.year, start.month, start.day);
+    final endOrdinal = DateTime.utc(end.year, end.month, end.day);
+    return endOrdinal.difference(startOrdinal).inDays;
   }
 }

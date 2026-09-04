@@ -90,7 +90,11 @@ List<CalendarInstanceEntry> buildAgendaInstanceEntries(
   for (final entry in entries) {
     final moment = entry.calendarMoment;
     final localStart = moment.startAt.toLocal();
-    final startDay = DateTime(localStart.year, localStart.month, localStart.day);
+    final startDay = DateTime(
+      localStart.year,
+      localStart.month,
+      localStart.day,
+    );
 
     if (moment.status == MomentStatus.cancelled || startDay.isBefore(today)) {
       continue;

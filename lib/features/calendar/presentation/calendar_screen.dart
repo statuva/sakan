@@ -211,9 +211,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             .map((entry) => entry.calendarMoment)
             .toList(growable: false);
 
-        final agendaMoments = buildAgendaInstanceEntries(filteredEntries)
-            .map((entry) => entry.calendarMoment)
-            .toList(growable: false);
+        final agendaMoments = buildAgendaInstanceEntries(
+          filteredEntries,
+        ).map((entry) => entry.calendarMoment).toList(growable: false);
 
         final occurrenceLabelsByCalendarId = <String, String>{
           for (final entry in allEntries)

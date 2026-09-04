@@ -5,7 +5,7 @@ import 'package:sakan/features/daily_review/data/firebase_daily_review_repositor
 import 'package:sakan/features/family_setup/data/firebase_family_access_repository.dart';
 import 'package:sakan/features/family_setup/data/firebase_family_setup_repository.dart';
 import 'package:sakan/features/memories/data/firebase_memory_repository.dart';
-import 'package:sakan/features/moments/data/firebase_moment_instance_repository.dart';
+import 'package:sakan/features/moments/data/non_destructive_firebase_moment_instance_repository.dart';
 import 'package:sakan/features/profile/data/firebase_profile_repository.dart';
 import 'package:sakan/features/profile/data/firebase_schedule_repository.dart';
 import 'package:sakan/features/rhythm/data/firebase_rhythm_repository.dart';
@@ -34,8 +34,8 @@ abstract final class AppDependencies {
   static final FirebaseCalendarRepository calendarRepository =
       FirebaseCalendarRepository();
 
-  static final FirebaseMomentInstanceRepository momentInstanceRepository =
-      FirebaseMomentInstanceRepository();
+  static final NonDestructiveFirebaseMomentInstanceRepository
+  momentInstanceRepository = NonDestructiveFirebaseMomentInstanceRepository();
 
   static final FirebaseCareActionRepository careActionRepository =
       FirebaseCareActionRepository();

@@ -18,6 +18,7 @@ import 'package:sakan/features/home/presentation/home_screen.dart';
 import 'package:sakan/features/moments/presentation/moments_screen.dart';
 import 'package:sakan/features/profile/presentation/my_reminders_screen.dart';
 import 'package:sakan/features/profile/presentation/profile_screen.dart';
+import 'package:sakan/features/weekly_report/presentation/weekly_report_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -69,6 +70,11 @@ final GoRouter appRouter = GoRouter(
       path: '/my-reminders',
       name: 'myReminders',
       builder: (context, state) => const MyRemindersScreen(),
+    ),
+    GoRoute(
+      path: '/weekly-report',
+      name: 'weeklyReport',
+      builder: (context, state) => const WeeklyReportScreen(),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
