@@ -88,9 +88,9 @@ class _NotificationSettingsScreenState
   }
 
   Future<void> _saveSettings() async {
-    final familyContext = _familyContext;
+    final loadedFamilyContext = _familyContext;
 
-    if (familyContext == null || _isSaving) {
+    if (loadedFamilyContext == null || _isSaving) {
       return;
     }
 
@@ -100,16 +100,48 @@ class _NotificationSettingsScreenState
     });
 
     try {
+      final familyContext = await AppDependencies.currentFamilyService.load();
+      if (familyContext.familyId != loadedFamilyContext.familyId ||
+          familyContext.userId != loadedFamilyContext.userId) {
+        throw StateError('The active family changed. Reload these settings.');
+      }
+
       await AppDependencies.profileRepository.updateNotificationPreferences(
         familyId: familyContext.familyId,
         memberId: familyContext.userId,
         preferences: _preferences,
       );
 
+      final weeklyReportScheduled = await AppDependencies
+          .reminderNotificationService
+          .syncWeeklyReportNotification(
+            familyId: familyContext.familyId,
+            memberId: familyContext.userId,
+            isAdult: familyContext.isAdult,
+            preferences: _preferences,
+            requestPermission:
+                familyContext.isAdult && _preferences.weeklyReports,
+          );
+
       if (!mounted) return;
 
+      setState(() {
+        _familyContext = familyContext;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Notification settings saved.')),
+        SnackBar(
+          content: Text(
+            familyContext.isAdult &&
+                    _preferences.weeklyReports &&
+                    AppDependencies
+                        .reminderNotificationService
+                        .supportsScheduling &&
+                    !weeklyReportScheduled
+                ? 'Settings saved, but Android notifications are disabled.'
+                : 'Notification settings saved.',
+          ),
+        ),
       );
     } catch (_) {
       if (!mounted) return;
@@ -206,20 +238,23 @@ class _NotificationSettingsScreenState
                     },
             ),
 
-            SwitchListTile(
-              title: const Text('Weekly Reports'),
-              subtitle: const Text('Receive your weekly Digital Twin summary.'),
-              value: _preferences.weeklyReports,
-              onChanged: _isSaving
-                  ? null
-                  : (value) {
-                      setState(() {
-                        _preferences = _preferences.copyWith(
-                          weeklyReports: value,
-                        );
-                      });
-                    },
-            ),
+            if (_familyContext?.isAdult ?? false)
+              SwitchListTile(
+                title: const Text('Weekly Reports'),
+                subtitle: const Text(
+                  'Receive a notification when the family report is ready.',
+                ),
+                value: _preferences.weeklyReports,
+                onChanged: _isSaving
+                    ? null
+                    : (value) {
+                        setState(() {
+                          _preferences = _preferences.copyWith(
+                            weeklyReports: value,
+                          );
+                        });
+                      },
+              ),
 
             SwitchListTile(
               title: const Text('Important Moments'),

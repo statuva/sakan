@@ -22,6 +22,9 @@ import '../../moments/presentation/moments_screen.dart';
 import '../../moments/services/moment_session_preparation_service.dart';
 import '../../moments/presentation/schedule_moment_occurrence_screen.dart';
 import '../../profile/presentation/my_reminders_screen.dart';
+import '../../weekly_report/services/family_weekly_report_builder.dart';
+import '../../weekly_report/services/family_weekly_report_snapshot_projector.dart';
+import '../../weekly_report/presentation/widgets/home_weekly_report_card.dart';
 import '../data/daily_reflection_library.dart';
 import '../services/home_priority_selector.dart';
 import 'quick_start_moment_screen.dart';
@@ -45,6 +48,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isLoading = true;
   bool _isPerformingAction = false;
+  bool _needsWeeklyNotificationPermission = false;
+  bool _isEnablingWeeklyNotification = false;
+  bool? _lastWeeklyNotificationAdultRole;
+  Future<void> _weeklyNotificationQueue = Future<void>.value();
+  int _weeklyNotificationGeneration = 0;
   String? _errorMessage;
 
   @override
@@ -62,6 +70,9 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final familyContext = await AppDependencies.currentFamilyService.load();
       final reportStream = AppDependencies.familyInsightService.watchReport();
+
+      _lastWeeklyNotificationAdultRole = familyContext.isAdult;
+      unawaited(_syncWeeklyReportNotification(familyContext));
 
       if (!mounted) return;
 
@@ -147,6 +158,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHome(FamilyInsightReport report) {
     final familyContext = _familyContext!;
     final snapshot = report.snapshot;
+    _reconcileWeeklyNotificationRole(
+      snapshot.currentUserCanManageSharedMoments,
+    );
     final readyRoom = _readyRoomForCurrentUser(
       instances: snapshot.instances,
       currentUserId: familyContext.userId,
@@ -158,6 +172,17 @@ class _HomeScreenState extends State<HomeScreen> {
       familyId: familyContext.familyId,
       date: snapshot.generatedAt,
     );
+    final weeklyReport = snapshot.currentUserCanManageSharedMoments
+        ? FamilyWeeklyReportBuilder.buildLatestCompletedWeek(
+            FamilyWeeklyReportSnapshotProjector.projectLatestCompletedWeek(
+              snapshot,
+            ),
+          )
+        : null;
+    final hasImmediateMoment =
+        snapshot.activeInstance != null ||
+        readyRoom != null ||
+        insight?.actionType == FamilyInsightActionType.startMomentNow;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -184,6 +209,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 members: snapshot.activeMembers,
                 activeInstance: snapshot.activeInstance,
               ),
+              if (weeklyReport != null && !hasImmediateMoment) ...[
+                const SizedBox(height: AppSpacing.xl),
+                HomeWeeklyReportCard(
+                  report: weeklyReport,
+                  onEnableNotifications: _needsWeeklyNotificationPermission
+                      ? () {
+                          unawaited(_enableWeeklyReportNotification());
+                        }
+                      : null,
+                  isEnablingNotifications: _isEnablingWeeklyNotification,
+                  onViewReport: () {
+                    context.pushNamed('weeklyReport');
+                  },
+                ),
+              ],
               const SizedBox(height: AppSpacing.xl),
               HomeWhatMattersCard(
                 insight: insight,
@@ -203,7 +243,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   context.go('/calendar');
                 },
               ),
-              if (familyContext.isAdult &&
+              if (weeklyReport != null && hasImmediateMoment) ...[
+                const SizedBox(height: AppSpacing.xl),
+                HomeWeeklyReportCard(
+                  report: weeklyReport,
+                  onEnableNotifications: _needsWeeklyNotificationPermission
+                      ? () {
+                          unawaited(_enableWeeklyReportNotification());
+                        }
+                      : null,
+                  isEnablingNotifications: _isEnablingWeeklyNotification,
+                  onViewReport: () {
+                    context.pushNamed('weeklyReport');
+                  },
+                ),
+              ],
+              if (snapshot.currentUserCanManageSharedMoments &&
                   snapshot.activeInstance == null &&
                   readyRoom == null) ...[
                 const SizedBox(height: AppSpacing.md),
@@ -227,6 +282,233 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _syncWeeklyReportNotification(
+    CurrentFamilyContext familyContext,
+  ) {
+    return _enqueueWeeklyNotificationOperation((generation) async {
+      await _syncWeeklyReportNotificationNow(
+        familyContext: familyContext,
+        generation: generation,
+      );
+    });
+  }
+
+  void _reconcileWeeklyNotificationRole(bool isAdult) {
+    if (_lastWeeklyNotificationAdultRole == isAdult) {
+      return;
+    }
+
+    _lastWeeklyNotificationAdultRole = isAdult;
+    if (isAdult) {
+      unawaited(_syncWeeklyReportNotificationForCurrentMember());
+    } else {
+      unawaited(_cancelWeeklyReportNotification());
+    }
+  }
+
+  Future<void> _syncWeeklyReportNotificationForCurrentMember() {
+    return _enqueueWeeklyNotificationOperation((generation) async {
+      try {
+        final familyContext = await AppDependencies.currentFamilyService.load();
+        if (!_isWeeklyNotificationGenerationCurrent(generation) ||
+            _lastWeeklyNotificationAdultRole != true) {
+          return;
+        }
+        await _syncWeeklyReportNotificationNow(
+          familyContext: familyContext,
+          generation: generation,
+        );
+      } catch (error) {
+        debugPrint(
+          'Could not refresh weekly report notification access: $error',
+        );
+      }
+    });
+  }
+
+  Future<void> _cancelWeeklyReportNotification() {
+    return _enqueueWeeklyNotificationOperation((generation) async {
+      await AppDependencies.reminderNotificationService
+          .cancelAllWeeklyReportNotifications();
+      if (!_isWeeklyNotificationGenerationCurrent(generation) ||
+          _lastWeeklyNotificationAdultRole != false ||
+          !mounted) {
+        return;
+      }
+      setState(() {
+        _needsWeeklyNotificationPermission = false;
+      });
+    });
+  }
+
+  Future<void> _enableWeeklyReportNotification() async {
+    if (_isEnablingWeeklyNotification) {
+      return;
+    }
+
+    setState(() {
+      _isEnablingWeeklyNotification = true;
+    });
+
+    try {
+      await _enqueueWeeklyNotificationOperation((generation) async {
+        try {
+          final familyContext = await AppDependencies.currentFamilyService
+              .load();
+          if (!_isWeeklyNotificationGenerationCurrent(generation)) {
+            return;
+          }
+          if (!familyContext.isAdult ||
+              _lastWeeklyNotificationAdultRole != true) {
+            await AppDependencies.reminderNotificationService
+                .cancelAllWeeklyReportNotifications();
+            if (_isWeeklyNotificationGenerationCurrent(generation) && mounted) {
+              setState(() {
+                _needsWeeklyNotificationPermission = false;
+              });
+            }
+            return;
+          }
+
+          final preferences = await AppDependencies.profileRepository
+              .getNotificationPreferences(
+                familyId: familyContext.familyId,
+                memberId: familyContext.userId,
+              );
+          if (!_isWeeklyNotificationGenerationCurrent(generation) ||
+              _lastWeeklyNotificationAdultRole != true) {
+            return;
+          }
+
+          final notificationService =
+              AppDependencies.reminderNotificationService;
+          final scheduled = await notificationService
+              .syncWeeklyReportNotification(
+                familyId: familyContext.familyId,
+                memberId: familyContext.userId,
+                isAdult: true,
+                preferences: preferences,
+                requestPermission: true,
+              );
+          if (!_isWeeklyNotificationGenerationCurrent(generation)) {
+            return;
+          }
+          if (_lastWeeklyNotificationAdultRole != true) {
+            await notificationService.cancelAllWeeklyReportNotifications();
+            return;
+          }
+          if (!mounted) {
+            return;
+          }
+
+          setState(() {
+            _needsWeeklyNotificationPermission =
+                notificationService.supportsScheduling &&
+                preferences.weeklyReports &&
+                !scheduled;
+          });
+          _showMessage(
+            !preferences.weeklyReports
+                ? 'Weekly report alerts are off in Notification Settings.'
+                : scheduled
+                ? 'Weekly report alerts are enabled.'
+                : 'Android notifications are still disabled.',
+          );
+        } catch (_) {
+          if (_isWeeklyNotificationGenerationCurrent(generation) && mounted) {
+            _showMessage('We could not enable weekly report alerts.');
+          }
+        }
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isEnablingWeeklyNotification = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _syncWeeklyReportNotificationNow({
+    required CurrentFamilyContext familyContext,
+    required int generation,
+  }) async {
+    try {
+      final notificationService = AppDependencies.reminderNotificationService;
+      if (!familyContext.isAdult || _lastWeeklyNotificationAdultRole != true) {
+        await notificationService.cancelAllWeeklyReportNotifications();
+        if (_isWeeklyNotificationGenerationCurrent(generation) && mounted) {
+          setState(() {
+            _needsWeeklyNotificationPermission = false;
+          });
+        }
+        return;
+      }
+
+      final preferences = await AppDependencies.profileRepository
+          .getNotificationPreferences(
+            familyId: familyContext.familyId,
+            memberId: familyContext.userId,
+          );
+      if (!_isWeeklyNotificationGenerationCurrent(generation) ||
+          _lastWeeklyNotificationAdultRole != true) {
+        return;
+      }
+
+      final scheduled = await notificationService.syncWeeklyReportNotification(
+        familyId: familyContext.familyId,
+        memberId: familyContext.userId,
+        isAdult: true,
+        preferences: preferences,
+        requestPermission: false,
+      );
+      if (!_isWeeklyNotificationGenerationCurrent(generation)) {
+        return;
+      }
+      if (_lastWeeklyNotificationAdultRole != true) {
+        await notificationService.cancelAllWeeklyReportNotifications();
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _needsWeeklyNotificationPermission =
+            notificationService.supportsScheduling &&
+            preferences.weeklyReports &&
+            !scheduled;
+      });
+    } catch (error) {
+      debugPrint(
+        'Could not synchronize the weekly report notification: $error',
+      );
+    }
+  }
+
+  Future<void> _enqueueWeeklyNotificationOperation(
+    Future<void> Function(int generation) operation,
+  ) {
+    final generation = ++_weeklyNotificationGeneration;
+    final pending = _weeklyNotificationQueue.then((_) async {
+      if (!_isWeeklyNotificationGenerationCurrent(generation)) {
+        return;
+      }
+      await operation(generation);
+    });
+    _weeklyNotificationQueue = pending.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {
+        debugPrint('Could not update weekly report notification: $error');
+      },
+    );
+    return _weeklyNotificationQueue;
+  }
+
+  bool _isWeeklyNotificationGenerationCurrent(int generation) {
+    return generation == _weeklyNotificationGeneration;
   }
 
   Future<void> _performInsightAction({
