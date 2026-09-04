@@ -83,15 +83,18 @@ class DigitalTwinSimulationService {
       hypotheticalMomentIds.add(affectedMoment.id);
 
       affectedPattern = _newMomentPattern(
+        baseReport: baseReport,
         moment: affectedMoment,
         scenario: scenario,
       );
 
       scenarioTitle = 'What if your family added ${affectedMoment.title}?';
+      final timingLabel = scenario.scope == TwinSimulationScope.nextOccurrence
+          ? 'One hypothetical occurrence'
+          : _frequencyLabel(affectedMoment.expectedIntervalDays);
       scenarioSubtitle =
-          '${_frequencyLabel(affectedMoment.expectedIntervalDays)} · '
-          '${affectedMoment.expectedParticipantIds.length} expected '
-          '${affectedMoment.expectedParticipantIds.length == 1 ? 'participant' : 'participants'}';
+          '$timingLabel · ${affectedMoment.expectedParticipantIds.length} '
+          'expected ${affectedMoment.expectedParticipantIds.length == 1 ? 'participant' : 'participants'}';
     } else {
       final targetId = scenario.targetMomentId!;
       final targetIndex = simulatedMoments.indexWhere(
@@ -146,7 +149,8 @@ class DigitalTwinSimulationService {
 
     final assumptions = <String>{
       'This is a local projection. It does not change Firestore or the real Digital Twin.',
-      if (!scenario.isOutcomeAssumption)
+      if (!scenario.isOutcomeAssumption &&
+          scenario.scope == TwinSimulationScope.futureOccurrences)
         'Schedule comparisons use the next $projectionHorizon projected occurrences.',
       ...affectedPattern.assumptions,
       'Sakan does not predict relationship quality, emotions, or whether people will actually attend.',
@@ -395,31 +399,57 @@ class DigitalTwinSimulationService {
   }
 
   SimulatedMomentPattern _newMomentPattern({
+    required FamilyInsightReport baseReport,
     required FamilyMoment moment,
     required TwinSimulationScenario scenario,
   }) {
+    final isOneTime = scenario.scope == TwinSimulationScope.nextOccurrence;
+    final schedule = _projectSchedule(
+      baseReport: baseReport,
+      moment: moment,
+      count: isOneTime ? 1 : projectionHorizon,
+    );
+    final conflictCount = schedule.conflictCount;
+    final scheduleMeaning = conflictCount == null
+        ? 'Recorded availability is incomplete, so Sakan cannot compare the proposed time yet.'
+        : conflictCount == 0
+        ? 'The proposed time has no conflicts in the recorded availability.'
+        : isOneTime
+        ? 'The proposed occurrence overlaps $conflictCount recorded ${conflictCount == 1 ? 'busy period' : 'busy periods'}.'
+        : 'The next $projectionHorizon projected occurrences overlap $conflictCount recorded ${conflictCount == 1 ? 'busy period' : 'busy periods'}.';
     return SimulatedMomentPattern(
       momentId: moment.id,
       currentStatus: RhythmStatus.stillLearning,
       projectedStatus: RhythmStatus.stillLearning,
       direction: SimulationDirection.unknown,
-      summary:
-          '${moment.title} would appear as a new Still Learning pattern. '
-          'Sakan cannot project a stronger rhythm until real occurrences are recorded.',
+      summary: isOneTime
+          ? '${moment.title} is shown as one hypothetical occurrence. '
+                '$scheduleMeaning One planned event does not create a family rhythm.'
+          : '${moment.title} would appear as a new Still Learning pattern. '
+                '$scheduleMeaning Sakan cannot project a stronger rhythm until real occurrences are recorded.',
       changes: <String>[
-        'New recurring ${_categoryLabel(moment.category)}',
-        '${_frequencyLabel(moment.expectedIntervalDays)} at '
-            '${_formatMinutes(moment.resolvedPreferredStartMinutes)}',
+        'New ${isOneTime ? 'one-time' : 'recurring'} ${_categoryLabel(moment.category)}',
+        if (isOneTime)
+          'Planned at ${_formatMinutes(moment.resolvedPreferredStartMinutes)}'
+        else
+          '${_frequencyLabel(moment.expectedIntervalDays)} at '
+              '${_formatMinutes(moment.resolvedPreferredStartMinutes)}',
         '${moment.expectedParticipantIds.length} expected '
             '${moment.expectedParticipantIds.length == 1 ? 'participant' : 'participants'}',
+        if (conflictCount != null)
+          'Recorded availability conflicts: $conflictCount',
       ],
-      assumptions: const <String>[
+      assumptions: <String>[
         'The new Moment has no completed or missed history.',
-        'Its first projected state is Still Learning.',
+        if (isOneTime)
+          'Only this hypothetical occurrence is considered.'
+        else
+          'Its first projected state is Still Learning.',
       ],
       confidence: ConfidenceLevel.low,
       currentParticipantCount: 0,
       projectedParticipantCount: moment.expectedParticipantIds.length,
+      projectedConflictCount: conflictCount,
       isHypothetical: true,
       isAffected: true,
     );
@@ -736,6 +766,7 @@ class DigitalTwinSimulationService {
   _ScheduleProjection _projectSchedule({
     required FamilyInsightReport baseReport,
     required FamilyMoment moment,
+    int count = projectionHorizon,
   }) {
     final snapshot = baseReport.snapshot;
     final participantIds = moment.expectedParticipantIds.toSet();
@@ -750,7 +781,7 @@ class DigitalTwinSimulationService {
     final starts = _projectedStarts(
       baseReport: baseReport,
       moment: moment,
-      count: projectionHorizon,
+      count: count,
     );
 
     if (starts.isEmpty || coveredMembers.isEmpty) {

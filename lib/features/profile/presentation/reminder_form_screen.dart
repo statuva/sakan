@@ -185,6 +185,7 @@ class _ReminderFormScreenState extends State<ReminderFormScreen> {
                 '${DateTime.now().microsecondsSinceEpoch}',
         familyId: familyContext.familyId,
         momentId: initialAction?.momentId,
+        instanceId: initialAction?.instanceId,
         title: _titleController.text.trim(),
         reason: _noteController.text.trim(),
         assignedMemberId: familyContext.userId,

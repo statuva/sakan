@@ -61,6 +61,10 @@ class CurrentFamilyService {
       throw StateError('Your family membership could not be found.');
     }
 
+    if (memberData['isActive'] != true) {
+      throw StateError('Your family membership is not active.');
+    }
+
     return CurrentFamilyContext(
       userId: firebaseUser.uid,
       familyId: familyId,

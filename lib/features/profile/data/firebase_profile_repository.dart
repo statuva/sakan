@@ -276,6 +276,22 @@ class FirebaseProfileRepository implements ProfileRepository {
   }
 
   @override
+  Future<void> updateMemberRole({
+    required String familyId,
+    required String memberId,
+    required models.FamilyRole role,
+  }) {
+    if (role == models.FamilyRole.admin) {
+      throw ArgumentError('The family admin role cannot be assigned here.');
+    }
+
+    return _memberReference(familyId: familyId, memberId: memberId).update({
+      'role': role.name,
+      'updatedAt': Timestamp.now(),
+    });
+  }
+
+  @override
   Stream<Family?> watchFamily(String familyId) {
     return _firestore.collection('families').doc(familyId).snapshots().map((
       snapshot,

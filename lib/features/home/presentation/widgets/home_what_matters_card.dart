@@ -6,10 +6,12 @@ import '../../../../core/theme/app_radius.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/models/family_insight_report.dart';
 import '../../../../shared/models/moment_instance.dart';
+import '../../../../shared/ai/ai_models.dart';
 
 class HomeWhatMattersCard extends StatelessWidget {
   const HomeWhatMattersCard({
     required this.insight,
+    required this.aiNarrative,
     required this.nextInstance,
     required this.isPerformingAction,
     required this.onAction,
@@ -18,6 +20,7 @@ class HomeWhatMattersCard extends StatelessWidget {
   });
 
   final FamilyInsightItem? insight;
+  final Future<SakanAiResult>? aiNarrative;
   final MomentInstance? nextInstance;
   final bool isPerformingAction;
   final VoidCallback? onAction;
@@ -34,7 +37,10 @@ class HomeWhatMattersCard extends StatelessWidget {
         ? nextInstance == null
               ? null
               : 'Open Calendar'
-        : _actionLabel(item);
+        : item.primaryActionLabel ??
+              (item.actionType == FamilyInsightActionType.none
+                  ? 'Open Calendar'
+                  : null);
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -78,55 +84,76 @@ class HomeWhatMattersCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
-          Text(
-            headline,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w400,
-              height: 1.15,
-            ),
+          FutureBuilder<SakanAiResult>(
+            future: aiNarrative,
+            builder: (context, snapshot) {
+              return Text(
+                snapshot.data?.title ?? headline,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w400,
+                  height: 1.15,
+                ),
+              );
+            },
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            summary,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.textSecondary,
-              height: 1.5,
-            ),
+          FutureBuilder<SakanAiResult>(
+            future: aiNarrative,
+            builder: (context, snapshot) {
+              return Text(
+                snapshot.data?.text ?? summary,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
+              );
+            },
           ),
-          if (item != null && item.reasons.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.md),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: AppSpacing.xs,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.linen.withAlpha(150),
-                borderRadius: BorderRadius.circular(AppRadius.medium),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 17,
-                    color: visual.foreground,
-                  ),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      item.reasons.first,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
-                        height: 1.35,
-                      ),
+          if (item != null)
+            FutureBuilder<SakanAiResult>(
+              future: aiNarrative,
+              builder: (context, snapshot) {
+                final reasons = snapshot.data?.reasons.isNotEmpty == true
+                    ? snapshot.data!.reasons
+                    : item.reasons;
+                if (reasons.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.md),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                      vertical: AppSpacing.xs,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.linen.withAlpha(150),
+                      borderRadius: BorderRadius.circular(AppRadius.medium),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 17,
+                          color: visual.foreground,
+                        ),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            reasons.first,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: AppColors.textSecondary,
+                                  height: 1.35,
+                                ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
-          ],
           if (actionLabel != null) ...[
             const SizedBox(height: AppSpacing.lg),
             SizedBox(
@@ -166,53 +193,6 @@ class HomeWhatMattersCard extends StatelessWidget {
     return '${next.titleSnapshot} is next on '
         '${DateFormat('EEEE, d MMM').format(localStart)} at '
         '${DateFormat('h:mm a').format(localStart)}.';
-  }
-
-  String _actionLabel(FamilyInsightItem item) {
-    if (item.actionType == FamilyInsightActionType.joinActiveMoment &&
-        item.headline.endsWith(' is getting ready')) {
-      return 'Join Session';
-    }
-
-    final subject = _subjectFromHeadline(item.headline);
-
-    return switch (item.actionType) {
-      FamilyInsightActionType.joinActiveMoment => 'Join $subject',
-      FamilyInsightActionType.reviewToday => 'Review Today',
-      FamilyInsightActionType.openReminders => 'Open My Reminders',
-      FamilyInsightActionType.addReminder => 'Add Reminder',
-      FamilyInsightActionType.startMomentNow => 'Start $subject',
-      FamilyInsightActionType.scheduleMoment => 'Schedule $subject',
-      FamilyInsightActionType.manageMoments => 'Open Moments',
-      FamilyInsightActionType.none => 'Open Calendar',
-    };
-  }
-
-  String _subjectFromHeadline(String headline) {
-    const endings = <String>[
-      ' is happening now',
-      ' can start now',
-      ' is getting ready',
-      ' is later today',
-      ' is today',
-      ' is tomorrow',
-      ' is this week',
-      ' is next week',
-      ' is coming up',
-      ' is drifting',
-    ];
-
-    for (final ending in endings) {
-      if (headline.endsWith(ending)) {
-        return headline.substring(0, headline.length - ending.length);
-      }
-    }
-
-    if (headline.startsWith('Did ') && headline.endsWith(' happen?')) {
-      return headline.substring(4, headline.length - 8);
-    }
-
-    return 'Moment';
   }
 
   _InsightVisual _visualFor(FamilyInsightKind? kind) {

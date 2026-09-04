@@ -258,7 +258,7 @@ class FamilyInsightService {
       primaryInsight: insights.isEmpty ? null : insights.first,
       secondaryInsights: insights.length <= 1
           ? const <FamilyInsightItem>[]
-          : insights.skip(1).take(3).toList(),
+          : insights.skip(1).toList(),
       bestSharedWindow: bestSharedWindow,
     );
   }
@@ -379,7 +379,7 @@ class FamilyInsightService {
     final candidates = snapshot.actionablePlannedInstances;
 
     for (final instance in candidates) {
-      final existingReminder = snapshot.activeReminderForOccurrence(instance);
+      final existingReminder = _reminderForOccurrence(snapshot, instance);
       final currentRole = snapshot.currentMember?.role;
 
       final canStart =
@@ -388,7 +388,8 @@ class FamilyInsightService {
               snapshot.currentUserIsExpected(instance));
 
       final canCreateReminder =
-          currentRole == FamilyRole.admin ||
+          (currentRole == FamilyRole.admin ||
+              currentRole == FamilyRole.adult) &&
           snapshot.currentUserIsExpected(instance);
 
       final decision = MomentActionEvaluator.evaluate(
@@ -400,6 +401,11 @@ class FamilyInsightService {
         canCreatePersonalReminder: canCreateReminder,
         existingReminder: existingReminder,
       );
+
+      if (existingReminder?.isFinished == true &&
+          decision.actionType == FamilyInsightActionType.openReminders) {
+        continue;
+      }
 
       switch (decision.actionType) {
         case FamilyInsightActionType.startMomentNow:
@@ -433,7 +439,10 @@ class FamilyInsightService {
           category == MomentCategory.responsibility;
 
       if (isPreparation && days >= 0 && days <= 14) {
-        addInsight(_preparationInsight(snapshot, instance));
+        final reminder = _reminderForOccurrence(snapshot, instance);
+        if (reminder?.isFinished != true) {
+          addInsight(_preparationInsight(snapshot, instance));
+        }
       }
     }
 
@@ -651,7 +660,7 @@ class FamilyInsightService {
     FamilyInsightSnapshot snapshot,
     MomentInstance instance,
   ) {
-    final existing = snapshot.activeReminderForOccurrence(instance);
+    final existing = _reminderForOccurrence(snapshot, instance);
     final category = instance.categorySnapshot;
     final days = _daysUntil(snapshot.generatedAt, instance.scheduledStartAt);
     final reminderChoice = existing == null
@@ -691,6 +700,22 @@ class FamilyInsightService {
       recommendedActionUsesAvailability:
           reminderChoice?.usesAvailability ?? false,
     );
+  }
+
+  static CareAction? _reminderForOccurrence(
+    FamilyInsightSnapshot snapshot,
+    MomentInstance instance,
+  ) {
+    CareAction? finishedFallback;
+    for (final reminder in snapshot.currentUserReminders) {
+      final exact = reminder.instanceId == instance.id;
+      final legacy = reminder.instanceId == null &&
+          reminder.momentId == instance.momentId;
+      if (!exact && !legacy) continue;
+      if (!reminder.isFinished) return reminder;
+      finishedFallback ??= reminder;
+    }
+    return finishedFallback;
   }
 
   static FamilyInsightItem _driftingRhythmInsight(

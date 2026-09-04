@@ -81,6 +81,12 @@ abstract interface class ProfileRepository {
     required bool analyticsConsent,
   });
 
+  Future<void> updateMemberRole({
+    required String familyId,
+    required String memberId,
+    required models.FamilyRole role,
+  });
+
   Stream<Family?> watchFamily(String familyId);
 
   Future<void> updateFamilyName({

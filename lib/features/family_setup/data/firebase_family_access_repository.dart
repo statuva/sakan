@@ -176,10 +176,8 @@ class FirebaseFamilyAccessRepository implements FamilyAccessRepository {
         throw StateError('Enter your name before joining.');
       }
 
-      if (role == FamilyRole.admin) {
-        throw ArgumentError(
-          'Joining members cannot assign themselves as admin.',
-        );
+      if (role != FamilyRole.child) {
+        throw ArgumentError('New members must be confirmed by the family admin.');
       }
 
       final invitation = await getInvitation(normalizedCode);
@@ -216,7 +214,7 @@ class FirebaseFamilyAccessRepository implements FamilyAccessRepository {
           id: user.uid,
           familyId: invitation.familyId,
           displayName: cleanDisplayName,
-          role: role,
+          role: FamilyRole.child,
           ageGroup: ageGroup,
           interests: const [],
           preferredDays: const [],

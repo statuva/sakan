@@ -21,7 +21,8 @@ service cloud.firestore {
 
     function isFamilyMember(familyId) {
       return signedIn()
-        && exists(memberPath(familyId, request.auth.uid));
+        && exists(memberPath(familyId, request.auth.uid))
+        && get(memberPath(familyId, request.auth.uid)).data.isActive == true;
     }
 
     function memberRole(familyId) {
@@ -38,6 +39,22 @@ service cloud.firestore {
         && (
           memberRole(familyId) == 'admin'
           || memberRole(familyId) == 'adult'
+        );
+    }
+
+    function isAiAdult(familyId) {
+      return isAdultOrAdmin(familyId)
+        && get(memberPath(familyId, request.auth.uid)).data.ageGroup in [
+          'adult',
+          'senior'
+        ];
+    }
+
+    function validRoleAge(data) {
+      return data.role == 'child'
+        || (
+          data.role in ['admin', 'adult']
+          && data.ageGroup in ['adult', 'senior']
         );
     }
 
@@ -72,8 +89,20 @@ service cloud.firestore {
           request.resource.data.familyId
         ).data.createdBy == request.auth.uid;
 
-      allow update, delete: if signedIn()
-        && resource.data.createdBy == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.createdBy == request.auth.uid
+        && isFamilyAdmin(resource.data.familyId)
+        && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'isActive',
+            'expiresAt'
+          ]);
+
+      allow delete: if signedIn()
+        && resource.data.createdBy == request.auth.uid
+        && isFamilyAdmin(resource.data.familyId);
     }
 
     match /families/{familyId} {
@@ -100,6 +129,8 @@ service cloud.firestore {
         allow create: if signedIn()
           && memberId == request.auth.uid
           && request.resource.data.familyId == familyId
+          && request.resource.data.isActive == true
+          && validRoleAge(request.resource.data)
           && (
             (
               request.resource.data.role == 'admin'
@@ -107,10 +138,7 @@ service cloud.firestore {
             )
             ||
             (
-              (
-                request.resource.data.role == 'adult'
-                || request.resource.data.role == 'child'
-              )
+              request.resource.data.role == 'child'
               && request.resource.data.joinedViaInviteCode is string
               && validInvitation(
                 request.resource.data.joinedViaInviteCode,
@@ -119,8 +147,10 @@ service cloud.firestore {
             )
           );
 
-        allow update: if isFamilyAdmin(familyId)
-          || (
+        allow update: if validRoleAge(request.resource.data)
+          && (
+            isFamilyAdmin(familyId)
+            || (
             signedIn()
             && memberId == request.auth.uid
             && request.resource.data
@@ -138,6 +168,7 @@ service cloud.firestore {
                 'privacyConsent',
                 'updatedAt'
               ])
+            )
           );
 
         allow delete: if isFamilyAdmin(familyId);
@@ -166,9 +197,14 @@ service cloud.firestore {
       match /availabilityBlocks/{blockId} {
         allow read: if isFamilyMember(familyId);
 
-        allow create, update: if isFamilyMember(familyId)
+        allow create: if isFamilyMember(familyId)
           && request.resource.data.familyId == familyId
           && request.resource.data.memberId == request.auth.uid;
+
+        allow update: if isFamilyMember(familyId)
+          && resource.data.memberId == request.auth.uid
+          && request.resource.data.familyId == resource.data.familyId
+          && request.resource.data.memberId == resource.data.memberId;
 
         allow delete: if isFamilyMember(familyId)
           && resource.data.memberId == request.auth.uid;
@@ -380,20 +416,12 @@ match /dailyReviews/{reviewId} {
 
       // Existing source and Moment links cannot
       // be changed after they have been stored.
-      && (
-        !resource.data.keys().hasAny([
-          'source'
-        ])
-        || request.resource.data.source
-          == resource.data.source
-      )
-      && (
-        !resource.data.keys().hasAny([
-          'momentId'
-        ])
-        || request.resource.data.momentId
-          == resource.data.momentId
-      )
+      && request.resource.data.get('source', null)
+        == resource.data.get('source', null)
+      && request.resource.data.get('momentId', null)
+        == resource.data.get('momentId', null)
+      && request.resource.data.get('instanceId', null)
+        == resource.data.get('instanceId', null)
 
       && request.resource.data
         .diff(resource.data)
@@ -405,6 +433,7 @@ match /dailyReviews/{reviewId} {
           'status',
           'source',
           'momentId',
+          'instanceId',
           'evidenceType',
           'completedAt',
           'updatedAt'
@@ -429,9 +458,31 @@ match /dailyReviews/{reviewId} {
         allow read: if isFamilyMember(familyId);
 
         allow create: if isAdultOrAdmin(familyId)
-          && request.resource.data.familyId == familyId;
+          && request.resource.data.familyId == familyId
+          && request.resource.data.get('aiReflection', null) == null;
 
-        allow update, delete: if isAdultOrAdmin(familyId);
+        allow update: if isAdultOrAdmin(familyId)
+          && (
+            request.resource.data.get('aiReflection', null)
+              == resource.data.get('aiReflection', null)
+            || request.resource.data.get('aiReflection', null) == null
+          );
+
+        allow delete: if isAdultOrAdmin(familyId);
+      }
+
+      match /aiArtifacts/{artifactId} {
+        allow read: if isAiAdult(familyId)
+          && (
+            resource.data.audience == 'family-adults'
+            || resource.data.audience == request.auth.uid
+          );
+        allow write: if false;
+      }
+
+      match /weeklyReports/{reportId} {
+        allow read: if isAiAdult(familyId);
+        allow write: if false;
       }
     }
 

@@ -3,17 +3,32 @@ import 'package:go_router/go_router.dart';
 
 import 'package:sakan/core/theme/app_colors.dart';
 import 'package:sakan/core/theme/app_radius.dart';
+import 'package:sakan/app/app_dependencies.dart';
+import 'package:sakan/shared/models/current_family_context.dart';
 import 'package:sakan/shared/widgets/branding/sakan_brand.dart';
 
-class AppShell extends StatelessWidget {
+class AppShell extends StatefulWidget {
   const AppShell({required this.navigationShell, super.key});
 
   final StatefulNavigationShell navigationShell;
 
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  late final Future<CurrentFamilyContext> _familyContext;
+
+  @override
+  void initState() {
+    super.initState();
+    _familyContext = AppDependencies.currentFamilyService.load();
+  }
+
   void _openBranch(int branchIndex) {
-    navigationShell.goBranch(
+    widget.navigationShell.goBranch(
       branchIndex,
-      initialLocation: branchIndex == navigationShell.currentIndex,
+      initialLocation: branchIndex == widget.navigationShell.currentIndex,
     );
   }
 
@@ -38,13 +53,26 @@ class AppShell extends StatelessWidget {
             child: MediaQuery.removePadding(
               context: context,
               removeTop: true,
-              child: navigationShell,
+              child: widget.navigationShell,
             ),
           ),
         ],
       ),
+      floatingActionButton: FutureBuilder<CurrentFamilyContext>(
+        future: _familyContext,
+        builder: (context, snapshot) {
+          if (snapshot.data?.canUseAi != true) return const SizedBox.shrink();
+          return FloatingActionButton.extended(
+            onPressed: () {
+              context.pushNamed('askSakan');
+            },
+            icon: const Icon(Icons.auto_awesome_rounded),
+            label: const Text('Ask Sakan'),
+          );
+        },
+      ),
       bottomNavigationBar: _SakanBottomNavigation(
-        currentBranchIndex: navigationShell.currentIndex,
+        currentBranchIndex: widget.navigationShell.currentIndex,
         onSelected: _openBranch,
       ),
     );

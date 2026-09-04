@@ -21,7 +21,6 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
   final _codeController = TextEditingController();
   final _nameController = TextEditingController();
 
-  FamilyRole _selectedRole = FamilyRole.adult;
   AgeGroup _selectedAgeGroup = AgeGroup.adult;
 
   FamilyInvitation? _invitation;
@@ -112,7 +111,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
       await AppDependencies.familyAccessRepository.joinFamily(
         code: _codeController.text,
         displayName: _nameController.text,
-        role: _selectedRole,
+        role: FamilyRole.child,
         ageGroup: _selectedAgeGroup,
       );
 
@@ -213,24 +212,16 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                 ),
                 const SizedBox(height: AppSpacing.md),
 
-                DropdownButtonFormField<FamilyRole>(
-                  initialValue: _selectedRole,
-                  decoration: const InputDecoration(labelText: 'Family role'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: FamilyRole.adult,
-                      child: Text('Adult'),
+                const AppCard(
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.verified_user_outlined),
+                    title: Text('Role confirmed by the family admin'),
+                    subtitle: Text(
+                      'New members join with limited access. The family admin '
+                      'can grant adult access after confirming who joined.',
                     ),
-                    DropdownMenuItem(
-                      value: FamilyRole.child,
-                      child: Text('Child'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _selectedRole = value);
-                    }
-                  },
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.md),
 

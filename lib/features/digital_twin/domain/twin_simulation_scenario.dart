@@ -220,7 +220,7 @@ extension TwinSimulationTypeLabel on TwinSimulationType {
       TwinSimulationType.assumeParticipantJoins =>
         'Assumes a selected member joins a completed next occurrence.',
       TwinSimulationType.createMoment =>
-        'Adds a new local-only recurring Moment with no recorded history.',
+        'Adds a new local-only hypothetical Moment with no recorded history.',
     };
   }
 }

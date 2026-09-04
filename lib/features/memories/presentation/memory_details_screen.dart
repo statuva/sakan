@@ -2,13 +2,78 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_spacing.dart';
+import '../../../app/app_dependencies.dart';
+import '../../../shared/ai/ai_models.dart';
 import '../../../shared/models/family_memory.dart';
 import '../../calendar/presentation/widgets/calendar_palette.dart';
 
-class MemoryDetailsScreen extends StatelessWidget {
+class MemoryDetailsScreen extends StatefulWidget {
   const MemoryDetailsScreen({required this.memory, super.key});
 
   final FamilyMemory memory;
+
+  @override
+  State<MemoryDetailsScreen> createState() => _MemoryDetailsScreenState();
+}
+
+class _MemoryDetailsScreenState extends State<MemoryDetailsScreen> {
+  String? _reflection;
+  bool _canUseAi = false;
+  bool _isLoadingAiAccess = true;
+  bool _isGenerating = false;
+  String? _reflectionError;
+
+  FamilyMemory get memory => widget.memory;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAiAccess();
+  }
+
+  Future<void> _loadAiAccess() async {
+    try {
+      final familyContext = await AppDependencies.currentFamilyService.load();
+      if (!mounted) return;
+      setState(() {
+        _canUseAi =
+            familyContext.familyId == memory.familyId && familyContext.canUseAi;
+        _isLoadingAiAccess = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _canUseAi = false;
+        _isLoadingAiAccess = false;
+      });
+    }
+  }
+
+  Future<void> _generateReflection() async {
+    if (!_canUseAi ||
+        _isGenerating ||
+        memory.note?.trim().isNotEmpty != true) {
+      return;
+    }
+
+    setState(() {
+      _isGenerating = true;
+      _reflectionError = null;
+    });
+    try {
+      final result = await AppDependencies.sakanAiGateway.generate(
+        feature: SakanAiFeature.memoryReflection,
+        targetId: memory.id,
+      );
+      if (!mounted) return;
+      setState(() => _reflection = result.text);
+    } on SakanAiException catch (error) {
+      if (!mounted) return;
+      setState(() => _reflectionError = error.message);
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -111,24 +176,62 @@ class MemoryDetailsScreen extends StatelessWidget {
                   : 'No family note was added.',
             ),
 
-            const SizedBox(height: AppSpacing.xl),
-
-            Text(
-              'Sakan Reflection',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-
-            const SizedBox(height: AppSpacing.sm),
-
-            _MemorySection(
-              icon: Icons.auto_awesome_outlined,
-              text: memory.aiReflection?.trim().isNotEmpty == true
-                  ? memory.aiReflection!
-                  : 'AI reflection has not '
-                        'been generated yet. '
-                        'The original family note '
-                        'remains available above.',
-            ),
+            if (!_isLoadingAiAccess && _canUseAi) ...[
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                'Sakan Reflection',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              _MemorySection(
+                icon: Icons.auto_awesome_outlined,
+                text: _reflection?.trim().isNotEmpty == true
+                    ? _reflection!
+                    : 'AI reflection has not '
+                          'been generated yet. '
+                          'The original family note '
+                          'remains available above.',
+              ),
+              if (memory.note?.trim().isNotEmpty == true &&
+                  _reflection == null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _isGenerating ? null : _generateReflection,
+                    icon: _isGenerating
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_awesome_rounded),
+                    label: Text(
+                      _isGenerating
+                          ? 'Reflecting…'
+                          : 'Create Sakan Reflection',
+                    ),
+                  ),
+                ),
+              ],
+              if (_reflectionError != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  _reflectionError!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
+              if (_reflection != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'AI-generated from this Memory’s permitted family note.',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: CalendarPalette.inkSoft,
+                  ),
+                ),
+              ],
+            ],
 
             const SizedBox(height: AppSpacing.xl),
 

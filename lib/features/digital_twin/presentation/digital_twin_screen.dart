@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../../../app/app_dependencies.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/models/family_insight_report.dart';
+import '../../../shared/ai/ai_models.dart';
+import '../../../shared/models/current_family_context.dart';
 import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/member.dart';
 import '../../../shared/models/model_enums.dart';
@@ -42,8 +44,10 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
       DigitalTwinSimulationService();
 
   Stream<FamilyInsightReport>? _reportStream;
+  CurrentFamilyContext? _familyContext;
 
   DigitalTwinSimulationResult? _activeSimulation;
+  Future<SakanAiResult>? _simulationNarrative;
   FamilyInsightReport? _simulationBaseReport;
 
   bool _isLoading = true;
@@ -63,11 +67,12 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
     });
 
     try {
-      await AppDependencies.currentFamilyService.load();
+      final familyContext = await AppDependencies.currentFamilyService.load();
 
       if (!mounted) return;
 
       setState(() {
+        _familyContext = familyContext;
         _reportStream = AppDependencies.familyInsightService.watchReport();
         _isLoading = false;
       });
@@ -89,6 +94,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
     final scenario = await showWhatIfScenarioSheet(
       context: context,
       report: report,
+      parser: AppDependencies.twinAiScenarioParser,
     );
 
     if (scenario == null || !mounted) {
@@ -100,10 +106,6 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
     });
 
     try {
-      // Keeps the transition visible and leaves room for a future protected
-      // AI parser without changing the simulation-state contract.
-      await Future<void>.delayed(const Duration(milliseconds: 180));
-
       final result = _simulationService.simulate(
         baseReport: report,
         scenario: scenario,
@@ -114,6 +116,9 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
       setState(() {
         _simulationBaseReport = report;
         _activeSimulation = result;
+        _simulationNarrative = _familyContext?.canUseAi == true
+            ? AppDependencies.twinSimulationNarrativeService.explain(result)
+            : null;
       });
     } catch (error) {
       if (!mounted) return;
@@ -140,6 +145,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
     setState(() {
       _activeSimulation = null;
       _simulationBaseReport = null;
+      _simulationNarrative = null;
     });
   }
 
@@ -428,9 +434,20 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
           }),
         const SizedBox(height: AppSpacing.xl),
         if (simulation == null)
-          _FamilyLearningCard(interpretation: familyInterpretation!)
+          _FamilyLearningCard(
+            interpretation: familyInterpretation!,
+            aiNarrative: _familyContext?.canUseAi == true
+                ? AppDependencies.twinFamilyNarrativeService.explain(
+                    report: report,
+                    fallback: familyInterpretation,
+                  )
+                : null,
+          )
         else
-          _SimulationLearningCard(simulation: simulation),
+          _SimulationLearningCard(
+            simulation: simulation,
+            aiNarrative: _simulationNarrative,
+          ),
         if (simulation == null) ...[
           const SizedBox(height: AppSpacing.xl),
           SizedBox(
@@ -678,18 +695,16 @@ class _MomentPatternCard extends StatelessWidget {
 }
 
 class _FamilyLearningCard extends StatelessWidget {
-  const _FamilyLearningCard({required this.interpretation});
+  const _FamilyLearningCard({
+    required this.interpretation,
+    required this.aiNarrative,
+  });
 
   final FamilyTwinInterpretation interpretation;
+  final Future<SakanAiResult>? aiNarrative;
 
   @override
   Widget build(BuildContext context) {
-    final sourceLabel = switch (interpretation.origin) {
-      DigitalTwinInterpretationOrigin.externalAi => 'AI interpretation',
-      DigitalTwinInterpretationOrigin.ruleBasedFallback =>
-        'Recorded-data summary',
-    };
-
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
@@ -703,26 +718,41 @@ class _FamilyLearningCard extends StatelessWidget {
           _LearningHeader(
             icon: Icons.insights_outlined,
             title: 'WHAT SAKAN IS LEARNING',
-            subtitle: sourceLabel,
+            subtitle: 'AI interpretation · factual fallback available',
             color: CalendarPalette.forestDark,
             background: CalendarPalette.forestSoft,
           ),
           const SizedBox(height: AppSpacing.lg),
-          Text(
-            interpretation.summary,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: CalendarPalette.ink,
-              height: 1.5,
-            ),
+          FutureBuilder<SakanAiResult>(
+            future: aiNarrative,
+            builder: (context, snapshot) {
+              final ai = snapshot.data;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    ai?.text ?? interpretation.summary,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: CalendarPalette.ink,
+                      height: 1.5,
+                    ),
+                  ),
+                  if (snapshot.connectionState == ConnectionState.waiting) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    const LinearProgressIndicator(minHeight: 2),
+                  ],
+                  if (ai != null && ai.reasons.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.lg),
+                    _ThemeWrap(
+                      themes: ai.reasons,
+                      color: CalendarPalette.forestDark,
+                      background: CalendarPalette.forestSoft,
+                    ),
+                  ],
+                ],
+              );
+            },
           ),
-          if (interpretation.themes.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.lg),
-            _ThemeWrap(
-              themes: interpretation.themes,
-              color: CalendarPalette.forestDark,
-              background: CalendarPalette.forestSoft,
-            ),
-          ],
           const SizedBox(height: AppSpacing.lg),
           Text(
             'This describes recorded Moment patterns. It does not score family '
@@ -739,9 +769,13 @@ class _FamilyLearningCard extends StatelessWidget {
 }
 
 class _SimulationLearningCard extends StatelessWidget {
-  const _SimulationLearningCard({required this.simulation});
+  const _SimulationLearningCard({
+    required this.simulation,
+    required this.aiNarrative,
+  });
 
   final DigitalTwinSimulationResult simulation;
+  final Future<SakanAiResult>? aiNarrative;
 
   @override
   Widget build(BuildContext context) {
@@ -763,21 +797,48 @@ class _SimulationLearningCard extends StatelessWidget {
             background: CalendarPalette.milestoneSoft,
           ),
           const SizedBox(height: AppSpacing.lg),
-          Text(
-            simulation.familySummary,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: CalendarPalette.ink,
-              height: 1.5,
-            ),
+          FutureBuilder<SakanAiResult>(
+            future: aiNarrative,
+            builder: (context, snapshot) {
+              final narrative = snapshot.data;
+              final themes = narrative?.reasons.isNotEmpty == true
+                  ? narrative!.reasons
+                  : simulation.familyThemes;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    narrative?.text ?? simulation.familySummary,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: CalendarPalette.ink,
+                      height: 1.5,
+                    ),
+                  ),
+                  if (snapshot.connectionState == ConnectionState.waiting) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    const LinearProgressIndicator(minHeight: 2),
+                  ],
+                  if (narrative != null) ...[
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      'AI-generated explanation of Sakan’s local projection',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: CalendarPalette.inkSoft,
+                      ),
+                    ),
+                  ],
+                  if (themes.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.lg),
+                    _ThemeWrap(
+                      themes: themes,
+                      color: CalendarPalette.milestone,
+                      background: CalendarPalette.milestoneSoft,
+                    ),
+                  ],
+                ],
+              );
+            },
           ),
-          if (simulation.familyThemes.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.lg),
-            _ThemeWrap(
-              themes: simulation.familyThemes,
-              color: CalendarPalette.milestone,
-              background: CalendarPalette.milestoneSoft,
-            ),
-          ],
           const SizedBox(height: AppSpacing.lg),
           Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),

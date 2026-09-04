@@ -7,14 +7,22 @@ import 'member_recommendation_policy.dart';
 /// Final deterministic gate before a Home insight is shown to one member.
 abstract final class PersonalizedFamilyFocusSelector {
   static FamilyInsightItem? select(FamilyInsightReport report) {
+    final candidates = selectAll(report);
+    return candidates.isEmpty ? null : candidates.first;
+  }
+
+  static List<FamilyInsightItem> selectAll(FamilyInsightReport report) {
     final member = report.snapshot.currentMember;
-    if (member == null) return null;
+    if (member == null || !member.isActive) {
+      return const <FamilyInsightItem>[];
+    }
 
     final candidates = <FamilyInsightItem>[
       if (report.primaryInsight != null) report.primaryInsight!,
       ...report.secondaryInsights,
-    ]..sort((a, b) => a.priority.compareTo(b.priority));
+    ];
 
+    final allowed = <FamilyInsightItem>[];
     for (final insight in candidates) {
       final moment = insight.relatedMomentId == null
           ? null
@@ -24,11 +32,16 @@ abstract final class PersonalizedFamilyFocusSelector {
         continue;
       }
 
-      if (moment == null) return insight;
-      return _personalize(member: member, moment: moment, insight: insight);
+      if (moment == null) {
+        allowed.add(insight);
+      } else {
+        allowed.add(
+          _personalize(member: member, moment: moment, insight: insight),
+        );
+      }
     }
 
-    return null;
+    return List<FamilyInsightItem>.unmodifiable(allowed);
   }
 
   static bool _isAllowed({
@@ -36,6 +49,12 @@ abstract final class PersonalizedFamilyFocusSelector {
     required FamilyMoment? moment,
     required FamilyInsightItem insight,
   }) {
+    if (member.role == FamilyRole.child &&
+        insight.relatedMomentId != null &&
+        moment == null) {
+      return false;
+    }
+
     if (moment != null &&
         !MemberRecommendationPolicy.canSeeMoment(
           member: member,
@@ -52,11 +71,14 @@ abstract final class PersonalizedFamilyFocusSelector {
       return false;
     }
 
-    if (moment != null &&
-        insight.actionType == FamilyInsightActionType.addReminder &&
-        moment.isSubject(member.id)) {
-      // Prevent Ali being told to prepare a gift/surprise for Ali.
-      return false;
+    if (insight.actionType == FamilyInsightActionType.addReminder) {
+      if (moment == null ||
+          !MemberRecommendationPolicy.canReceivePreparationAction(
+            member: member,
+            moment: moment,
+          )) {
+        return false;
+      }
     }
 
     if (moment != null &&

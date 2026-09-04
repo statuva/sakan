@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:sakan/app/app_shell.dart';
+import 'package:sakan/features/assistant/presentation/sakan_assistant_screen.dart';
 import 'package:sakan/features/authentication/presentation/forgot_password_screen.dart';
 import 'package:sakan/features/authentication/presentation/sign_in_screen.dart';
 import 'package:sakan/features/authentication/presentation/sign_up_screen.dart';
@@ -18,6 +19,7 @@ import 'package:sakan/features/home/presentation/home_screen.dart';
 import 'package:sakan/features/moments/presentation/moments_screen.dart';
 import 'package:sakan/features/profile/presentation/my_reminders_screen.dart';
 import 'package:sakan/features/profile/presentation/profile_screen.dart';
+import 'package:sakan/features/profile/presentation/privacy_settings_screen.dart';
 import 'package:sakan/features/weekly_report/presentation/weekly_report_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -75,6 +77,16 @@ final GoRouter appRouter = GoRouter(
       path: '/weekly-report',
       name: 'weeklyReport',
       builder: (context, state) => const WeeklyReportScreen(),
+    ),
+    GoRoute(
+      path: '/ask-sakan',
+      name: 'askSakan',
+      builder: (context, state) => const SakanAssistantScreen(),
+    ),
+    GoRoute(
+      path: '/privacy-ai',
+      name: 'privacyAi',
+      builder: (context, state) => const PrivacySettingsScreen(),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {

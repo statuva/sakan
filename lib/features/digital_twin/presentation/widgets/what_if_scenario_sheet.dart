@@ -8,11 +8,13 @@ import '../../../../shared/models/model_enums.dart';
 import '../../../../shared/widgets/controls/app_pill_segmented_control.dart';
 import '../../../calendar/presentation/widgets/calendar_palette.dart';
 import '../../domain/twin_simulation_scenario.dart';
-import 'what_if_ai_reserved_panel.dart';
+import '../../services/twin_ai_scenario_parser.dart';
+import 'what_if_ai_conversation_panel.dart';
 
 Future<TwinSimulationScenario?> showWhatIfScenarioSheet({
   required BuildContext context,
   required FamilyInsightReport report,
+  required TwinAiScenarioParser parser,
 }) {
   return showModalBottomSheet<TwinSimulationScenario>(
     context: context,
@@ -29,6 +31,7 @@ Future<TwinSimulationScenario?> showWhatIfScenarioSheet({
         builder: (context, scrollController) {
           return WhatIfScenarioSheet(
             report: report,
+            parser: parser,
             scrollController: scrollController,
           );
         },
@@ -42,11 +45,13 @@ enum _ScenarioBuilderMode { existingMoment, newMoment }
 class WhatIfScenarioSheet extends StatefulWidget {
   const WhatIfScenarioSheet({
     required this.report,
+    required this.parser,
     required this.scrollController,
     super.key,
   });
 
   final FamilyInsightReport report;
+  final TwinAiScenarioParser parser;
   final ScrollController scrollController;
 
   @override
@@ -91,6 +96,22 @@ class _WhatIfScenarioSheetState extends State<WhatIfScenarioSheet> {
       (first, second) => first.displayName.compareTo(second.displayName),
     );
     return result;
+  }
+
+  bool get _canUseAi {
+    final currentMember = widget.report.snapshot.currentMember;
+
+    if (currentMember == null || !currentMember.isActive) {
+      return false;
+    }
+
+    final hasAdultRole =
+        currentMember.role == FamilyRole.admin ||
+        currentMember.role == FamilyRole.adult;
+    final hasAdultAge =
+        currentMember.ageGroup == AgeGroup.adult ||
+        currentMember.ageGroup == AgeGroup.senior;
+    return hasAdultRole && hasAdultAge;
   }
 
   FamilyMoment? get _selectedMoment {
@@ -394,9 +415,17 @@ class _WhatIfScenarioSheetState extends State<WhatIfScenarioSheet> {
               ),
             ),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          const Divider(),
-          const WhatIfAiReservedPanel(),
+          if (_canUseAi) ...[
+            const SizedBox(height: AppSpacing.lg),
+            const Divider(),
+            WhatIfAiConversationPanel(
+              report: widget.report,
+              parser: widget.parser,
+              onScenarioReady: (scenario) {
+                Navigator.of(context).pop(scenario);
+              },
+            ),
+          ],
         ],
       ),
     );
