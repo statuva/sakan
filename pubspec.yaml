@@ -83,6 +83,10 @@ flutter:
     - assets/images/sakan_ai_star.png
     - assets/images/sakan_tree.png
     - assets/images/sakan_birds.png
+    - assets/images/sakan_intro_family.png
+    - assets/images/sakan_intro_wordmark.png
+    - assets/images/sakan_intro_star_gold.png
+    - assets/images/sakan_intro_star_blue.png
 
   fonts:
     - family: Satoshi
