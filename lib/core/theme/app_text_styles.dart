@@ -6,7 +6,7 @@ import 'app_colors.dart';
 abstract final class AppTextStyles {
   static const String primaryFont = 'Satoshi';
   static const String secondaryFont = 'GeneralSans';
-  static const String technicalFont = 'FiraCode';
+  static const String arabicFont = 'Thmanyah';
 
   static TextStyle _titleStyle({
     required double fontSize,
@@ -86,10 +86,10 @@ abstract final class AppTextStyles {
     return _titleStyle(fontSize: 32, height: 40 / 32);
   }
 
-  static const TextStyle technical = TextStyle(
-    fontFamily: technicalFont,
+  static const TextStyle arabic = TextStyle(
+    fontFamily: arabicFont,
     fontSize: 14,
-    height: 20 / 14,
+    height: 22 / 14,
     fontWeight: FontWeight.w400,
     color: AppColors.textPrimary,
   );

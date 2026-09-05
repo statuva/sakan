@@ -94,9 +94,9 @@ flutter:
         - asset: assets/fonts/Satoshi-Bold.otf
           weight: 700
 
-    - family: FiraCode
+    - family: Thmanyah
       fonts:
-        - asset: assets/fonts/FiraCode-VariableFont_wght.ttf
+        - asset: assets/fonts/Thmanyah-Regular.otf
           weight: 400
 
     - family: GeneralSans
