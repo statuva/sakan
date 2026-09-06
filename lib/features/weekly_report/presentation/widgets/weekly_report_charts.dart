@@ -124,8 +124,9 @@ class _DayBar extends StatelessWidget {
           '${day.pendingReviewCount} unresolved, '
           '${day.cancelledCount} cancelled',
       child: Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
           SizedBox(
             height: chartHeight,
             child: Align(
@@ -136,40 +137,35 @@ class _DayBar extends StatelessWidget {
                   width: 24,
                   height: height,
                   child: day.occurrenceCount == 0
-    ? const ColoredBox(color: AppColors.linen)
-    : Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (day.completedCount > 0)
-            Expanded(
-              flex: day.completedCount,
-              child: const SizedBox.expand(
-                child: ColoredBox(color: AppColors.success),
-              ),
-            ),
-          if (day.missedCount > 0)
-            Expanded(
-              flex: day.missedCount,
-              child: const SizedBox.expand(
-                child: ColoredBox(color: AppColors.error),
-              ),
-            ),
-          if (day.pendingReviewCount > 0)
-            Expanded(
-              flex: day.pendingReviewCount,
-              child: const SizedBox.expand(
-                child: ColoredBox(color: AppColors.info),
-              ),
-            ),
-          if (day.cancelledCount > 0)
-            Expanded(
-              flex: day.cancelledCount,
-              child: const SizedBox.expand(
-                child: ColoredBox(color: AppColors.disabled),
-              ),
-            ),
-        ],
-      ),
+                      ? const ColoredBox(color: AppColors.linen)
+                      : Column(
+                          children: [
+                            if (day.completedCount > 0)
+                              Expanded(
+                                flex: day.completedCount,
+                                child: const ColoredBox(
+                                  color: AppColors.success,
+                                ),
+                              ),
+                            if (day.missedCount > 0)
+                              Expanded(
+                                flex: day.missedCount,
+                                child: const ColoredBox(color: AppColors.error),
+                              ),
+                            if (day.pendingReviewCount > 0)
+                              Expanded(
+                                flex: day.pendingReviewCount,
+                                child: const ColoredBox(color: AppColors.info),
+                              ),
+                            if (day.cancelledCount > 0)
+                              Expanded(
+                                flex: day.cancelledCount,
+                                child: const ColoredBox(
+                                  color: AppColors.disabled,
+                                ),
+                              ),
+                          ],
+                        ),
                 ),
               ),
             ),
