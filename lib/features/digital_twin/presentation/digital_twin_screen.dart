@@ -266,10 +266,11 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
           });
 
     final familyInterpretation = simulation == null
-        ? _interpretationService.interpretFamily(
+          ? _interpretationService.interpretFamily(
             moments: snapshot.moments,
             rhythms: snapshot.rhythms,
             instances: snapshot.instances,
+            referenceDate: snapshot.generatedAt,
           )
         : null;
 
@@ -439,7 +440,6 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
             aiNarrative: _familyContext?.canUseAi == true
                 ? AppDependencies.twinFamilyNarrativeService.explain(
                     report: report,
-                    fallback: familyInterpretation,
                   )
                 : null,
           )
@@ -718,7 +718,6 @@ class _FamilyLearningCard extends StatelessWidget {
           _LearningHeader(
             icon: Icons.insights_outlined,
             title: 'WHAT SAKAN IS LEARNING',
-            subtitle: 'AI interpretation · factual fallback available',
             color: CalendarPalette.forestDark,
             background: CalendarPalette.forestSoft,
           ),
@@ -727,24 +726,29 @@ class _FamilyLearningCard extends StatelessWidget {
             future: aiNarrative,
             builder: (context, snapshot) {
               final ai = snapshot.data;
+              final signals = ai?.reasons.isNotEmpty == true
+                  ? ai!.reasons.take(1).toList(growable: false)
+                  : interpretation.themes.take(1).toList(growable: false);
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     ai?.text ?? interpretation.summary,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: CalendarPalette.ink,
-                      height: 1.5,
+                      height: 1.45,
                     ),
                   ),
                   if (snapshot.connectionState == ConnectionState.waiting) ...[
                     const SizedBox(height: AppSpacing.sm),
                     const LinearProgressIndicator(minHeight: 2),
                   ],
-                  if (ai != null && ai.reasons.isNotEmpty) ...[
-                    const SizedBox(height: AppSpacing.lg),
+                  if (signals.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.md),
                     _ThemeWrap(
-                      themes: ai.reasons,
+                      themes: signals,
                       color: CalendarPalette.forestDark,
                       background: CalendarPalette.forestSoft,
                     ),
@@ -755,8 +759,7 @@ class _FamilyLearningCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
           Text(
-            'This describes recorded Moment patterns. It does not score family '
-            'wellbeing or individual relationships.',
+            'Based on recorded Moments, not family wellbeing.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: CalendarPalette.inkSoft,
               height: 1.4,
@@ -898,14 +901,14 @@ class _LearningHeader extends StatelessWidget {
   const _LearningHeader({
     required this.icon,
     required this.title,
-    required this.subtitle,
     required this.color,
     required this.background,
+    this.subtitle,
   });
 
   final IconData icon;
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final Color color;
   final Color background;
 
@@ -935,13 +938,15 @@ class _LearningHeader extends StatelessWidget {
                   letterSpacing: 0.4,
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                subtitle,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: CalendarPalette.inkSoft),
-              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  subtitle!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: CalendarPalette.inkSoft,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -976,6 +981,8 @@ class _ThemeWrap extends StatelessWidget {
               ),
               child: Text(
                 theme,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: color,
                   fontWeight: FontWeight.w600,

@@ -58,6 +58,7 @@ export const sakanGenerate = onCall(
       request,
       enableYoungChildDataAi.value(),
     );
+    const promptVersion = promptVersionFor(request.feature);
 
     const inputHash = stableHash({
       version: request.version,
@@ -74,7 +75,7 @@ export const sakanGenerate = onCall(
       grounding: request.grounding,
       evidence: grounded.evidence,
       sourceVersion: grounded.sourceVersion,
-      promptVersion: 2,
+      promptVersion,
     });
 
     const cached = await readCachedArtifact(
@@ -164,7 +165,7 @@ export const sakanGenerate = onCall(
           status: "ready",
           response: generated.output,
           inputHash,
-          promptVersion: 2,
+          promptVersion,
           model: generated.model,
           usage: generated.usage,
           estimatedCostUsd: estimateCost(generated),
@@ -372,12 +373,39 @@ function normalizeFeatureOutput(
   feature: GenerateFeature | "chat",
   grounding: Record<string, unknown>,
 ): void {
+  if (feature === "homeInsight") {
+    const actionType = grounding.actionType;
+    if (actionType === "none") {
+      output.suggestedActions = [];
+    } else if (output.suggestedActions.length !== 1) {
+      throw new HttpsError(
+        "internal",
+        "Sakan received an incomplete recommendation.",
+      );
+    }
+
+    if (
+      actionType === "addReminder" &&
+      (!output.reminderTitle || !output.reminderReason)
+    ) {
+      throw new HttpsError(
+        "internal",
+        "Sakan received incomplete reminder wording.",
+      );
+    }
+  }
   if (feature !== "homeInsight" || grounding.actionType !== "addReminder") {
     output.reminderTitle = null;
     output.reminderReason = null;
   }
   if (feature !== "simulationParse") output.scenario = null;
   if (feature !== "chat") output.quickReplies = [];
+}
+
+function promptVersionFor(feature: GenerateFeature): number {
+  return feature === "homeInsight" || feature === "digitalTwinReflection"
+    ? 3
+    : 2;
 }
 
 async function moderateOutput(

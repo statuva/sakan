@@ -77,6 +77,8 @@ class FamilyInsightNoticeCard extends StatelessWidget {
             builder: (context, snapshot) {
               return Text(
                 snapshot.data?.title ?? insight.headline,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: CalendarPalette.ink,
                   fontWeight: FontWeight.w600,
@@ -90,6 +92,8 @@ class FamilyInsightNoticeCard extends StatelessWidget {
             builder: (context, snapshot) {
               return Text(
                 snapshot.data?.text ?? insight.summary,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: CalendarPalette.inkSoft,
                   height: 1.45,
@@ -110,7 +114,7 @@ class FamilyInsightNoticeCard extends StatelessWidget {
                   spacing: AppSpacing.xs,
                   runSpacing: AppSpacing.xs,
                   children: reasons
-                      .take(2)
+                      .take(1)
                       .map((reason) => _FactChip(label: reason, color: accent))
                       .toList(growable: false),
                 ),

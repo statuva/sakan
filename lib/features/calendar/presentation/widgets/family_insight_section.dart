@@ -83,7 +83,7 @@ class _NoFamilyInsightCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'No urgent action right now',
+            'Nothing separate to prepare',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               color: CalendarPalette.ink,
               fontWeight: FontWeight.w700,
@@ -91,9 +91,8 @@ class _NoFamilyInsightCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Sakan will surface a live session, unresolved occurrence, '
-            'overdue reminder, milestone, or drifting rhythm when the '
-            'recorded data supports it.',
+            'Sakan will add one clear Calendar step when an upcoming Moment '
+            'needs it.',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: CalendarPalette.inkSoft),

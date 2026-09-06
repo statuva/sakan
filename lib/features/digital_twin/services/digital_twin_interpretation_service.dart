@@ -93,22 +93,11 @@ class DigitalTwinInterpretationService {
     required List<FamilyMoment> moments,
     required List<RhythmRecord> rhythms,
     required List<MomentInstance> instances,
+    DateTime? referenceDate,
   }) {
     final recurringMoments = moments
         .where((moment) => moment.type == MomentType.recurring)
         .toList(growable: false);
-
-    if (recurringMoments.isEmpty) {
-      return const FamilyTwinInterpretation(
-        summary:
-            'Add and record recurring family Moments before Sakan can describe how your family rhythms are changing.',
-        themes: <String>[
-          'No recurring patterns yet',
-          'More recorded sessions are needed',
-        ],
-        origin: DigitalTwinInterpretationOrigin.ruleBasedFallback,
-      );
-    }
 
     final rhythmByMomentId = <String, RhythmRecord>{
       for (final rhythm in rhythms) rhythm.momentId: rhythm,
@@ -122,143 +111,81 @@ class DigitalTwinInterpretationService {
       }).length;
     }
 
-    final stableCount = countStatus(RhythmStatus.stable);
-    final strengtheningCount = countStatus(RhythmStatus.strengthening);
+    final dependableCount =
+        countStatus(RhythmStatus.stable) +
+        countStatus(RhythmStatus.strengthening);
     final driftingCount = countStatus(RhythmStatus.drifting);
-    final recoveringCount = countStatus(RhythmStatus.recovering);
-    final learningCount = countStatus(RhythmStatus.stillLearning);
-    final dependableCount = stableCount + strengtheningCount;
-
-    final recurringIds = recurringMoments.map((moment) => moment.id).toSet();
-
-    final completed = instances
-        .where((instance) {
-          return recurringIds.contains(instance.momentId) &&
-              instance.status == MomentInstanceStatus.completed;
-        })
+    final recent = _rollingWeekInstances(
+      instances,
+      referenceDate ?? DateTime.now(),
+    );
+    final completed = recent
+        .where((item) => item.status == MomentInstanceStatus.completed)
         .toList(growable: false);
+    final completedCount = completed.length;
+    final missedCount = recent
+        .where((item) => item.status == MomentInstanceStatus.missed)
+        .length;
+    final cancelledCount = recent
+        .where((item) => item.status == MomentInstanceStatus.cancelled)
+        .length;
+    final unresolvedCount =
+        recent.length - completedCount - missedCount - cancelledCount;
+    final resolvedCount = completedCount + missedCount + cancelledCount;
 
-    final outcomes = instances
-        .where((instance) {
-          return recurringIds.contains(instance.momentId) &&
-              (instance.status == MomentInstanceStatus.completed ||
-                  instance.status == MomentInstanceStatus.missed);
-        })
-        .toList(growable: false);
+    late String summary;
+    late final String signal;
 
-    final participation = _averageParticipationRatio(completed);
-
-    final weekendRate = _completionRate(outcomes: outcomes, weekend: true);
-
-    final weekdayRate = _completionRate(outcomes: outcomes, weekend: false);
-
-    final sentences = <String>[];
-
-    if (learningCount == recurringMoments.length) {
-      sentences.add(
-        'Sakan is still learning most of your family rhythms. '
-        'A few more confirmed sessions will make the picture more reliable.',
-      );
-    } else if (driftingCount > 0 && dependableCount > 0) {
-      sentences.add(
-        'Your family has $dependableCount '
-        '${dependableCount == 1 ? 'dependable rhythm' : 'dependable rhythms'}, '
-        'while $driftingCount '
-        '${driftingCount == 1 ? 'Moment is' : 'Moments are'} becoming less regular. '
-        'The pattern is mixed rather than one overall family score.',
-      );
-    } else if (driftingCount > 0) {
-      sentences.add(
-        '$driftingCount recurring '
-        '${driftingCount == 1 ? 'Moment is' : 'Moments are'} happening less regularly than planned. '
-        'The family may need timings or frequencies that are easier to maintain.',
-      );
-    } else if (recoveringCount > 0) {
-      sentences.add(
-        '$recoveringCount '
-        '${recoveringCount == 1 ? 'rhythm is' : 'rhythms are'} returning after a less consistent period. '
-        'Recent completed sessions are moving closer to the intended pattern.',
-      );
-    } else if (dependableCount == recurringMoments.length) {
-      sentences.add(
-        'The recorded recurring Moments are currently dependable. '
-        'They are happening close to their intended rhythms.',
-      );
+    if (recent.isEmpty) {
+      if (driftingCount > 0) {
+        summary =
+            'The wider rhythm needs attention, but the last seven days have no recorded Moments to confirm whether that is continuing.';
+        signal = 'This week needs a recorded outcome';
+      } else if (dependableCount > 0) {
+        summary =
+            'The established rhythms look dependable, but this week needs a recorded outcome before Sakan can read its direction.';
+        signal =
+            '$dependableCount dependable ${dependableCount == 1 ? 'rhythm' : 'rhythms'} overall';
+      } else {
+        summary =
+            'The family rhythm is still taking shape, and this week has too little recorded activity for a clear reading.';
+        signal = 'More weekly evidence is needed';
+      }
+    } else if (resolvedCount == 0) {
+      summary =
+          '$unresolvedCount recent ${unresolvedCount == 1 ? 'Moment still needs' : 'Moments still need'} an outcome, so this week’s overall pattern is not clear yet.';
+      signal = '$unresolvedCount recent outcomes still open';
     } else {
-      sentences.add(
-        'Your family has a mixture of established and developing rhythms. '
-        'Sakan is continuing to learn from each confirmed or missed occurrence.',
-      );
-    }
-
-    if (participation != null) {
-      if (participation >= 0.75) {
-        sentences.add(
-          'When a shared session happens, most expected members are usually recorded as participating.',
-        );
-      } else if (participation < 0.5) {
-        sentences.add(
-          'Recorded sessions often include fewer expected members, '
-          'so participation is less consistent than timing alone suggests.',
-        );
+      if (completedCount == resolvedCount) {
+        summary =
+            'The recorded week looks steady: all $resolvedCount resolved ${resolvedCount == 1 ? 'Moment was' : 'Moments were'} completed.';
+      } else if (completedCount * 2 > resolvedCount) {
+        summary =
+            'Most resolved Moments were completed this week, so the recorded family rhythm looks generally workable.';
+      } else if (missedCount > 0) {
+        summary =
+            'This week looks less settled, with $completedCount completed and $missedCount missed ${missedCount == 1 ? 'Moment' : 'Moments'}.';
+      } else {
+        summary =
+            'This week’s recorded outcomes are mixed, so another completed Moment would make the family rhythm clearer.';
       }
-    }
 
-    if (weekendRate != null && weekdayRate != null) {
-      final difference = weekendRate - weekdayRate;
-
-      if (difference >= 0.25) {
-        sentences.add(
-          'Recent weekend occurrences have been completed more consistently than weekday occurrences.',
-        );
-      } else if (difference <= -0.25) {
-        sentences.add(
-          'Recent weekday occurrences have been completed more consistently than weekend occurrences.',
-        );
+      if (unresolvedCount > 0) {
+        summary +=
+            ' $unresolvedCount other ${unresolvedCount == 1 ? 'Moment still needs' : 'Moments still need'} an outcome.';
+        signal = '$unresolvedCount recent outcomes still open';
+      } else if (missedCount > 0) {
+        signal = '$missedCount missed this week';
+      } else if (completedCount == resolvedCount) {
+        signal = 'All resolved Moments were completed';
+      } else {
+        signal = 'Most resolved Moments were completed';
       }
-    }
-
-    final themes = <String>[];
-
-    if (dependableCount > 0) {
-      themes.add(
-        '$dependableCount dependable '
-        '${dependableCount == 1 ? 'rhythm' : 'rhythms'}',
-      );
-    }
-
-    if (driftingCount > 0) {
-      themes.add(
-        '$driftingCount '
-        '${driftingCount == 1 ? 'rhythm needs' : 'rhythms need'} consistency',
-      );
-    }
-
-    if (recoveringCount > 0) {
-      themes.add(
-        '$recoveringCount '
-        '${recoveringCount == 1 ? 'rhythm is' : 'rhythms are'} returning',
-      );
-    }
-
-    if (participation != null && participation >= 0.75) {
-      themes.add('Participation is usually strong');
-    }
-
-    if (learningCount > 0) {
-      themes.add(
-        '$learningCount '
-        '${learningCount == 1 ? 'pattern is' : 'patterns are'} still being learned',
-      );
-    }
-
-    if (themes.isEmpty) {
-      themes.add('More recorded sessions are needed');
     }
 
     return FamilyTwinInterpretation(
-      summary: sentences.join(' '),
-      themes: List<String>.unmodifiable(themes.take(3)),
+      summary: summary,
+      themes: <String>[signal],
       origin: DigitalTwinInterpretationOrigin.ruleBasedFallback,
     );
   }
@@ -320,6 +247,7 @@ class DigitalTwinInterpretationService {
     required List<FamilyMoment> moments,
     required List<RhythmRecord> rhythms,
     required List<MomentInstance> instances,
+    DateTime? referenceDate,
   }) {
     final recurring = moments
         .where((moment) => moment.type == MomentType.recurring)
@@ -328,10 +256,30 @@ class DigitalTwinInterpretationService {
     final rhythmByMomentId = <String, RhythmRecord>{
       for (final rhythm in rhythms) rhythm.momentId: rhythm,
     };
+    final endDate = _dateOnly((referenceDate ?? DateTime.now()).toLocal());
+    final startDate = endDate.subtract(const Duration(days: 6));
+    final recent = _rollingWeekInstances(instances, endDate);
+    final completed = recent
+        .where((item) => item.status == MomentInstanceStatus.completed)
+        .toList(growable: false);
+    final missedCount = recent
+        .where((item) => item.status == MomentInstanceStatus.missed)
+        .length;
+    final cancelledCount = recent
+        .where((item) => item.status == MomentInstanceStatus.cancelled)
+        .length;
+    final unresolvedCount =
+        recent.length - completed.length - missedCount - cancelledCount;
 
     return <String, dynamic>{
+      'narrativeContractVersion': 2,
+      'window': <String, String>{
+        'startDate': _dateKey(startDate),
+        'endDate': _dateKey(endDate),
+        'meaning': 'rollingSevenDaysIncludingToday',
+      },
       'recurringMomentCount': recurring.length,
-      'statusCounts': <String, int>{
+      'currentRhythmStatusCounts': <String, int>{
         for (final status in RhythmStatus.values)
           status.name: recurring.where((moment) {
             return (rhythmByMomentId[moment.id]?.status ??
@@ -339,18 +287,45 @@ class DigitalTwinInterpretationService {
                 status;
           }).length,
       },
-      'moments': recurring
-          .map(
-            (moment) => buildMomentAiPayload(
-              moment: moment,
-              rhythm: rhythmByMomentId[moment.id],
-              instances: instances
-                  .where((instance) => instance.momentId == moment.id)
-                  .toList(),
-            ),
-          )
-          .toList(),
+      'rollingWeek': <String, dynamic>{
+        'recordedCount': recent.length,
+        'completedCount': completed.length,
+        'missedCount': missedCount,
+        'cancelledCount': cancelledCount,
+        'unresolvedCount': unresolvedCount,
+        'averageParticipationRatio': _averageParticipationRatio(completed),
+        'categoryCounts': <String, int>{
+          for (final category in MomentCategory.values)
+            if (recent.any((item) => item.categorySnapshot == category))
+              category.name: recent
+                  .where((item) => item.categorySnapshot == category)
+                  .length,
+        },
+      },
     };
+  }
+
+  List<MomentInstance> _rollingWeekInstances(
+    List<MomentInstance> instances,
+    DateTime referenceDate,
+  ) {
+    final endDate = _dateOnly(referenceDate.toLocal());
+    final startDate = endDate.subtract(const Duration(days: 6));
+
+    return instances.where((instance) {
+      final date = _dateOnly(instance.scheduledStartAt.toLocal());
+      return !date.isBefore(startDate) && !date.isAfter(endDate);
+    }).toList(growable: false);
+  }
+
+  DateTime _dateOnly(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  String _dateKey(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
   }
 
   String _stillLearningSummary({
@@ -464,28 +439,4 @@ class DigitalTwinInterpretationService {
     return (total / durations.length).round();
   }
 
-  double? _completionRate({
-    required List<MomentInstance> outcomes,
-    required bool weekend,
-  }) {
-    final filtered = outcomes
-        .where((instance) {
-          final weekday = instance.scheduledStartAt.toLocal().weekday;
-          final isWeekend =
-              weekday == DateTime.saturday || weekday == DateTime.sunday;
-
-          return isWeekend == weekend;
-        })
-        .toList(growable: false);
-
-    if (filtered.length < 2) {
-      return null;
-    }
-
-    final completedCount = filtered
-        .where((instance) => instance.status == MomentInstanceStatus.completed)
-        .length;
-
-    return completedCount / filtered.length;
-  }
 }

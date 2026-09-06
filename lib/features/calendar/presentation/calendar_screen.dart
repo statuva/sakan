@@ -11,9 +11,10 @@ import '../../../shared/models/family_memory.dart';
 import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/moment_instance.dart';
+import '../../../shared/ai/ai_family_insight_service.dart';
 import '../../../shared/ai/ai_models.dart';
+import '../../../shared/services/family_insight_surface_selector.dart';
 import '../../../shared/services/calendar_occurrence_label.dart';
-import '../../../shared/services/personalized_family_focus_selector.dart';
 import '../../../shared/utils/care_action_id.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
@@ -247,13 +248,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     required Map<String, String> occurrenceLabelsByCalendarId,
   }) {
     final familyContext = _familyContext!;
-    final visibleInsight = PersonalizedFamilyFocusSelector.select(report);
+    final visibleInsight = FamilyInsightSurfaceSelector.calendar(report);
     final aiNarrative = visibleInsight == null || !familyContext.canUseAi
         ? null
         : AppDependencies.aiFamilyInsightService.enrich(
             insight: visibleInsight,
             familyId: familyContext.familyId,
             memberId: familyContext.userId,
+            surface: FamilyInsightSurface.calendar,
           );
     final activeInstance = report.snapshot.activeInstance;
     final memories = List<FamilyMemory>.from(report.snapshot.memories)
@@ -918,6 +920,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           insight: insight,
           familyId: familyContext.familyId,
           memberId: familyContext.userId,
+          surface: FamilyInsightSurface.calendar,
         );
       } catch (_) {
         aiCopy = null;
@@ -941,7 +944,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 : insight.suggestedActions.first),
         reason:
             aiCopy?.reminderReason ??
-            <String>[insight.summary, ...insight.reasons].join('\n'),
+            insight.summary,
         assignedMemberId: familyContext.userId,
         dueAt: dueAt.toUtc(),
         status: CareActionStatus.pending,

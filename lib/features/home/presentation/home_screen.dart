@@ -12,7 +12,9 @@ import '../../../shared/models/family_insight_report.dart';
 import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/moment_instance.dart';
+import '../../../shared/ai/ai_family_insight_service.dart';
 import '../../../shared/ai/ai_models.dart';
+import '../../../shared/services/family_insight_surface_selector.dart';
 import '../../../shared/utils/care_action_id.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
@@ -28,14 +30,12 @@ import '../../weekly_report/services/family_weekly_report_builder.dart';
 import '../../weekly_report/services/family_weekly_report_snapshot_projector.dart';
 import '../../weekly_report/presentation/widgets/home_weekly_report_card.dart';
 import '../data/daily_reflection_library.dart';
-import '../services/home_priority_selector.dart';
 import 'quick_start_moment_screen.dart';
 import 'widgets/home_daily_reflection.dart';
 import 'widgets/home_greeting.dart';
 import 'widgets/home_reminders_card.dart';
 import 'widgets/home_together_now_card.dart';
 import 'widgets/home_what_matters_card.dart';
-import '../../../shared/services/personalized_family_focus_selector.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -168,9 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
       currentUserId: familyContext.userId,
     );
     final insight = readyRoom == null
-        ? HomePrioritySelector.selectFrom(
-            PersonalizedFamilyFocusSelector.selectAll(report),
-          )
+        ? FamilyInsightSurfaceSelector.home(report)
         : _readyRoomInsight(readyRoom);
     final aiNarrative = insight == null || !familyContext.canUseAi
         ? null
@@ -178,6 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
             insight: insight,
             familyId: familyContext.familyId,
             memberId: familyContext.userId,
+            surface: FamilyInsightSurface.home,
           );
     final reflection = DailyReflectionLibrary.forFamilyDate(
       familyId: familyContext.familyId,
@@ -673,6 +672,7 @@ class _HomeScreenState extends State<HomeScreen> {
         insight: insight,
         familyId: _familyContext!.familyId,
         memberId: _familyContext!.userId,
+        surface: FamilyInsightSurface.home,
       );
     } catch (_) {
       aiCopy = null;
@@ -696,7 +696,7 @@ class _HomeScreenState extends State<HomeScreen> {
               : insight.suggestedActions.first),
       reason:
           aiCopy?.reminderReason ??
-          <String>[insight.summary, ...insight.reasons].join('\n'),
+          insight.summary,
       assignedMemberId: _familyContext!.userId,
       dueAt: dueAt.toUtc(),
       status: CareActionStatus.pending,

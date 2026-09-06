@@ -23,18 +23,49 @@ JSON structure. Keep the language warm, specific, plain, and concise. Use the
 requested locale when you can do so accurately.
 `.trim();
 
-const FEATURE_INSTRUCTIONS: Record<GenerateFeature, string> = {
-  homeInsight: `
-Turn the deterministic Sakan decision into a useful decision aid, not a rewrite.
-Preserve its action type, priority, timing, confidence, and referenced Moment.
-The headline must state what deserves attention. The text must explain why it
-matters now and what the family could gain from acting. Reasons must connect
-specific evidence to the recommendation; never copy baselineReasons verbatim.
-Suggested actions must be concrete, gentle, and feasible. If actionType is
-addReminder, create a Moment-specific reminder title and a reason that explains
-the benefit or timing; never use a generic reminder. Otherwise return null for
-both reminder fields.
-`.trim(),
+const HOME_INSIGHT_INSTRUCTIONS = `
+This is the Home surface: choose clarity over detail. Improve the supplied
+deterministic decision without changing its action type, target, priority,
+timing, or confidence. Return a 3-to-7-word title (maximum 60 characters), one
+meaningful sentence of at most 140 characters, and exactly one reason of at
+most 90 characters. Do not repeat the title, date, status, reason, or button
+action in different words. For an actionable decision, return exactly one
+specific next step; for actionType none, return no suggested actions.
+
+Explain only why this is the most useful thing to handle now. Do not turn the
+card into a report or list the evidence. If actionType is addReminder, create a
+short Moment-specific reminder title and a reason of at most 120 characters.
+Otherwise return null for both reminder fields.
+`.trim();
+
+const CALENDAR_INSIGHT_INSTRUCTIONS = `
+This is the Calendar surface: turn the selected calendar item into one clear,
+practical planning suggestion. Preserve its action type, target, priority,
+timing, and confidence. Return a 3-to-7-word title (maximum 60 characters), one
+sentence of at most 180 characters, exactly one reason of at most 110
+characters, and exactly one next step when actionType is actionable. For
+actionType none, return no suggested actions. Do not repeat the same message
+across these fields. For an overdue reminder, name its actual task and point
+toward one decision in the Reminders screen. For a drifting rhythm, make the
+next schedule choice concrete.
+
+Read the Moment title for its ordinary meaning and recommend something that
+fits the actual event. For example: Lunch can suggest choosing the meal and
+checking ingredients; a Birthday can suggest choosing a gift or writing a card;
+a Graduation can suggest preparing a congratulatory message. These are safe
+practical suggestions, not recorded family facts. Never say only "prepare for",
+"review", or "confirm" the Moment. When the title is unfamiliar, give one
+low-risk concrete planning step that still fits its category.
+
+If actionType is addReminder, make reminderTitle the same concrete task and make
+reminderReason connect it to the event and timing in at most 120 characters.
+Otherwise return null for both reminder fields.
+`.trim();
+
+const FEATURE_INSTRUCTIONS: Omit<
+  Record<GenerateFeature, string>,
+  "homeInsight"
+> = {
   memoryReflection: `
 Write a warm two-to-four-sentence reflection that helps the family appreciate
 what the Memory may reveal. Do not retell or paraphrase the note sentence by
@@ -61,12 +92,19 @@ rhythm. Do not claim improvement, decline, or causation unless comparison facts
 explicitly prove it. Counts and charts remain owned by Sakan.
 `.trim(),
   digitalTwinReflection: `
-Identify the most useful cross-Moment pattern in the supplied evidence. Explain
-what appears easier to sustain, what needs more observation, and one condition
-the family could test. Do not list statuses without interpreting their practical
-meaning. Keep still-learning, stable, drifting, recovering, and strengthening
-as recorded rhythm states rather than judgments about family wellbeing. Do not
-invent causes or claim emotional conclusions.
+Write one compact family-wide reading of the rolling seven-day window and the
+current rhythm mix. This is a small current-state reflection, not the completed
+weekly report and not another description of each Moment card. Return title as
+null, text as one or two short sentences (maximum 45 words and 300 characters),
+exactly one meaningful signal of at most 80 characters in reasons, and an empty
+suggestedActions list.
+
+Interpret the strongest overall signal without listing every status or Moment.
+Keep completed, missed, cancelled, and unresolved records distinct. Treat
+still-learning, stable, drifting, recovering, and strengthening as rhythm
+states, never judgments about family wellbeing. Do not invent causes, emotions,
+or a recommendation. When evidence is thin, state that uncertainty briefly;
+do not ask the family to record something in this reflection.
 `.trim(),
   simulationParse: `
 Translate the adult's What-if conversation into exactly one supported scenario
@@ -98,8 +136,14 @@ export function generationInstructions(
   request: GenerateRequest,
   evidence: EvidenceItem[],
 ): {system: string; user: string} {
+  const featureInstructions = request.feature === "homeInsight"
+    ? request.grounding.surface === "calendar"
+      ? CALENDAR_INSIGHT_INSTRUCTIONS
+      : HOME_INSIGHT_INSTRUCTIONS
+    : FEATURE_INSTRUCTIONS[request.feature];
+
   return {
-    system: `${CORE_INSTRUCTIONS}\n\n${FEATURE_INSTRUCTIONS[request.feature]}`,
+    system: `${CORE_INSTRUCTIONS}\n\n${featureInstructions}`,
     user: [
       `Locale: ${request.locale}`,
       `Feature: ${request.feature}`,

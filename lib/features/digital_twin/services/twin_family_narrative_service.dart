@@ -3,7 +3,6 @@ import 'dart:convert';
 import '../../../shared/ai/ai_models.dart';
 import '../../../shared/ai/sakan_ai_gateway.dart';
 import '../../../shared/models/family_insight_report.dart';
-import '../domain/digital_twin_interpretation.dart';
 import 'digital_twin_interpretation_service.dart';
 
 class TwinFamilyNarrativeService {
@@ -18,17 +17,13 @@ class TwinFamilyNarrativeService {
 
   Future<SakanAiResult> explain({
     required FamilyInsightReport report,
-    required FamilyTwinInterpretation fallback,
   }) {
-    final grounding =
-        _interpretationService.buildFamilyAiPayload(
-          moments: report.snapshot.moments,
-          rhythms: report.snapshot.rhythms,
-          instances: report.snapshot.instances,
-        )..addAll(<String, dynamic>{
-          'deterministicSummary': fallback.summary,
-          'deterministicThemes': fallback.themes,
-        });
+    final grounding = _interpretationService.buildFamilyAiPayload(
+      moments: report.snapshot.moments,
+      rhythms: report.snapshot.rhythms,
+      instances: report.snapshot.instances,
+      referenceDate: report.snapshot.generatedAt,
+    );
     final key = jsonEncode(<String, dynamic>{
       'familyId': report.snapshot.familyId,
       'memberId': report.snapshot.currentUserId,

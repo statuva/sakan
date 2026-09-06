@@ -119,26 +119,30 @@ function responseSchema(
   evidenceIds: string[],
 ): Record<string, unknown> {
   const isChat = feature === "chat";
+  const isHomeInsight = feature === "homeInsight";
+  const isTwinReflection = feature === "digitalTwinReflection";
   const nullableText = {
     anyOf: [
       {type: "string"},
       {type: "null"},
     ],
   };
+  const nullOnly = {type: "null"};
   return {
     type: "object",
     additionalProperties: false,
     properties: {
       title: {
-        anyOf: [
-          {type: "string"},
-          {type: "null"},
-        ],
+        ...(isChat || isTwinReflection
+          ? nullOnly
+          : isHomeInsight
+            ? {type: "string"}
+            : nullableText),
       },
       text: {type: "string"},
       reasons: {
         type: "array",
-        ...(isChat
+        ...(isChat || isHomeInsight || isTwinReflection
           ? {minItems: 1, maxItems: 1}
           : {maxItems: 3}),
         items: {type: "string"},
@@ -147,12 +151,17 @@ function responseSchema(
         type: "array",
         ...(isChat
           ? {minItems: 1, maxItems: 1}
+          : isHomeInsight
+            ? {maxItems: 1}
+            : isTwinReflection
+              ? {maxItems: 0}
           : {maxItems: 3}),
         items: {type: "string"},
       },
       evidenceRefs: {
         type: "array",
-        maxItems: isChat ? 4 : 12,
+        minItems: 1,
+        maxItems: isChat || isHomeInsight || isTwinReflection ? 4 : 12,
         items: {
           type: "string",
           enum: evidenceIds,
@@ -160,17 +169,19 @@ function responseSchema(
       },
       quickReplies: {
         type: "array",
-        maxItems: isChat ? 2 : 3,
+        maxItems: isChat ? 2 : 0,
         items: {type: "string"},
       },
-      reminderTitle: nullableText,
-      reminderReason: nullableText,
-      scenario: {
-        anyOf: [
-          {type: "null"},
-          scenarioSchema(),
-        ],
-      },
+      reminderTitle: isHomeInsight ? nullableText : nullOnly,
+      reminderReason: isHomeInsight ? nullableText : nullOnly,
+      scenario: feature === "simulationParse"
+        ? {
+            anyOf: [
+              {type: "null"},
+              scenarioSchema(),
+            ],
+          }
+        : nullOnly,
     },
     required: [
       "title",
@@ -262,19 +273,38 @@ function validateOutput(
 ): AiStructuredOutput {
   const data = recordValue(value);
   const isChat = feature === "chat";
+  const isHomeInsight = feature === "homeInsight";
+  const isTwinReflection = feature === "digitalTwinReflection";
   const output: AiStructuredOutput = {
-    title: optionalBoundedText(data.title, 100),
-    text: requiredBoundedText(data.text, isChat ? 600 : 1_400),
-    reasons: textList(data.reasons, isChat ? 1 : 3, 220),
+    title: optionalBoundedText(data.title, isHomeInsight ? 60 : 100),
+    text: requiredBoundedText(
+      data.text,
+      isChat ? 600 : isHomeInsight ? 180 : isTwinReflection ? 300 : 1_400,
+    ),
+    reasons: textList(
+      data.reasons,
+      isChat || isHomeInsight || isTwinReflection ? 1 : 3,
+      isHomeInsight ? 110 : isTwinReflection ? 80 : 220,
+    ),
     suggestedActions: textList(
       data.suggestedActions,
-      isChat ? 1 : 3,
-      180,
+      isChat ? 1 : isHomeInsight ? 1 : isTwinReflection ? 0 : 3,
+      isHomeInsight ? 90 : 180,
     ),
-    evidenceRefs: textList(data.evidenceRefs, isChat ? 4 : 12, 100),
+    evidenceRefs: textList(
+      data.evidenceRefs,
+      isChat || isHomeInsight || isTwinReflection ? 4 : 12,
+      100,
+    ),
     quickReplies: textList(data.quickReplies, isChat ? 2 : 3, 90),
-    reminderTitle: optionalBoundedText(data.reminderTitle, 100),
-    reminderReason: optionalBoundedText(data.reminderReason, 600),
+    reminderTitle: optionalBoundedText(
+      data.reminderTitle,
+      isHomeInsight ? 60 : 100,
+    ),
+    reminderReason: optionalBoundedText(
+      data.reminderReason,
+      isHomeInsight ? 140 : 600,
+    ),
     scenario: data.scenario == null ? null : scenarioValue(data.scenario),
   };
 
@@ -287,12 +317,32 @@ function validateOutput(
       "Sakan received an incomplete chat response.",
     );
   }
+  if (isHomeInsight && (!output.title || output.reasons.length !== 1)) {
+    throw new HttpsError(
+      "internal",
+      "Sakan received an incomplete insight response.",
+    );
+  }
+  if (
+    isTwinReflection &&
+    (output.title != null ||
+      output.reasons.length !== 1 ||
+      output.suggestedActions.length !== 0)
+  ) {
+    throw new HttpsError(
+      "internal",
+      "Sakan received an invalid family reflection.",
+    );
+  }
 
   const allowedEvidence = new Set(
     grounded.evidence.map((item) => item.id),
   );
   if (output.evidenceRefs.some((id) => !allowedEvidence.has(id))) {
     throw new HttpsError("internal", "AI cited an unknown family fact.");
+  }
+  if (output.evidenceRefs.length === 0) {
+    throw new HttpsError("internal", "AI did not cite supporting evidence.");
   }
   if (feature !== "simulationParse" && output.scenario != null) {
     throw new HttpsError("internal", "AI returned an unexpected simulation.");
