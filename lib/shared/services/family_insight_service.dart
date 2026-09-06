@@ -433,12 +433,7 @@ class FamilyInsightService {
       final category = instance.categorySnapshot;
       final days = _daysUntil(snapshot.generatedAt, instance.scheduledStartAt);
 
-      final isPreparation =
-          category == MomentCategory.milestone ||
-          category == MomentCategory.care ||
-          category == MomentCategory.responsibility;
-
-      if (isPreparation && days >= 0 && days <= 14) {
+      if (category != MomentCategory.memory && days >= 0 && days <= 14) {
         final reminder = _reminderForOccurrence(snapshot, instance);
         if (reminder?.isFinished != true) {
           addInsight(_preparationInsight(snapshot, instance));
@@ -576,8 +571,10 @@ class FamilyInsightService {
       actionType: decision.actionType,
       priority: 10,
       headline: '${instance.titleSnapshot} is later today',
-      summary:
-          'The Moment is planned for ${DateFormat('h:mm a').format(instance.scheduledStartAt.toLocal())}.',
+      summary: _instanceSummary(
+        instance.titleSnapshot,
+        instance.categorySnapshot,
+      ),
       reasons: <String>[
         'The occurrence is scheduled today.',
         if (hasReminder)
@@ -586,10 +583,12 @@ class FamilyInsightService {
           'No personal reminder is linked to this occurrence yet.',
       ],
       suggestedActions: hasReminder
-          ? const <String>['Open your existing reminder.']
-          : const <String>[
-              'Add a reminder before the planned start time.',
-              'Start the session when the planned time arrives.',
+          ? <String>['Open your ${instance.titleSnapshot} reminder.']
+          : <String>[
+              _preparationAction(
+                instance.titleSnapshot,
+                instance.categorySnapshot,
+              ),
             ],
       confidence: ConfidenceLevel.high,
       relatedMomentId: instance.momentId,
@@ -680,7 +679,7 @@ class FamilyInsightService {
           : FamilyInsightActionType.openReminders,
       priority: 30,
       headline: _upcomingHeadline(instance.titleSnapshot, days),
-      summary: _instanceSummary(category),
+      summary: _instanceSummary(instance.titleSnapshot, category),
       reasons: <String>[
         _daysReason(days),
         'The Moment is marked ${instance.importanceLevelSnapshot}/5 importance.',
@@ -691,7 +690,9 @@ class FamilyInsightService {
         if (reminderChoice?.usesAvailability == true)
           'The suggested reminder time avoids your recorded busy periods.',
       ],
-      suggestedActions: _actionsForCategory(category),
+      suggestedActions: <String>[
+        _preparationAction(instance.titleSnapshot, category),
+      ],
       confidence: ConfidenceLevel.high,
       relatedMomentId: instance.momentId,
       relatedInstanceId: instance.id,
@@ -709,8 +710,8 @@ class FamilyInsightService {
     CareAction? finishedFallback;
     for (final reminder in snapshot.currentUserReminders) {
       final exact = reminder.instanceId == instance.id;
-      final legacy =
-          reminder.instanceId == null && reminder.momentId == instance.momentId;
+      final legacy = reminder.instanceId == null &&
+          reminder.momentId == instance.momentId;
       if (!exact && !legacy) continue;
       if (!reminder.isFinished) return reminder;
       finishedFallback ??= reminder;
@@ -971,37 +972,119 @@ class FamilyInsightService {
     return '$title is coming up';
   }
 
-  static String _instanceSummary(MomentCategory category) {
+  static String _instanceSummary(String title, MomentCategory category) {
+    final normalized = title.toLowerCase();
+
+    if (_containsAny(normalized, const <String>[
+      'lunch',
+      'lynch',
+      'dinner',
+      'breakfast',
+      'brunch',
+      'meal',
+      'غداء',
+      'عشاء',
+      'فطور',
+    ])) {
+      return 'Choose the meal and check the ingredients before $title.';
+    }
+    if (_containsAny(normalized, const <String>[
+      'birthday',
+      'عيد ميلاد',
+      'ميلاد',
+    ])) {
+      return 'Choose a gift or write a card before $title.';
+    }
+    if (_containsAny(normalized, const <String>[
+      'graduation',
+      'graduate',
+      'تخرج',
+      'تخرّج',
+    ])) {
+      return 'Prepare a congratulatory message for $title.';
+    }
+    if (_containsAny(normalized, const <String>['picnic', 'نزهة'])) {
+      return 'Choose the picnic spot and pack the shared essentials.';
+    }
+
     return switch (category) {
       MomentCategory.milestone =>
-        'A major family milestone is approaching and may need practical preparation.',
+        'Choose one personal way to mark $title before it arrives.',
       MomentCategory.care =>
-        'This care-related occurrence is approaching and may need a personal action.',
+        'Decide what support or item will be useful for $title.',
       MomentCategory.responsibility =>
-        'A family responsibility is approaching and should have a clear owner.',
-      _ => 'This planned family occurrence is approaching.',
+        'Gather the main item needed for $title before it begins.',
+      MomentCategory.tradition =>
+        'Set aside the main item the family uses for $title.',
+      MomentCategory.familyTime =>
+        'Choose the shared activity or item needed for $title.',
+      _ => 'Choose one practical item the family will need for $title.',
     };
   }
 
-  static List<String> _actionsForCategory(MomentCategory category) {
+  static String _preparationAction(String title, MomentCategory category) {
+    final normalized = title.toLowerCase();
+
+    if (_containsAny(normalized, const <String>[
+      'lunch',
+      'lynch',
+      'dinner',
+      'breakfast',
+      'brunch',
+      'meal',
+      'غداء',
+      'عشاء',
+      'فطور',
+    ])) {
+      return 'Choose the menu and check ingredients.';
+    }
+    if (_containsAny(normalized, const <String>[
+      'birthday',
+      'عيد ميلاد',
+      'ميلاد',
+    ])) {
+      return 'Choose a gift or write a birthday card.';
+    }
+    if (_containsAny(normalized, const <String>[
+      'graduation',
+      'graduate',
+      'تخرج',
+      'تخرّج',
+    ])) {
+      return 'Write a short congratulatory message.';
+    }
+    if (_containsAny(normalized, const <String>['picnic', 'نزهة'])) {
+      return 'Choose the spot and pack the picnic essentials.';
+    }
+    if (_containsAny(normalized, const <String>[
+      'appointment',
+      'doctor',
+      'clinic',
+      'موعد',
+      'طبيب',
+    ])) {
+      return 'Gather the documents and questions to bring.';
+    }
+    if (_containsAny(normalized, const <String>[
+      'wedding',
+      'زفاف',
+      'عرس',
+    ])) {
+      return 'Choose a gift and write a short message.';
+    }
+
     return switch (category) {
-      MomentCategory.milestone => const <String>[
-        'Confirm the event time and location.',
-        'Prepare a gift or family message.',
-        'Confirm travel and expected participants.',
-      ],
-      MomentCategory.care => const <String>[
-        'Confirm what support is needed.',
-        'Prepare a message, visit, or gift.',
-        'Create a personal reminder.',
-      ],
-      MomentCategory.responsibility => const <String>[
-        'Confirm who owns the task.',
-        'Prepare the required items.',
-        'Create a deadline reminder.',
-      ],
-      _ => const <String>['Review the planned occurrence.'],
+      MomentCategory.milestone => 'Choose a gift, card, or family message.',
+      MomentCategory.care => 'Choose the support or item you will bring.',
+      MomentCategory.responsibility => 'Gather the main item needed for it.',
+      MomentCategory.tradition => 'Set aside the main item used for it.',
+      MomentCategory.familyTime => 'Choose the shared activity or item.',
+      _ => 'Choose one practical item needed for it.',
     };
+  }
+
+  static bool _containsAny(String value, List<String> terms) {
+    return terms.any(value.contains);
   }
 
   static String _daysReason(int days) {

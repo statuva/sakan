@@ -89,6 +89,8 @@ class HomeWhatMattersCard extends StatelessWidget {
             builder: (context, snapshot) {
               return Text(
                 snapshot.data?.title ?? headline,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.w400,
@@ -103,6 +105,8 @@ class HomeWhatMattersCard extends StatelessWidget {
             builder: (context, snapshot) {
               return Text(
                 snapshot.data?.text ?? summary,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: AppColors.textSecondary,
                   height: 1.5,
@@ -141,6 +145,8 @@ class HomeWhatMattersCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             reasons.first,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   color: AppColors.textSecondary,

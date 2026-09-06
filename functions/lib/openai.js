@@ -1,0 +1,433 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.moderateText = moderateText;
+exports.createStructuredResponse = createStructuredResponse;
+const https_1 = require("firebase-functions/v2/https");
+const OPENAI_URL = "https://api.openai.com/v1";
+const LUNA_MODEL = "gpt-5.6-luna";
+const TERRA_MODEL = "gpt-5.6-terra";
+const MODERATION_TIMEOUT_MS = 10_000;
+const RESPONSE_TIMEOUT_MS = 75_000;
+async function moderateText(apiKey, text) {
+    const response = await fetch(`${OPENAI_URL}/moderations`, {
+        method: "POST",
+        headers: headers(apiKey),
+        body: JSON.stringify({
+            model: "omni-moderation-latest",
+            input: text.slice(0, 12_000),
+        }),
+        signal: AbortSignal.timeout(MODERATION_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+        throw openAiFailure(response.status);
+    }
+    const body = (await response.json());
+    if (body.results?.some((result) => result.flagged === true)) {
+        throw new https_1.HttpsError("invalid-argument", "Sakan cannot use AI for that request.");
+    }
+}
+async function createStructuredResponse(args) {
+    const model = modelFor(args.feature);
+    const response = await fetch(`${OPENAI_URL}/responses`, {
+        method: "POST",
+        headers: headers(args.apiKey),
+        body: JSON.stringify({
+            model,
+            store: false,
+            reasoning: { effort: "low" },
+            input: [
+                {
+                    role: "system",
+                    content: [{ type: "input_text", text: args.system }],
+                },
+                {
+                    role: "user",
+                    content: [{ type: "input_text", text: args.user }],
+                },
+            ],
+            text: {
+                format: {
+                    type: "json_schema",
+                    name: "sakan_ai_response",
+                    strict: true,
+                    schema: responseSchema(args.grounded.evidence.map((item) => item.id)),
+                },
+            },
+            max_output_tokens: outputLimit(args.feature),
+        }),
+        signal: AbortSignal.timeout(RESPONSE_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+        throw openAiFailure(response.status);
+    }
+    const body = (await response.json());
+    if (body.status !== "completed") {
+        throw new https_1.HttpsError("unavailable", "Sakan AI could not finish this response. Please try again.");
+    }
+    const text = extractOutputText(body);
+    let decoded;
+    try {
+        decoded = JSON.parse(text);
+    }
+    catch {
+        throw new https_1.HttpsError("internal", "Sakan received an invalid AI response.");
+    }
+    const output = validateOutput(decoded, args.feature, args.grounded);
+    const usage = recordValue(body.usage);
+    const inputDetails = recordValue(usage.input_tokens_details);
+    return {
+        output,
+        model: typeof body.model === "string" && body.model ? body.model : model,
+        usage: {
+            inputTokens: integerValue(usage.input_tokens),
+            cachedInputTokens: integerValue(inputDetails.cached_tokens),
+            outputTokens: integerValue(usage.output_tokens),
+        },
+    };
+}
+function responseSchema(evidenceIds) {
+    const nullableText = {
+        anyOf: [
+            { type: "string" },
+            { type: "null" },
+        ],
+    };
+    return {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+            title: {
+                anyOf: [
+                    { type: "string" },
+                    { type: "null" },
+                ],
+            },
+            text: { type: "string" },
+            reasons: {
+                type: "array",
+                maxItems: 3,
+                items: { type: "string" },
+            },
+            suggestedActions: {
+                type: "array",
+                maxItems: 3,
+                items: { type: "string" },
+            },
+            evidenceRefs: {
+                type: "array",
+                maxItems: 12,
+                items: {
+                    type: "string",
+                    enum: evidenceIds,
+                },
+            },
+            quickReplies: {
+                type: "array",
+                maxItems: 3,
+                items: { type: "string" },
+            },
+            reminderTitle: nullableText,
+            reminderReason: nullableText,
+            scenario: {
+                anyOf: [
+                    { type: "null" },
+                    scenarioSchema(),
+                ],
+            },
+        },
+        required: [
+            "title",
+            "text",
+            "reasons",
+            "suggestedActions",
+            "evidenceRefs",
+            "quickReplies",
+            "reminderTitle",
+            "reminderReason",
+            "scenario",
+        ],
+    };
+}
+function scenarioSchema() {
+    const nullableInteger = {
+        anyOf: [{ type: "integer" }, { type: "null" }],
+    };
+    const nullableString = {
+        anyOf: [{ type: "string" }, { type: "null" }],
+    };
+    return {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+            type: {
+                type: "string",
+                enum: [
+                    "addParticipant",
+                    "removeParticipant",
+                    "changeTime",
+                    "changeWeekday",
+                    "changeDayOfMonth",
+                    "changeFrequency",
+                    "assumeNextCompleted",
+                    "assumeNextMissed",
+                    "assumeParticipantJoins",
+                    "createMoment",
+                ],
+            },
+            targetMomentId: nullableString,
+            participantIds: {
+                type: "array",
+                maxItems: 12,
+                items: { type: "string" },
+            },
+            newTitle: nullableString,
+            newCategory: {
+                anyOf: [
+                    { type: "string", enum: ["tradition", "milestone", "care", "familyTime"] },
+                    { type: "null" },
+                ],
+            },
+            newIntervalDays: nullableInteger,
+            newStartMinutes: nullableInteger,
+            newWeekday: nullableInteger,
+            newDayOfMonth: nullableInteger,
+            newMonth: nullableInteger,
+            newIsDayFlexible: { type: "boolean" },
+            scope: {
+                type: "string",
+                enum: ["nextOccurrence", "futureOccurrences"],
+            },
+            assumedDurationMinutes: nullableInteger,
+        },
+        required: [
+            "type",
+            "targetMomentId",
+            "participantIds",
+            "newTitle",
+            "newCategory",
+            "newIntervalDays",
+            "newStartMinutes",
+            "newWeekday",
+            "newDayOfMonth",
+            "newMonth",
+            "newIsDayFlexible",
+            "scope",
+            "assumedDurationMinutes",
+        ],
+    };
+}
+function validateOutput(value, feature, grounded) {
+    const data = recordValue(value);
+    const output = {
+        title: optionalBoundedText(data.title, 100),
+        text: requiredBoundedText(data.text, 1_400),
+        reasons: textList(data.reasons, 3, 220),
+        suggestedActions: textList(data.suggestedActions, 3, 180),
+        evidenceRefs: textList(data.evidenceRefs, 12, 100),
+        quickReplies: textList(data.quickReplies, 3, 90),
+        reminderTitle: optionalBoundedText(data.reminderTitle, 100),
+        reminderReason: optionalBoundedText(data.reminderReason, 600),
+        scenario: data.scenario == null ? null : scenarioValue(data.scenario),
+    };
+    const allowedEvidence = new Set(grounded.evidence.map((item) => item.id));
+    if (output.evidenceRefs.some((id) => !allowedEvidence.has(id))) {
+        throw new https_1.HttpsError("internal", "AI cited an unknown family fact.");
+    }
+    if (feature !== "simulationParse" && output.scenario != null) {
+        throw new https_1.HttpsError("internal", "AI returned an unexpected simulation.");
+    }
+    if (feature === "simulationParse" && output.scenario != null) {
+        const target = output.scenario.targetMomentId;
+        if (target && !grounded.allowedMomentIds.has(target)) {
+            throw new https_1.HttpsError("internal", "AI selected an unknown Moment.");
+        }
+        if (output.scenario.participantIds.some((memberId) => !grounded.allowedMemberIds.has(memberId))) {
+            throw new https_1.HttpsError("internal", "AI selected an unknown family member.");
+        }
+        validateScenario(output.scenario);
+    }
+    if (feature !== "homeInsight") {
+        output.reminderTitle = null;
+        output.reminderReason = null;
+    }
+    if (feature !== "chat") {
+        output.quickReplies = [];
+    }
+    return output;
+}
+function validateScenario(scenario) {
+    const invalid = () => {
+        throw new https_1.HttpsError("internal", "AI returned a simulation that could not be validated.");
+    };
+    const inRange = (value, minimum, maximum) => value == null ||
+        (Number.isInteger(value) && value >= minimum && value <= maximum);
+    if (!inRange(scenario.newIntervalDays, 1, 365) ||
+        !inRange(scenario.newStartMinutes, 0, 1439) ||
+        !inRange(scenario.newWeekday, 1, 7) ||
+        !inRange(scenario.newDayOfMonth, 1, 31) ||
+        !inRange(scenario.newMonth, 1, 12) ||
+        !inRange(scenario.assumedDurationMinutes, 1, 1440)) {
+        invalid();
+    }
+    if (scenario.type === "createMoment") {
+        if (scenario.targetMomentId != null ||
+            !scenario.newTitle ||
+            !scenario.newCategory ||
+            scenario.newIntervalDays == null ||
+            scenario.newStartMinutes == null ||
+            scenario.participantIds.length === 0) {
+            invalid();
+        }
+        if (!scenario.newIsDayFlexible) {
+            if ((scenario.newIntervalDays === 7 || scenario.newIntervalDays === 14) &&
+                scenario.newWeekday == null) {
+                invalid();
+            }
+            if ((scenario.newIntervalDays === 30 || scenario.newIntervalDays === 90) &&
+                scenario.newDayOfMonth == null) {
+                invalid();
+            }
+            if (scenario.newIntervalDays === 365 &&
+                (scenario.newMonth == null || scenario.newDayOfMonth == null)) {
+                invalid();
+            }
+        }
+        return;
+    }
+    if (!scenario.targetMomentId)
+        invalid();
+    if ((scenario.type === "addParticipant" ||
+        scenario.type === "removeParticipant" ||
+        scenario.type === "assumeParticipantJoins") &&
+        scenario.participantIds.length === 0) {
+        invalid();
+    }
+    if (scenario.type === "changeTime" && scenario.newStartMinutes == null) {
+        invalid();
+    }
+    if (scenario.type === "changeWeekday" && scenario.newWeekday == null) {
+        invalid();
+    }
+    if (scenario.type === "changeDayOfMonth" &&
+        scenario.newDayOfMonth == null) {
+        invalid();
+    }
+    if (scenario.type === "changeFrequency" &&
+        scenario.newIntervalDays == null) {
+        invalid();
+    }
+}
+function scenarioValue(value) {
+    const data = recordValue(value);
+    return {
+        type: requiredBoundedText(data.type, 40),
+        targetMomentId: optionalBoundedText(data.targetMomentId, 160),
+        participantIds: textList(data.participantIds, 12, 160),
+        newTitle: optionalBoundedText(data.newTitle, 100),
+        newCategory: optionalBoundedText(data.newCategory, 30),
+        newIntervalDays: nullableIntegerValue(data.newIntervalDays),
+        newStartMinutes: nullableIntegerValue(data.newStartMinutes),
+        newWeekday: nullableIntegerValue(data.newWeekday),
+        newDayOfMonth: nullableIntegerValue(data.newDayOfMonth),
+        newMonth: nullableIntegerValue(data.newMonth),
+        newIsDayFlexible: data.newIsDayFlexible === true,
+        scope: requiredBoundedText(data.scope, 30),
+        assumedDurationMinutes: nullableIntegerValue(data.assumedDurationMinutes),
+    };
+}
+function extractOutputText(body) {
+    const output = Array.isArray(body.output) ? body.output : [];
+    for (const item of output) {
+        const itemData = recordValue(item);
+        const content = Array.isArray(itemData.content) ? itemData.content : [];
+        for (const part of content) {
+            const partData = recordValue(part);
+            if (partData.type === "refusal") {
+                throw new https_1.HttpsError("failed-precondition", "Sakan AI cannot answer that request.");
+            }
+            if (partData.type === "output_text" &&
+                typeof partData.text === "string") {
+                return partData.text;
+            }
+        }
+    }
+    throw new https_1.HttpsError("internal", "Sakan received an empty AI response.");
+}
+function modelFor(feature) {
+    return feature === "chat" ||
+        feature === "homeInsight" ||
+        feature === "digitalTwinReflection"
+        ? LUNA_MODEL
+        : TERRA_MODEL;
+}
+function outputLimit(feature) {
+    return {
+        chat: 800,
+        homeInsight: 700,
+        memoryReflection: 800,
+        weeklyReport: 1_800,
+        digitalTwinReflection: 900,
+        simulationParse: 1_100,
+        simulationExplain: 1_200,
+    }[feature];
+}
+function headers(apiKey) {
+    return {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+    };
+}
+function openAiFailure(status) {
+    if (status === 429) {
+        return new https_1.HttpsError("resource-exhausted", "Sakan AI is at its current usage limit.");
+    }
+    if (status === 400) {
+        return new https_1.HttpsError("internal", "Sakan AI could not process the server request.");
+    }
+    return new https_1.HttpsError("unavailable", "Sakan AI is temporarily unavailable.");
+}
+function recordValue(value) {
+    if (value == null || typeof value !== "object" || Array.isArray(value)) {
+        return {};
+    }
+    return value;
+}
+function requiredBoundedText(value, maxLength) {
+    const text = optionalBoundedText(value, maxLength);
+    if (!text) {
+        throw new https_1.HttpsError("internal", "AI returned missing text.");
+    }
+    return text;
+}
+function optionalBoundedText(value, maxLength) {
+    if (value == null)
+        return null;
+    if (typeof value !== "string") {
+        throw new https_1.HttpsError("internal", "AI returned invalid text.");
+    }
+    const text = value.trim();
+    if (!text || text.length > maxLength) {
+        throw new https_1.HttpsError("internal", "AI returned text outside safe limits.");
+    }
+    return text;
+}
+function textList(value, maxItems, maxLength) {
+    if (!Array.isArray(value) || value.length > maxItems) {
+        throw new https_1.HttpsError("internal", "AI returned an invalid list.");
+    }
+    return value.map((item) => requiredBoundedText(item, maxLength));
+}
+function integerValue(value) {
+    return typeof value === "number" && Number.isInteger(value) && value >= 0
+        ? value
+        : 0;
+}
+function nullableIntegerValue(value) {
+    if (value == null)
+        return null;
+    if (typeof value !== "number" || !Number.isInteger(value)) {
+        throw new https_1.HttpsError("internal", "AI returned an invalid number.");
+    }
+    return value;
+}
+//# sourceMappingURL=openai.js.map

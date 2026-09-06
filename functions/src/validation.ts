@@ -9,6 +9,17 @@ import {
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
 const LOCALE_PATTERN = /^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?$/;
+const HOME_INSIGHT_SURFACES = new Set(["home", "calendar"]);
+const HOME_INSIGHT_ACTION_TYPES = new Set([
+  "joinActiveMoment",
+  "reviewToday",
+  "openReminders",
+  "addReminder",
+  "startMomentNow",
+  "scheduleMoment",
+  "manageMoments",
+  "none",
+]);
 
 export function parseGenerateRequest(value: unknown): GenerateRequest {
   const data = objectValue(value, "request");
@@ -64,6 +75,20 @@ function validateHomeInsightIds(grounding: Record<string, unknown>): void {
     "relatedReminderId",
   ]) {
     optionalId(grounding[key], key);
+  }
+
+  const surface = grounding.surface;
+  if (surface != null && !HOME_INSIGHT_SURFACES.has(surface as string)) {
+    invalid("Unknown family insight surface.");
+  }
+
+  const actionType = requiredString(
+    grounding.actionType,
+    "family insight action type",
+    40,
+  );
+  if (!HOME_INSIGHT_ACTION_TYPES.has(actionType)) {
+    invalid("Unknown family insight action type.");
   }
 }
 

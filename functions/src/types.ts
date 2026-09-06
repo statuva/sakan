@@ -20,7 +20,6 @@ export interface GenerateRequest {
   grounding: Record<string, unknown>;
   locale: string;
 }
-
 export interface ChatTurn {
   role: "user" | "assistant";
   text: string;

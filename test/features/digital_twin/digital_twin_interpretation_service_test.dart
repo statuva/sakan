@@ -101,7 +101,7 @@ void main() {
   );
 
   test(
-    'family interpretation explains mixed patterns instead of one score',
+    'family interpretation stays concise and uses the rolling week',
     () {
       final stableMoment = _moment(
         id: 'movie-night',
@@ -140,6 +140,7 @@ void main() {
               'dad',
               'mom',
             ],
+            dayOffset: -1,
           ),
           _completedInstance(
             id: 'drift-one',
@@ -148,23 +149,52 @@ void main() {
               'dad',
               'mom',
             ],
+            dayOffset: -2,
           ),
         ],
+        referenceDate: DateTime.utc(2026, 8, 29, 12),
       );
 
-      expect(
-        interpretation.summary,
-        contains('mixed rather than one overall family score'),
-      );
-
+      expect(interpretation.summary, contains('all 2 resolved Moments'));
+      expect(interpretation.summary.length, lessThanOrEqualTo(300));
       expect(
         interpretation.themes,
-        contains('1 dependable rhythm'),
+        const <String>['All resolved Moments were completed'],
+      );
+    },
+  );
+
+  test(
+    'family AI payload contains aggregates instead of per-Moment repeats',
+    () {
+      final moment = _moment(id: 'lunch', title: 'Friday Lunch');
+      final payload = service.buildFamilyAiPayload(
+        moments: <FamilyMoment>[moment],
+        rhythms: <RhythmRecord>[
+          _rhythm(
+            momentId: moment.id,
+            status: RhythmStatus.stable,
+            gapDays: 7,
+            occurrenceCount: 4,
+          ),
+        ],
+        instances: <MomentInstance>[
+          _completedInstance(
+            id: 'recent-lunch',
+            moment: moment,
+            participants: const <String>['dad', 'mom'],
+            dayOffset: -1,
+          ),
+        ],
+        referenceDate: DateTime.utc(2026, 8, 29, 12),
       );
 
+      expect(payload['narrativeContractVersion'], 2);
+      expect(payload.containsKey('moments'), isFalse);
+      expect(payload.containsKey('deterministicSummary'), isFalse);
       expect(
-        interpretation.themes,
-        contains('1 rhythm needs consistency'),
+        (payload['rollingWeek'] as Map<String, dynamic>)['completedCount'],
+        1,
       );
     },
   );

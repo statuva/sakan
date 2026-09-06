@@ -224,9 +224,9 @@ class _SakanAssistantScreenState extends State<SakanAssistantScreen> {
                   ),
                   child: Text(
                     _errorMessage!,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: AppColors.error),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.error,
+                    ),
                   ),
                 ),
               ),
@@ -246,9 +246,7 @@ class _SakanAssistantScreenState extends State<SakanAssistantScreen> {
                           padding: const EdgeInsets.only(right: AppSpacing.xs),
                           child: ActionChip(
                             label: Text(question),
-                            onPressed: _isSending
-                                ? null
-                                : () => _send(question),
+                            onPressed: _isSending ? null : () => _send(question),
                           ),
                         ),
                       )

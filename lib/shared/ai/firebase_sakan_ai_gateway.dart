@@ -35,15 +35,18 @@ class FirebaseSakanAiGateway implements SakanAiGateway {
     String locale = 'en',
   }) async {
     final context = await _authorizedAdultContext();
-    return _call('sakanGenerate', <String, dynamic>{
-      'version': 1,
-      'familyId': context.familyId,
-      'feature': feature.name,
-      'targetId': targetId,
-      'prompt': prompt,
-      'grounding': grounding,
-      'locale': locale,
-    });
+    return _call(
+      'sakanGenerate',
+      <String, dynamic>{
+        'version': 1,
+        'familyId': context.familyId,
+        'feature': feature.name,
+        'targetId': targetId,
+        'prompt': prompt,
+        'grounding': grounding,
+        'locale': locale,
+      },
+    );
   }
 
   @override
@@ -57,17 +60,20 @@ class FirebaseSakanAiGateway implements SakanAiGateway {
     final boundedRecentMessages = recentMessages.length <= 8
         ? recentMessages
         : recentMessages.sublist(recentMessages.length - 8);
-    return _call('sakanChat', <String, dynamic>{
-      'version': 1,
-      'familyId': context.familyId,
-      'message': message.trim(),
-      'conversationId': conversationId,
-      'recentMessages': boundedRecentMessages
-          .map((item) => item.toMap())
-          .toList(growable: false),
-      'timezoneOffsetMinutes': DateTime.now().timeZoneOffset.inMinutes,
-      'locale': locale,
-    });
+    return _call(
+      'sakanChat',
+      <String, dynamic>{
+        'version': 1,
+        'familyId': context.familyId,
+        'message': message.trim(),
+        'conversationId': conversationId,
+        'recentMessages': boundedRecentMessages
+            .map((item) => item.toMap())
+            .toList(growable: false),
+        'timezoneOffsetMinutes': DateTime.now().timeZoneOffset.inMinutes,
+        'locale': locale,
+      },
+    );
   }
 
   Future<CurrentFamilyContext> _authorizedAdultContext() async {
@@ -109,7 +115,9 @@ class FirebaseSakanAiGateway implements SakanAiGateway {
 
       final callable = _functions.httpsCallable(
         functionName,
-        options: HttpsCallableOptions(timeout: const Duration(seconds: 110)),
+        options: HttpsCallableOptions(
+          timeout: const Duration(seconds: 110),
+        ),
       );
       final response = await callable.call<Map<String, dynamic>>(payload);
       return SakanAiResult.fromMap(response.data);

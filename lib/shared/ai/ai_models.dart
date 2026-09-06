@@ -6,7 +6,6 @@ enum SakanAiFeature {
   simulationParse,
   simulationExplain,
 }
-
 enum SakanAiMessageRole { user, assistant }
 
 class SakanAiMessage {

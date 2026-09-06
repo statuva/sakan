@@ -2,6 +2,8 @@ import '../models/family_insight_report.dart';
 import 'ai_models.dart';
 import 'sakan_ai_gateway.dart';
 
+enum FamilyInsightSurface { home, calendar }
+
 class AiFamilyInsightService {
   AiFamilyInsightService({required SakanAiGateway gateway})
     : _gateway = gateway;
@@ -14,10 +16,12 @@ class AiFamilyInsightService {
     required FamilyInsightItem insight,
     required String familyId,
     required String memberId,
+    FamilyInsightSurface surface = FamilyInsightSurface.home,
   }) {
     final key = <Object?>[
       familyId,
       memberId,
+      surface.name,
       insight.id,
       insight.kind.name,
       insight.actionType.name,
@@ -33,10 +37,16 @@ class AiFamilyInsightService {
       ...insight.suggestedActions,
     ].join('|');
 
-    return _inFlightOrCached.putIfAbsent(key, () => _load(insight));
+    return _inFlightOrCached.putIfAbsent(
+      key,
+      () => _load(insight, surface),
+    );
   }
 
-  Future<SakanAiResult> _load(FamilyInsightItem insight) {
+  Future<SakanAiResult> _load(
+    FamilyInsightItem insight,
+    FamilyInsightSurface surface,
+  ) {
     return _gateway.generate(
       feature: SakanAiFeature.homeInsight,
       targetId:
@@ -44,6 +54,7 @@ class AiFamilyInsightService {
           insight.relatedMomentId ??
           insight.relatedReminderId,
       grounding: <String, dynamic>{
+        'surface': surface.name,
         'insightId': insight.id,
         'kind': insight.kind.name,
         'actionType': insight.actionType.name,

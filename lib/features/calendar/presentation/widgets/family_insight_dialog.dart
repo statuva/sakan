@@ -72,6 +72,8 @@ class FamilyInsightDialog extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           headline,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(color: CalendarPalette.ink),
                         ),
@@ -98,11 +100,11 @@ class FamilyInsightDialog extends StatelessWidget {
               if (reasons.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.xl),
                 Text(
-                  'Why Sakan surfaced this',
+                  'Why this',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                ...reasons.map(
+                ...reasons.take(1).map(
                   (reason) => _DialogItem(
                     icon: Icons.check_circle_outline,
                     text: reason,
@@ -112,15 +114,14 @@ class FamilyInsightDialog extends StatelessWidget {
               if (suggestedActions.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.lg),
                 Text(
-                  'Suggested next steps',
+                  'One next step',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                ...List.generate(
-                  suggestedActions.length,
-                  (index) => _NumberedAction(
-                    number: index + 1,
-                    text: suggestedActions[index],
+                ...suggestedActions.take(1).map(
+                  (action) => _DialogItem(
+                    icon: Icons.arrow_forward_rounded,
+                    text: action,
                   ),
                 ),
               ],
@@ -175,11 +176,8 @@ class FamilyInsightDialog extends StatelessWidget {
                 ),
                 child: Text(
                   aiNarrative == null
-                      ? 'This recommendation uses Sakan’s deterministic '
-                            'family rules because AI is unavailable or disabled.'
-                      : 'AI-generated explanation grounded in Sakan’s '
-                            'permitted family data. The action and timing are '
-                            'still calculated and validated by Sakan.',
+                      ? 'Based on Sakan’s recorded family data.'
+                      : 'AI wording; Sakan validates the action and timing.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: CalendarPalette.inkSoft,
                     height: 1.4,
@@ -242,7 +240,6 @@ class FamilyInsightDialog extends StatelessWidget {
     };
   }
 }
-
 class _DialogItem extends StatelessWidget {
   const _DialogItem({required this.icon, required this.text});
 
@@ -260,48 +257,6 @@ class _DialogItem extends StatelessWidget {
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NumberedAction extends StatelessWidget {
-  const _NumberedAction({required this.number, required this.text});
-
-  final int number;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 25,
-            height: 25,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: CalendarPalette.forestSoft,
-              shape: BoxShape.circle,
-            ),
-            child: Text(
-              '$number',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: CalendarPalette.forestDark,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
-            ),
           ),
         ],
       ),
