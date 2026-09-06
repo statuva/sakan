@@ -70,6 +70,7 @@ export async function createStructuredResponse(args: {
           name: "sakan_ai_response",
           strict: true,
           schema: responseSchema(
+            args.feature,
             args.grounded.evidence.map((item) => item.id),
           ),
         },
@@ -113,7 +114,11 @@ export async function createStructuredResponse(args: {
   };
 }
 
-function responseSchema(evidenceIds: string[]): Record<string, unknown> {
+function responseSchema(
+  feature: GenerateFeature | "chat",
+  evidenceIds: string[],
+): Record<string, unknown> {
+  const isChat = feature === "chat";
   const nullableText = {
     anyOf: [
       {type: "string"},
@@ -133,17 +138,21 @@ function responseSchema(evidenceIds: string[]): Record<string, unknown> {
       text: {type: "string"},
       reasons: {
         type: "array",
-        maxItems: 3,
+        ...(isChat
+          ? {minItems: 1, maxItems: 1}
+          : {maxItems: 3}),
         items: {type: "string"},
       },
       suggestedActions: {
         type: "array",
-        maxItems: 3,
+        ...(isChat
+          ? {minItems: 1, maxItems: 1}
+          : {maxItems: 3}),
         items: {type: "string"},
       },
       evidenceRefs: {
         type: "array",
-        maxItems: 12,
+        maxItems: isChat ? 4 : 12,
         items: {
           type: "string",
           enum: evidenceIds,
@@ -151,7 +160,7 @@ function responseSchema(evidenceIds: string[]): Record<string, unknown> {
       },
       quickReplies: {
         type: "array",
-        maxItems: 3,
+        maxItems: isChat ? 2 : 3,
         items: {type: "string"},
       },
       reminderTitle: nullableText,
@@ -252,17 +261,32 @@ function validateOutput(
   grounded: GroundedContext,
 ): AiStructuredOutput {
   const data = recordValue(value);
+  const isChat = feature === "chat";
   const output: AiStructuredOutput = {
     title: optionalBoundedText(data.title, 100),
-    text: requiredBoundedText(data.text, 1_400),
-    reasons: textList(data.reasons, 3, 220),
-    suggestedActions: textList(data.suggestedActions, 3, 180),
-    evidenceRefs: textList(data.evidenceRefs, 12, 100),
-    quickReplies: textList(data.quickReplies, 3, 90),
+    text: requiredBoundedText(data.text, isChat ? 600 : 1_400),
+    reasons: textList(data.reasons, isChat ? 1 : 3, 220),
+    suggestedActions: textList(
+      data.suggestedActions,
+      isChat ? 1 : 3,
+      180,
+    ),
+    evidenceRefs: textList(data.evidenceRefs, isChat ? 4 : 12, 100),
+    quickReplies: textList(data.quickReplies, isChat ? 2 : 3, 90),
     reminderTitle: optionalBoundedText(data.reminderTitle, 100),
     reminderReason: optionalBoundedText(data.reminderReason, 600),
     scenario: data.scenario == null ? null : scenarioValue(data.scenario),
   };
+
+  if (
+    isChat &&
+    (output.reasons.length !== 1 || output.suggestedActions.length !== 1)
+  ) {
+    throw new HttpsError(
+      "internal",
+      "Sakan received an incomplete chat response.",
+    );
+  }
 
   const allowedEvidence = new Set(
     grounded.evidence.map((item) => item.id),

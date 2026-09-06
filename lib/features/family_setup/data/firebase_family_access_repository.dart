@@ -177,7 +177,9 @@ class FirebaseFamilyAccessRepository implements FamilyAccessRepository {
       }
 
       if (role != FamilyRole.child) {
-        throw ArgumentError('New members must be confirmed by the family admin.');
+        throw ArgumentError(
+          'New members must be confirmed by the family admin.',
+        );
       }
 
       final invitation = await getInvitation(normalizedCode);

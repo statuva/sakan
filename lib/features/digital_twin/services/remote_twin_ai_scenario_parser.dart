@@ -36,7 +36,8 @@ class RemoteTwinAiScenarioParser implements TwinAiScenarioParser {
       if (targetMoment == null) {
         throw const FormatException('AI selected an unavailable Moment.');
       }
-      if (targetMoment.type != MomentType.recurring || targetMoment.isArchived) {
+      if (targetMoment.type != MomentType.recurring ||
+          targetMoment.isArchived) {
         throw const FormatException(
           'AI selected a Moment that cannot be simulated.',
         );
@@ -72,8 +73,7 @@ class RemoteTwinAiScenarioParser implements TwinAiScenarioParser {
 
     final scopeName = map['scope'] as String?;
     final scope =
-        _simulationScopeByName(scopeName) ??
-        TwinSimulationScope.nextOccurrence;
+        _simulationScopeByName(scopeName) ?? TwinSimulationScope.nextOccurrence;
 
     final categoryName = map['newCategory'] as String?;
     final category = _momentCategoryByName(categoryName);

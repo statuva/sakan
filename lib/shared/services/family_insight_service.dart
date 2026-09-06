@@ -709,8 +709,8 @@ class FamilyInsightService {
     CareAction? finishedFallback;
     for (final reminder in snapshot.currentUserReminders) {
       final exact = reminder.instanceId == instance.id;
-      final legacy = reminder.instanceId == null &&
-          reminder.momentId == instance.momentId;
+      final legacy =
+          reminder.instanceId == null && reminder.momentId == instance.momentId;
       if (!exact && !legacy) continue;
       if (!reminder.isFinished) return reminder;
       finishedFallback ??= reminder;

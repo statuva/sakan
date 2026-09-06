@@ -176,10 +176,10 @@ class FamilyInsightDialog extends StatelessWidget {
                 child: Text(
                   aiNarrative == null
                       ? 'This recommendation uses Sakan’s deterministic '
-                          'family rules because AI is unavailable or disabled.'
+                            'family rules because AI is unavailable or disabled.'
                       : 'AI-generated explanation grounded in Sakan’s '
-                          'permitted family data. The action and timing are '
-                          'still calculated and validated by Sakan.',
+                            'permitted family data. The action and timing are '
+                            'still calculated and validated by Sakan.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: CalendarPalette.inkSoft,
                     height: 1.4,

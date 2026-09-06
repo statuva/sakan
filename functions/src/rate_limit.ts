@@ -3,16 +3,16 @@ import {HttpsError} from "firebase-functions/v2/https";
 import type {GenerateFeature} from "./types";
 
 const DAILY_LIMITS: Record<GenerateFeature | "chat", number> = {
-  chat: 20,
-  homeInsight: 24,
-  memoryReflection: 4,
-  weeklyReport: 3,
-  digitalTwinReflection: 12,
-  simulationParse: 6,
-  simulationExplain: 6,
+  chat: 75,
+  homeInsight: 60,
+  memoryReflection: 20,
+  weeklyReport: 10,
+  digitalTwinReflection: 30,
+  simulationParse: 30,
+  simulationExplain: 30,
 };
-const GLOBAL_UID_DAILY_REQUEST_LIMIT = 40;
-const PROJECT_DAILY_REQUEST_LIMIT = 120;
+const GLOBAL_UID_DAILY_REQUEST_LIMIT = 200;
+const PROJECT_DAILY_REQUEST_LIMIT = 600;
 const RATE_LIMIT_RETENTION_MS = 35 * 24 * 60 * 60 * 1000;
 
 export async function consumeDailyAllowance(

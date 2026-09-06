@@ -124,12 +124,6 @@ export const sakanGenerate = onCall(
     }
 
     try {
-      await consumeDailyAllowance(
-        db,
-        request.familyId,
-        access.uid,
-        request.feature,
-      );
       const instructions = generationInstructions(
         request,
         grounded.evidence,
@@ -137,6 +131,12 @@ export const sakanGenerate = onCall(
       await moderateText(
         openAiKey.value(),
         `${request.prompt ?? ""}\n${instructions.user}`,
+      );
+      await consumeDailyAllowance(
+        db,
+        request.familyId,
+        access.uid,
+        request.feature,
       );
       const generated = await createStructuredResponse({
         apiKey: openAiKey.value(),
@@ -214,7 +214,6 @@ export const sakanChat = onCall(
       request,
       enableYoungChildDataAi.value(),
     );
-    await consumeDailyAllowance(db, request.familyId, access.uid, "chat");
     const instructions = chatInstructions(request, grounded.evidence);
     await moderateText(
       openAiKey.value(),
@@ -223,6 +222,7 @@ export const sakanChat = onCall(
         ...request.recentMessages.map((turn) => turn.text),
       ].join("\n"),
     );
+    await consumeDailyAllowance(db, request.familyId, access.uid, "chat");
     const generated = await createStructuredResponse({
       apiKey: openAiKey.value(),
       feature: "chat",
@@ -239,7 +239,7 @@ export const sakanChat = onCall(
       message: request.message,
       turns: request.recentMessages,
       evidence: grounded.evidence,
-      promptVersion: 2,
+      promptVersion: 3,
     });
     await logUsage({
       familyId: request.familyId,

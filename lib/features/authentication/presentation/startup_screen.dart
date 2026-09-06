@@ -56,8 +56,7 @@ class _StartupScreenState extends State<StartupScreen>
         .collection('users')
         .doc(firebaseUser.uid)
         .get();
-    final currentFamilyId =
-        userSnapshot.data()?['currentFamilyId'] as String?;
+    final currentFamilyId = userSnapshot.data()?['currentFamilyId'] as String?;
 
     if (currentFamilyId == null || currentFamilyId.isEmpty) {
       return '/family-access';

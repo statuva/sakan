@@ -60,7 +60,6 @@ class WeeklyMomentPattern {
 
     return completedCount / resolvedCount;
   }
-
 }
 
 class FamilyWeeklyReport {

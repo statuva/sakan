@@ -39,16 +39,16 @@ class HomeDailyReflection extends StatelessWidget {
                     textDirection: TextDirection.rtl,
                     child: Align(
                       alignment: Alignment.centerRight,
-                      child:Text(
-  arabic,
-  textAlign: TextAlign.right,
-  style: AppTextStyles.arabic.copyWith(
-    fontSize: 15,
-    fontWeight: FontWeight.w500,
-    color: AppColors.textPrimary,
-    height: 1.65,
-  ),
-),
+                      child: Text(
+                        arabic,
+                        textAlign: TextAlign.right,
+                        style: AppTextStyles.arabic.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                          height: 1.65,
+                        ),
+                      ),
                     ),
                   ),
                 if (arabic != null &&
@@ -70,11 +70,11 @@ class HomeDailyReflection extends StatelessWidget {
                   Text(
                     sourceLine,
                     style: AppTextStyles.arabic.copyWith(
-  fontSize: 10,
-  fontWeight: FontWeight.w400,
-  color: AppColors.textSecondary,
-  height: 1.4,
-),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w400,
+                      color: AppColors.textSecondary,
+                      height: 1.4,
+                    ),
                   ),
                 ],
               ],

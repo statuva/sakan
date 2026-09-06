@@ -130,7 +130,8 @@ class RecurringOccurrenceService {
 
     if (interval == 7 || interval == 14) {
       final preferredWeekday = moment.preferredWeekday;
-      final weekday = preferredWeekday != null &&
+      final weekday =
+          preferredWeekday != null &&
               preferredWeekday >= DateTime.monday &&
               preferredWeekday <= DateTime.sunday
           ? preferredWeekday
@@ -157,10 +158,7 @@ class RecurringOccurrenceService {
       }
 
       while (!cursor.isAfter(localEnd)) {
-        final daysFromAnchor = _calendarDayDifference(
-          cadenceAnchor,
-          cursor,
-        );
+        final daysFromAnchor = _calendarDayDifference(cadenceAnchor, cursor);
         if (daysFromAnchor >= 0 &&
             (interval == 7 || daysFromAnchor % 14 == 0)) {
           final candidate = atMinutes(cursor);
@@ -179,9 +177,11 @@ class RecurringOccurrenceService {
       var month = effectiveStart.month;
       final day = moment.preferredDayOfMonth ?? anchor.day;
 
-      while (DateTime(year, month, 1).isBefore(
-        DateTime(localEnd.year, localEnd.month + 1, 1),
-      )) {
+      while (DateTime(
+        year,
+        month,
+        1,
+      ).isBefore(DateTime(localEnd.year, localEnd.month + 1, 1))) {
         final monthsFromAnchor =
             (year - anchor.year) * 12 + month - anchor.month;
         if (monthsFromAnchor >= 0 && monthsFromAnchor % monthStep == 0) {
@@ -210,7 +210,8 @@ class RecurringOccurrenceService {
 
     if (interval == 365) {
       final preferredMonth = moment.preferredMonth;
-      final month = preferredMonth != null &&
+      final month =
+          preferredMonth != null &&
               preferredMonth >= DateTime.january &&
               preferredMonth <= DateTime.december
           ? preferredMonth
@@ -275,15 +276,14 @@ class RecurringOccurrenceService {
   }) async {
     final repository = _repository;
     if (repository is NonDestructiveOccurrenceRepository) {
-      final result = await
-          (repository as NonDestructiveOccurrenceRepository)
-              .materializeOccurrence(
-        moment: moment,
-        scheduledStartAt: scheduledStartAt,
-        scheduledEndAt: scheduledEndAt,
-        createdBy: createdBy,
-        source: MomentInstanceSource.calendar,
-      );
+      final result = await (repository as NonDestructiveOccurrenceRepository)
+          .materializeOccurrence(
+            moment: moment,
+            scheduledStartAt: scheduledStartAt,
+            scheduledEndAt: scheduledEndAt,
+            createdBy: createdBy,
+            source: MomentInstanceSource.calendar,
+          );
       return result.wasCreated;
     }
 

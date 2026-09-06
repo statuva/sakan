@@ -72,6 +72,7 @@ class _SakanAssistantScreenState extends State<SakanAssistantScreen> {
     if (message.isEmpty || _isSending) {
       return;
     }
+    final locale = Localizations.localeOf(context).toLanguageTag();
 
     final priorMessages = List<SakanAiMessage>.from(_messages);
     _controller.clear();
@@ -89,16 +90,17 @@ class _SakanAssistantScreenState extends State<SakanAssistantScreen> {
       final result = await AppDependencies.sakanAiGateway.chat(
         message: message,
         recentMessages: priorMessages,
+        locale: locale,
       );
       if (!mounted) return;
       setState(() {
         _messages.add(
           SakanAiMessage(
             role: SakanAiMessageRole.assistant,
-            text: result.text,
+            text: _formatAssistantAnswer(result),
           ),
         );
-        _quickReplies = result.quickReplies.take(3).toList(growable: false);
+        _quickReplies = result.quickReplies.take(2).toList(growable: false);
       });
     } on SakanAiException catch (error) {
       if (!mounted) return;
@@ -112,6 +114,17 @@ class _SakanAssistantScreenState extends State<SakanAssistantScreen> {
         _scrollToBottom();
       }
     }
+  }
+
+  String _formatAssistantAnswer(SakanAiResult result) {
+    final sections = <String>[result.text];
+    if (result.reasons.isNotEmpty) {
+      sections.add('Why this:\n${result.reasons.first}');
+    }
+    if (result.suggestedActions.isNotEmpty) {
+      sections.add('Next step:\n${result.suggestedActions.first}');
+    }
+    return sections.join('\n\n');
   }
 
   void _scrollToBottom() {
@@ -211,9 +224,9 @@ class _SakanAssistantScreenState extends State<SakanAssistantScreen> {
                   ),
                   child: Text(
                     _errorMessage!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.error,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppColors.error),
                   ),
                 ),
               ),
@@ -233,7 +246,9 @@ class _SakanAssistantScreenState extends State<SakanAssistantScreen> {
                           padding: const EdgeInsets.only(right: AppSpacing.xs),
                           child: ActionChip(
                             label: Text(question),
-                            onPressed: _isSending ? null : () => _send(question),
+                            onPressed: _isSending
+                                ? null
+                                : () => _send(question),
                           ),
                         ),
                       )
