@@ -285,10 +285,10 @@ class FirebaseProfileRepository implements ProfileRepository {
       throw ArgumentError('The family admin role cannot be assigned here.');
     }
 
-    return _memberReference(familyId: familyId, memberId: memberId).update({
-      'role': role.name,
-      'updatedAt': Timestamp.now(),
-    });
+    return _memberReference(
+      familyId: familyId,
+      memberId: memberId,
+    ).update({'role': role.name, 'updatedAt': Timestamp.now()});
   }
 
   @override

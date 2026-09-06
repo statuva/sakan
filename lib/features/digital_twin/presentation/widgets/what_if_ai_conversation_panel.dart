@@ -24,8 +24,7 @@ class WhatIfAiConversationPanel extends StatefulWidget {
       _WhatIfAiConversationPanelState();
 }
 
-class _WhatIfAiConversationPanelState
-    extends State<WhatIfAiConversationPanel> {
+class _WhatIfAiConversationPanelState extends State<WhatIfAiConversationPanel> {
   final TextEditingController _controller = TextEditingController();
   final List<_ConversationLine> _conversation = <_ConversationLine>[];
 
@@ -55,9 +54,7 @@ class _WhatIfAiConversationPanelState
 
     final recentConversation = _latestConversationLines();
     var prompt = recentConversation
-        .map(
-          (line) => '${line.isUser ? 'Adult' : 'Sakan'}: ${line.text}',
-        )
+        .map((line) => '${line.isUser ? 'Adult' : 'Sakan'}: ${line.text}')
         .join('\n');
     if (prompt.length > 2400) {
       prompt = prompt.substring(prompt.length - 2400);
@@ -72,8 +69,7 @@ class _WhatIfAiConversationPanelState
       setState(() {
         _summary = result.interpretedSummary;
         _scenario = result.scenario;
-        final reply =
-            result.clarificationQuestion ?? result.interpretedSummary;
+        final reply = result.clarificationQuestion ?? result.interpretedSummary;
         _conversation.add(_ConversationLine(isUser: false, text: reply));
       });
     } on SakanAiException catch (error) {
@@ -151,8 +147,7 @@ class _WhatIfAiConversationPanelState
             maxLines: 4,
             textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
-              hintText:
-                  'Example: What if we had a picnic this weekend?',
+              hintText: 'Example: What if we had a picnic this weekend?',
             ),
           ),
           const SizedBox(height: AppSpacing.sm),

@@ -50,9 +50,7 @@ class _MemoryDetailsScreenState extends State<MemoryDetailsScreen> {
   }
 
   Future<void> _generateReflection() async {
-    if (!_canUseAi ||
-        _isGenerating ||
-        memory.note?.trim().isNotEmpty != true) {
+    if (!_canUseAi || _isGenerating || memory.note?.trim().isNotEmpty != true) {
       return;
     }
 
@@ -206,9 +204,7 @@ class _MemoryDetailsScreenState extends State<MemoryDetailsScreen> {
                           )
                         : const Icon(Icons.auto_awesome_rounded),
                     label: Text(
-                      _isGenerating
-                          ? 'Reflecting…'
-                          : 'Create Sakan Reflection',
+                      _isGenerating ? 'Reflecting…' : 'Create Sakan Reflection',
                     ),
                   ),
                 ),

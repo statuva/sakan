@@ -13,7 +13,8 @@ const MAX_ACTIVE_MEMBERS = 40;
 const MAX_ACTIVE_MOMENTS = 60;
 const MAX_CHAT_OCCURRENCES = 24;
 const MAX_CHAT_RHYTHMS = 16;
-const MAX_CHAT_MEMORIES = 8;
+const MAX_CHAT_MEMORIES = 6;
+const MAX_CHAT_MEMORY_NOTE_LENGTH = 600;
 const MAX_CHAT_REMINDERS = 16;
 
 interface ActiveMember {
@@ -279,7 +280,7 @@ export async function buildChatContext(
       .collection(`families/${access.familyId}/memories`)
       .orderBy("occurredAt", "desc")
       .limit(MAX_CHAT_MEMORIES)
-      .select("momentId", "instanceId", "title", "occurredAt")
+      .select("momentId", "instanceId", "title", "note", "occurredAt")
       .get(),
     db
       .collection(`families/${access.familyId}/careActions`)
@@ -323,6 +324,10 @@ export async function buildChatContext(
       momentId: stringValue(data.momentId),
       occurrenceId: stringValue(data.instanceId),
       title: truncate(stringValue(data.title), 120),
+      note: truncate(
+        stringValue(data.note),
+        MAX_CHAT_MEMORY_NOTE_LENGTH,
+      ),
       occurredAt: timestampValue(data.occurredAt),
     };
   });
@@ -389,7 +394,8 @@ export async function buildChatContext(
         id: "family.dataLimit",
         text: JSON.stringify({
           recordsAreBounded: true,
-          memoryNotesIncluded: false,
+          memoryNotesIncluded: true,
+          memoryNotesAreRecentAndTruncated: true,
         }),
       },
       {id: "chat.question", text: request.message},

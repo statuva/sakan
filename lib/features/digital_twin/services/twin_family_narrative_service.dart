@@ -20,14 +20,15 @@ class TwinFamilyNarrativeService {
     required FamilyInsightReport report,
     required FamilyTwinInterpretation fallback,
   }) {
-    final grounding = _interpretationService.buildFamilyAiPayload(
-      moments: report.snapshot.moments,
-      rhythms: report.snapshot.rhythms,
-      instances: report.snapshot.instances,
-    )..addAll(<String, dynamic>{
-        'deterministicSummary': fallback.summary,
-        'deterministicThemes': fallback.themes,
-      });
+    final grounding =
+        _interpretationService.buildFamilyAiPayload(
+          moments: report.snapshot.moments,
+          rhythms: report.snapshot.rhythms,
+          instances: report.snapshot.instances,
+        )..addAll(<String, dynamic>{
+          'deterministicSummary': fallback.summary,
+          'deterministicThemes': fallback.themes,
+        });
     final key = jsonEncode(<String, dynamic>{
       'familyId': report.snapshot.familyId,
       'memberId': report.snapshot.currentUserId,

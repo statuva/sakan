@@ -140,10 +140,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
               ),
             ),
             const SizedBox(height: AppSpacing.xs),
-            _WeeklyAiNarrative(
-              report: report,
-              narrative: _aiNarrative,
-            ),
+            _WeeklyAiNarrative(report: report, narrative: _aiNarrative),
             const SizedBox(height: AppSpacing.xl),
             if (!report.hasActivity)
               const _EmptyWeekCard()
@@ -167,10 +164,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
 }
 
 class _WeeklyAiNarrative extends StatelessWidget {
-  const _WeeklyAiNarrative({
-    required this.report,
-    required this.narrative,
-  });
+  const _WeeklyAiNarrative({required this.report, required this.narrative});
 
   final FamilyWeeklyReport report;
   final Future<SakanAiResult>? narrative;
@@ -211,9 +205,9 @@ class _WeeklyAiNarrative extends StatelessWidget {
               Text(
                 'AI interpretation is unavailable right now. '
                 'The calculated report below is still available.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
               ),
             ],
             if (observations.isNotEmpty) ...[
@@ -248,7 +242,8 @@ class _WeeklyAiNarrative extends StatelessWidget {
               const SizedBox(height: AppSpacing.lg),
               _SectionCard(
                 title: 'A gentle focus for next week',
-                subtitle: 'Suggestions only. Nothing is scheduled automatically.',
+                subtitle:
+                    'Suggestions only. Nothing is scheduled automatically.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: nextSteps
