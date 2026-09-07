@@ -162,9 +162,40 @@ class DigitalTwinSimulationService {
       scenario: scenario,
     );
 
+    final remainsEarlyLearning =
+        affectedPattern.currentStatus == RhythmStatus.stillLearning &&
+        affectedPattern.projectedStatus == RhythmStatus.stillLearning;
+    final isPositiveScheduleTrial =
+        affectedPattern.direction == SimulationDirection.improving &&
+        (scenario.type == TwinSimulationType.changeFrequency
+            ? (affectedPattern.projectedConflictCount ?? 0) == 0
+            : scenario.changesSchedule &&
+                  affectedPattern.projectedConflictCount == 0);
+    final isPositiveEarlyTrial =
+        remainsEarlyLearning &&
+        (scenario.type == TwinSimulationType.assumeNextCompleted ||
+            scenario.type == TwinSimulationType.assumeParticipantJoins ||
+            (scenario.type == TwinSimulationType.addParticipant &&
+                affectedPattern.direction !=
+                    SimulationDirection.increasedRisk &&
+                (affectedPattern.projectedConflictCount ?? 0) == 0) ||
+            isPositiveScheduleTrial);
     final themes = <String>[
       scenario.type.label,
-      if (affectedPattern.statusChanged)
+      if (affectedPattern.isHypothetical)
+        (affectedPattern.projectedConflictCount ?? 0) > 0
+            ? 'Schedule conflict · choose another time'
+            : !affectedPattern.projectedScheduleCoverageComplete
+            ? 'Confirm family availability'
+            : 'Early potential'
+      else if (isPositiveEarlyTrial)
+        'Benefit can be tested'
+      else if (scenario.changesSchedule &&
+          (affectedPattern.projectedConflictCount ?? 0) > 0)
+        affectedPattern.direction == SimulationDirection.improving
+            ? 'Fewer conflicts · time still needs review'
+            : 'Recorded conflicts · review the time'
+      else if (affectedPattern.statusChanged)
         '${_statusLabel(affectedPattern.currentStatus)} → Projected ${_statusLabel(affectedPattern.projectedStatus)}'
       else
         affectedPattern.direction.label,
@@ -410,23 +441,22 @@ class DigitalTwinSimulationService {
       count: isOneTime ? 1 : projectionHorizon,
     );
     final conflictCount = schedule.conflictCount;
-    final scheduleMeaning = conflictCount == null
-        ? 'Recorded availability is incomplete, so Sakan cannot compare the proposed time yet.'
-        : conflictCount == 0
-        ? 'The proposed time has no conflicts in the recorded availability.'
-        : isOneTime
-        ? 'The proposed occurrence overlaps $conflictCount recorded ${conflictCount == 1 ? 'busy period' : 'busy periods'}.'
-        : 'The next $projectionHorizon projected occurrences overlap $conflictCount recorded ${conflictCount == 1 ? 'busy period' : 'busy periods'}.';
+    final benefit = _momentBenefit(moment, isOneTime: isOneTime);
+    final recommendation = _newMomentRecommendation(
+      conflictCount: conflictCount,
+      hasCompleteCoverage: schedule.hasCompleteCoverage,
+    );
+    final summary = (conflictCount ?? 0) > 0
+        ? 'This time has $conflictCount recorded schedule '
+              '${conflictCount == 1 ? 'conflict' : 'conflicts'}. '
+              '$benefit $recommendation'
+        : '$benefit $recommendation';
     return SimulatedMomentPattern(
       momentId: moment.id,
       currentStatus: RhythmStatus.stillLearning,
       projectedStatus: RhythmStatus.stillLearning,
       direction: SimulationDirection.unknown,
-      summary: isOneTime
-          ? '${moment.title} is shown as one hypothetical occurrence. '
-                '$scheduleMeaning One planned event does not create a family rhythm.'
-          : '${moment.title} would appear as a new Still Learning pattern. '
-                '$scheduleMeaning Sakan cannot project a stronger rhythm until real occurrences are recorded.',
+      summary: summary,
       changes: <String>[
         'New ${isOneTime ? 'one-time' : 'recurring'} ${_categoryLabel(moment.category)}',
         if (isOneTime)
@@ -437,7 +467,9 @@ class DigitalTwinSimulationService {
         '${moment.expectedParticipantIds.length} expected '
             '${moment.expectedParticipantIds.length == 1 ? 'participant' : 'participants'}',
         if (conflictCount != null)
-          'Recorded availability conflicts: $conflictCount',
+          schedule.hasCompleteCoverage
+              ? 'Recorded availability conflicts: $conflictCount'
+              : 'Recorded conflicts in available schedules: $conflictCount',
       ],
       assumptions: <String>[
         'The new Moment has no completed or missed history.',
@@ -450,7 +482,9 @@ class DigitalTwinSimulationService {
       currentParticipantCount: 0,
       projectedParticipantCount: moment.expectedParticipantIds.length,
       projectedConflictCount: conflictCount,
+      projectedScheduleCoverageComplete: schedule.hasCompleteCoverage,
       isHypothetical: true,
+      isOneTimeProjection: isOneTime,
       isAffected: true,
     );
   }
@@ -478,6 +512,8 @@ class DigitalTwinSimulationService {
     String summary;
     int? currentConflicts;
     int? projectedConflicts;
+    var projectedScheduleCoverageComplete = false;
+    var frequencyUsesRecordedCadence = false;
 
     switch (scenario.type) {
       case TwinSimulationType.assumeNextCompleted:
@@ -549,6 +585,8 @@ class DigitalTwinSimulationService {
         );
         currentConflicts = comparison.currentConflictCount;
         projectedConflicts = comparison.projectedConflictCount;
+        projectedScheduleCoverageComplete =
+            comparison.projectedScheduleCoverageComplete;
         direction = comparison.direction;
         projectedStatus = _statusAfterPlanChange(
           currentStatus: currentStatus,
@@ -574,6 +612,8 @@ class DigitalTwinSimulationService {
         );
         currentConflicts = comparison.currentConflictCount;
         projectedConflicts = comparison.projectedConflictCount;
+        projectedScheduleCoverageComplete =
+            comparison.projectedScheduleCoverageComplete;
 
         final observedGap = _medianCompletedGap(instances);
         direction = _frequencyDirection(
@@ -582,6 +622,12 @@ class DigitalTwinSimulationService {
           projectedIntervalDays: simulated.expectedIntervalDays,
           fallback: comparison.direction,
         );
+        frequencyUsesRecordedCadence =
+            observedGap != null &&
+            original.expectedIntervalDays != null &&
+            simulated.expectedIntervalDays != null &&
+            (observedGap - simulated.expectedIntervalDays!).abs() <
+                (observedGap - original.expectedIntervalDays!).abs();
 
         projectedStatus = _statusAfterPlanChange(
           currentStatus: currentStatus,
@@ -612,7 +658,22 @@ class DigitalTwinSimulationService {
 
       case TwinSimulationType.addParticipant:
         projectedStatus = currentStatus;
-        direction = SimulationDirection.unknown;
+        final comparison = _compareSchedules(
+          baseReport: baseReport,
+          currentMoment: original,
+          simulatedMoment: simulated,
+        );
+        currentConflicts = comparison.currentConflictCount;
+        projectedConflicts = comparison.projectedConflictCount;
+        projectedScheduleCoverageComplete =
+            comparison.projectedScheduleCoverageComplete;
+        // If the added member has a known conflict, that risk is useful even
+        // when the original group has no schedule records to compare against.
+        direction = currentConflicts == null &&
+                projectedConflicts != null &&
+                projectedConflicts > 0
+            ? SimulationDirection.increasedRisk
+            : comparison.direction;
         final names = _memberNames(
           snapshot.members,
           scenario.participantIds,
@@ -621,6 +682,13 @@ class DigitalTwinSimulationService {
             'Adding $names changes who is expected in ${original.title}, '
             'but it does not change the recorded ${_statusLabel(currentStatus)} '
             'rhythm until future sessions actually happen.';
+        if (direction == SimulationDirection.increasedRisk &&
+            projectedConflicts != null &&
+            projectedConflicts > 0) {
+          summary = '$summary The simulated plan has $projectedConflicts '
+              'recorded schedule conflict ${projectedConflicts == 1 ? 'match' : 'matches'}; '
+              'review the time before adding them.';
+        }
         assumptions.add(
           'The selected member is added to the simulated plan only.',
         );
@@ -644,6 +712,60 @@ class DigitalTwinSimulationService {
         throw StateError('New Moment patterns use a separate path.');
     }
 
+    final remainsEarlyLearning =
+        currentStatus == RhythmStatus.stillLearning &&
+        projectedStatus == RhythmStatus.stillLearning;
+    final isPositiveScheduleTrial =
+        direction == SimulationDirection.improving &&
+        (scenario.type == TwinSimulationType.changeFrequency
+            ? (projectedConflicts ?? 0) == 0
+            : scenario.changesSchedule && projectedConflicts == 0);
+    final isPositiveEarlyTrial =
+        remainsEarlyLearning &&
+        (scenario.type == TwinSimulationType.assumeNextCompleted ||
+            scenario.type == TwinSimulationType.assumeParticipantJoins ||
+            (scenario.type == TwinSimulationType.addParticipant &&
+                direction != SimulationDirection.increasedRisk &&
+                (projectedConflicts ?? 0) == 0) ||
+            isPositiveScheduleTrial);
+
+    if (remainsEarlyLearning &&
+        scenario.type == TwinSimulationType.assumeNextMissed) {
+      summary = 'Missing the next ${original.title} would add no completed '
+          'evidence, so the rhythm would remain Still Learning.';
+    } else if (isPositiveEarlyTrial) {
+      final nextStep = scenario.type == TwinSimulationType.addParticipant
+          ? projectedScheduleCoverageComplete
+                ? 'Including the added member could make this a more shared Moment. '
+                      'Try the next real occurrence and record what happened.'
+                : 'Including the added member could make this a more shared Moment. '
+                      'Confirm that they are free at this time, then try the next '
+                      'real occurrence and record what happened.'
+          : frequencyUsesRecordedCadence
+          ? projectedConflicts == null
+                ? 'The new frequency better matches the recorded cadence. '
+                      'Confirm the time with your family, then try the next '
+                      'real occurrence and record what happened.'
+                : projectedConflicts != null &&
+                    currentConflicts != null &&
+                    projectedConflicts > currentConflicts
+                ? 'The new frequency better matches the recorded cadence, but '
+                      'it creates more recorded schedule conflicts. Review the '
+                      'timing before trying it.'
+                : 'The new frequency better matches the recorded cadence. Try '
+                      'the next real occurrence and record what happened.'
+          : scenario.changesSchedule
+          ? projectedScheduleCoverageComplete
+                ? 'The adjusted plan has no recorded busy-time conflicts. Try '
+                      'the next real occurrence and record what happened.'
+                : 'The adjusted plan has no conflicts in the available schedules. '
+                      'Confirm the time with the family, then try the next real '
+                      'occurrence and record what happened.'
+          : 'Completing and recording the next real occurrence will help '
+                'Sakan learn whether this Moment fits your family.';
+      summary = '${_momentBenefit(simulated)} $nextStep';
+    }
+
     return SimulatedMomentPattern(
       momentId: original.id,
       currentStatus: currentStatus,
@@ -662,6 +784,8 @@ class DigitalTwinSimulationService {
       projectedParticipantCount: simulated.expectedParticipantIds.length,
       currentConflictCount: currentConflicts,
       projectedConflictCount: projectedConflicts,
+      projectedScheduleCoverageComplete:
+          projectedScheduleCoverageComplete,
       isAffected: true,
     );
   }
@@ -747,6 +871,7 @@ class DigitalTwinSimulationService {
         currentConflictCount: currentConflicts,
         projectedConflictCount: projectedConflicts,
         direction: SimulationDirection.unknown,
+        projectedScheduleCoverageComplete: projected.hasCompleteCoverage,
       );
     }
 
@@ -760,6 +885,7 @@ class DigitalTwinSimulationService {
       currentConflictCount: currentConflicts,
       projectedConflictCount: projectedConflicts,
       direction: direction,
+      projectedScheduleCoverageComplete: projected.hasCompleteCoverage,
     );
   }
 
@@ -792,17 +918,19 @@ class DigitalTwinSimulationService {
     var conflicts = 0;
 
     for (final start in starts) {
-      final startMinutes = _minuteOfDay(start);
-      final endMinutes = startMinutes + duration;
+      final end = start.add(Duration(minutes: duration));
 
       for (final memberId in participantIds) {
         final memberHasConflict = activeBlocks.any((block) {
-          if (block.memberId != memberId || !block.occursOn(start)) {
+          if (block.memberId != memberId) {
             return false;
           }
 
-          return startMinutes < block.endMinutes &&
-              endMinutes > block.startMinutes;
+          return _availabilityBlockOverlaps(
+            block: block,
+            start: start,
+            end: end,
+          );
         });
 
         if (memberHasConflict) {
@@ -811,7 +939,42 @@ class DigitalTwinSimulationService {
       }
     }
 
-    return _ScheduleProjection(conflictCount: conflicts);
+    return _ScheduleProjection(
+      conflictCount: conflicts,
+      hasCompleteCoverage: coveredMembers.containsAll(participantIds),
+    );
+  }
+
+  bool _availabilityBlockOverlaps({
+    required AvailabilityBlock block,
+    required DateTime start,
+    required DateTime end,
+  }) {
+    final startDate = _dateOnly(start);
+    final endDate = _dateOnly(end);
+    final blockDates = <DateTime>[
+      startDate.subtract(const Duration(days: 1)),
+      startDate,
+      if (endDate != startDate) endDate,
+    ];
+
+    for (final blockDate in blockDates) {
+      if (!block.occursOn(blockDate)) {
+        continue;
+      }
+
+      final busyStart = blockDate.add(Duration(minutes: block.startMinutes));
+      var busyEnd = blockDate.add(Duration(minutes: block.endMinutes));
+      if (!busyEnd.isAfter(busyStart)) {
+        busyEnd = busyEnd.add(const Duration(days: 1));
+      }
+
+      if (start.isBefore(busyEnd) && end.isAfter(busyStart)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   List<DateTime> _projectedStarts({
@@ -1091,9 +1254,53 @@ class DigitalTwinSimulationService {
     required TwinSimulationScenario scenario,
   }) {
     if (pattern.isHypothetical) {
-      return '${moment.title} would be added to the map as a hypothetical '
-          'Still Learning Moment. The family view gains new connections, but '
-          'no real rhythm exists until the family records actual outcomes.';
+      final evidenceNote = scenario.scope == TwinSimulationScope.nextOccurrence
+          ? 'This is one planned experience rather than a recurring rhythm.'
+          : 'Because it is new, it begins as Still Learning until real outcomes are recorded.';
+      if ((pattern.projectedConflictCount ?? 0) > 0) {
+        return 'This time has ${pattern.projectedConflictCount} recorded schedule '
+            '${pattern.projectedConflictCount == 1 ? 'conflict' : 'conflicts'}. '
+            '${_momentBenefit(
+              moment,
+              isOneTime: scenario.scope == TwinSimulationScope.nextOccurrence,
+            )} $evidenceNote Choose a clear time, then add it as a Moment.';
+      }
+      return '${_momentBenefit(
+        moment,
+        isOneTime: scenario.scope == TwinSimulationScope.nextOccurrence,
+      )} $evidenceNote '
+          '${_newMomentRecommendation(
+            conflictCount: pattern.projectedConflictCount,
+            hasCompleteCoverage:
+                pattern.projectedScheduleCoverageComplete,
+          )}';
+    }
+
+    final remainsEarlyLearning =
+        pattern.currentStatus == RhythmStatus.stillLearning &&
+        pattern.projectedStatus == RhythmStatus.stillLearning;
+    final isPositiveScheduleTrial =
+        pattern.direction == SimulationDirection.improving &&
+        (scenario.type == TwinSimulationType.changeFrequency
+            ? (pattern.projectedConflictCount ?? 0) == 0
+            : scenario.changesSchedule &&
+                  pattern.projectedConflictCount == 0);
+    final isPositiveEarlyTrial =
+        remainsEarlyLearning &&
+        (scenario.type == TwinSimulationType.assumeNextCompleted ||
+            scenario.type == TwinSimulationType.assumeParticipantJoins ||
+            (scenario.type == TwinSimulationType.addParticipant &&
+                pattern.direction != SimulationDirection.increasedRisk &&
+                (pattern.projectedConflictCount ?? 0) == 0) ||
+            isPositiveScheduleTrial);
+    if (remainsEarlyLearning &&
+        scenario.type == TwinSimulationType.assumeNextMissed) {
+      return pattern.summary;
+    }
+
+    if (isPositiveEarlyTrial) {
+      return '${pattern.summary} The Still Learning label only means that '
+          'more real outcomes are needed; it does not remove this potential benefit.';
     }
 
     if (pattern.statusChanged) {
@@ -1113,6 +1320,131 @@ class DigitalTwinSimulationService {
     return '${moment.title} keeps its recorded '
         '${_statusLabel(pattern.currentStatus)} status. '
         '${pattern.summary}';
+  }
+
+  String _newMomentRecommendation({
+    required int? conflictCount,
+    required bool hasCompleteCoverage,
+  }) {
+    if ((conflictCount ?? 0) > 0) {
+      return 'Choose a time without the recorded conflict before adding it.';
+    }
+
+    if (!hasCompleteCoverage) {
+      return 'Review the time with the family, then add it as a Moment if it works.';
+    }
+
+    return 'No recorded conflicts were found, so this is worth trying as a Moment.';
+  }
+
+  String _momentBenefit(FamilyMoment moment, {bool isOneTime = false}) {
+    final title = moment.title.toLowerCase();
+    final hasFamilyGroup = moment.expectedParticipantIds.length > 1;
+
+    if (!hasFamilyGroup) {
+      return 'Planning ${moment.title} could make the next step clearer and '
+          'easier to coordinate.';
+    }
+
+    if (_containsAny(title, const <String>[
+      'picnic',
+      'park',
+      'outdoor',
+      'نزه',
+      'حديقة',
+    ])) {
+      return 'A shared outing could give the family unhurried time away from '
+          'routines, with room to talk and enjoy an activity together.';
+    }
+
+    if (_containsAny(title, const <String>['walk', 'مشي'])) {
+      return 'A family walk could add relaxed time together and make '
+          'conversation easier alongside a simple shared activity.';
+    }
+
+    if (_containsAny(title, const <String>[
+      'lunch',
+      'dinner',
+      'breakfast',
+      'meal',
+      'brunch',
+      'غداء',
+      'عشاء',
+      'فطور',
+      'وجبة',
+    ])) {
+      return 'A shared meal could create an easy family check-in and time to '
+          'reconnect without needing a complicated activity.';
+    }
+
+    if (_containsAny(title, const <String>[
+      'movie',
+      'film',
+      'cinema',
+      'game night',
+      'فيلم',
+      'سينما',
+      'ألعاب',
+    ])) {
+      return 'This could offer low-effort shared downtime and give the family '
+          'an experience to enjoy together.';
+    }
+
+    if (_containsAny(title, const <String>['birthday', 'ميلاد'])) {
+      return 'This could help the family mark the birthday while giving each '
+          'member a simple way to contribute.';
+    }
+
+    if (_containsAny(title, const <String>[
+      'graduation',
+      'graduate',
+      'تخرج',
+    ])) {
+      return 'This could help recognize the person’s achievement and create '
+          'a milestone the family can share together.';
+    }
+
+    if (_containsAny(title, const <String>[
+      'appointment',
+      'doctor',
+      'clinic',
+      'hospital',
+      'موعد',
+      'طبيب',
+      'عيادة',
+      'مستشفى',
+    ])) {
+      return 'Adding this appointment could make preparation, travel, and '
+          'family support easier to coordinate.';
+    }
+
+    return switch (moment.category) {
+      MomentCategory.familyTime =>
+        'Protecting this time could give the family more space to talk, '
+            'relax, and be present together.',
+      MomentCategory.tradition =>
+        isOneTime
+        ? 'Sharing this tradition once could give the family a familiar point '
+              'of connection on this occasion.'
+        : 'Repeating this tradition could give the family a familiar point of '
+              'connection to look forward to.',
+      MomentCategory.milestone =>
+        'Planning this milestone could help the family recognize it together '
+            'and make the occasion more intentional.',
+      MomentCategory.responsibility =>
+        'Planning this could make responsibilities clearer and reduce '
+            'last-minute pressure for the family.',
+      MomentCategory.care =>
+        'Planning this care Moment could make support easier to coordinate '
+            'and clarify how family members can help.',
+      MomentCategory.memory =>
+        'Making time for this could give the family a shared experience worth '
+            'remembering and discussing later.',
+    };
+  }
+
+  bool _containsAny(String value, List<String> terms) {
+    return terms.any((term) => value.contains(term));
   }
 
   String _scenarioTitle({
@@ -1275,9 +1607,13 @@ class DigitalTwinSimulationService {
 }
 
 class _ScheduleProjection {
-  const _ScheduleProjection({required this.conflictCount});
+  const _ScheduleProjection({
+    required this.conflictCount,
+    this.hasCompleteCoverage = false,
+  });
 
   final int? conflictCount;
+  final bool hasCompleteCoverage;
 }
 
 class _ScheduleComparison {
@@ -1285,9 +1621,11 @@ class _ScheduleComparison {
     required this.currentConflictCount,
     required this.projectedConflictCount,
     required this.direction,
+    this.projectedScheduleCoverageComplete = false,
   });
 
   final int? currentConflictCount;
   final int? projectedConflictCount;
   final SimulationDirection direction;
+  final bool projectedScheduleCoverageComplete;
 }

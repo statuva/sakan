@@ -10,7 +10,7 @@ extension SimulationDirectionLabel on SimulationDirection {
       SimulationDirection.improving => 'Easier to maintain',
       SimulationDirection.unchanged => 'No projected change',
       SimulationDirection.increasedRisk => 'Harder to maintain',
-      SimulationDirection.unknown => 'Not enough data',
+      SimulationDirection.unknown => 'Evidence still growing',
     };
   }
 }
@@ -29,7 +29,9 @@ class SimulatedMomentPattern {
     required this.projectedParticipantCount,
     this.currentConflictCount,
     this.projectedConflictCount,
+    this.projectedScheduleCoverageComplete = false,
     this.isHypothetical = false,
+    this.isOneTimeProjection = false,
     this.isAffected = false,
   });
 
@@ -47,11 +49,23 @@ class SimulatedMomentPattern {
   final int projectedParticipantCount;
   final int? currentConflictCount;
   final int? projectedConflictCount;
+  final bool projectedScheduleCoverageComplete;
 
   final bool isHypothetical;
+  final bool isOneTimeProjection;
   final bool isAffected;
 
   bool get statusChanged => currentStatus != projectedStatus;
+
+  String get cardSubtitle {
+    if (!isHypothetical) {
+      return direction.label;
+    }
+
+    return (projectedConflictCount ?? 0) > 0
+        ? 'New idea · choose another time'
+        : 'New idea · early potential';
+  }
 }
 
 class DigitalTwinSimulationResult {
@@ -123,6 +137,72 @@ class DigitalTwinSimulationResult {
     }
 
     return momentById(hypotheticalMomentIds.single);
+  }
+
+  /// Early projections need a useful deterministic explanation before an AI
+  /// narrative. A Still Learning status describes evidence, not the value of
+  /// trying the Moment.
+  bool get shouldLeadWithDeterministicBenefit {
+    for (final pattern in patternsByMomentId.values) {
+      if (!pattern.isAffected) {
+        continue;
+      }
+
+      if (pattern.isHypothetical) {
+        return (pattern.projectedConflictCount ?? 0) == 0;
+      }
+
+      final remainsEarlyLearning =
+          pattern.currentStatus == RhythmStatus.stillLearning &&
+          pattern.projectedStatus == RhythmStatus.stillLearning;
+      if (!remainsEarlyLearning) {
+        return false;
+      }
+
+      return switch (scenario.type) {
+        TwinSimulationType.assumeNextCompleted ||
+        TwinSimulationType.assumeParticipantJoins => true,
+        TwinSimulationType.changeTime ||
+        TwinSimulationType.changeWeekday ||
+        TwinSimulationType.changeDayOfMonth =>
+          pattern.direction == SimulationDirection.improving &&
+              pattern.projectedConflictCount == 0,
+        TwinSimulationType.changeFrequency =>
+          pattern.direction == SimulationDirection.improving &&
+              (pattern.projectedConflictCount ?? 0) == 0,
+        TwinSimulationType.addParticipant =>
+          pattern.direction != SimulationDirection.increasedRisk &&
+              (pattern.projectedConflictCount ?? 0) == 0,
+        TwinSimulationType.assumeNextMissed ||
+        TwinSimulationType.removeParticipant ||
+        TwinSimulationType.createMoment => false,
+      };
+    }
+
+    return false;
+  }
+
+  bool get shouldUseDeterministicNarrative {
+    // A missed outcome must remain factual even when an already-drifting
+    // rhythm stays Drifting and therefore has an `unchanged` direction.
+    if (scenario.type == TwinSimulationType.assumeNextMissed) {
+      return true;
+    }
+
+    for (final pattern in patternsByMomentId.values) {
+      if (!pattern.isAffected) {
+        continue;
+      }
+
+      return pattern.isHypothetical ||
+          (pattern.projectedConflictCount ?? 0) > 0 ||
+          (pattern.currentStatus == RhythmStatus.stillLearning &&
+              pattern.projectedStatus == RhythmStatus.stillLearning) ||
+          pattern.direction == SimulationDirection.increasedRisk ||
+          pattern.direction == SimulationDirection.unknown;
+    }
+
+    return true;
   }
 
   bool isChangedMoment(String momentId) {

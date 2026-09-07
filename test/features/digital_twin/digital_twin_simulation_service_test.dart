@@ -42,6 +42,84 @@ void main() {
     expect(pattern.projectedStatus, RhythmStatus.drifting);
   });
 
+  test('adding a participant to an early rhythm explains shared value', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stillLearning,
+      completedCount: 1,
+    );
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'add-grandma-early',
+        type: TwinSimulationType.addParticipant,
+        targetMomentId: 'friday-lunch',
+        participantIds: <String>['grandma'],
+        scope: TwinSimulationScope.futureOccurrences,
+      ),
+    );
+    final pattern = result.patternForMoment('friday-lunch')!;
+
+    expect(pattern.summary, contains('shared meal'));
+    expect(pattern.summary, contains('more shared Moment'));
+    expect(result.shouldLeadWithDeterministicBenefit, isTrue);
+    expect(result.shouldUseDeterministicNarrative, isTrue);
+  });
+
+  test('adding a participant with a known conflict is not promoted', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stillLearning,
+      completedCount: 1,
+      includeGrandmaFridayConflict: true,
+    );
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'add-busy-grandma',
+        type: TwinSimulationType.addParticipant,
+        targetMomentId: 'friday-lunch',
+        participantIds: <String>['grandma'],
+        scope: TwinSimulationScope.futureOccurrences,
+      ),
+    );
+    final pattern = result.patternForMoment('friday-lunch')!;
+
+    expect(pattern.currentConflictCount, isNull);
+    expect(pattern.projectedConflictCount, greaterThan(0));
+    expect(pattern.direction, SimulationDirection.increasedRisk);
+    expect(pattern.summary, contains('recorded schedule conflict'));
+    expect(pattern.summary, isNot(contains('more shared Moment')));
+    expect(result.shouldLeadWithDeterministicBenefit, isFalse);
+    expect(result.shouldUseDeterministicNarrative, isTrue);
+  });
+
+  test('a free added participant is not blamed for existing conflicts', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stillLearning,
+      completedCount: 1,
+      includeFridayConflict: true,
+      includeGrandmaClearSchedule: true,
+    );
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'add-free-grandma',
+        type: TwinSimulationType.addParticipant,
+        targetMomentId: 'friday-lunch',
+        participantIds: <String>['grandma'],
+        scope: TwinSimulationScope.futureOccurrences,
+      ),
+    );
+    final pattern = result.patternForMoment('friday-lunch')!;
+
+    expect(pattern.currentConflictCount, greaterThan(0));
+    expect(pattern.projectedConflictCount, pattern.currentConflictCount);
+    expect(pattern.direction, SimulationDirection.unchanged);
+    expect(pattern.summary, isNot(contains('review the time before adding them')));
+  });
+
   test('assuming a completed drifting occurrence projects recovery', () {
     final report = _report(now: now, status: RhythmStatus.drifting);
 
@@ -95,6 +173,7 @@ void main() {
         newStartMinutes: 18 * 60,
         newIsDayFlexible: true,
         participantIds: <String>['adult', 'child', 'grandma'],
+        scope: TwinSimulationScope.futureOccurrences,
         assumedDurationMinutes: 60,
       ),
     );
@@ -106,8 +185,85 @@ void main() {
 
     expect(result.hypotheticalMomentIds, contains(newMoment.id));
     expect(pattern.isHypothetical, isTrue);
+    expect(pattern.isOneTimeProjection, isFalse);
     expect(pattern.projectedStatus, RhythmStatus.stillLearning);
+    expect(pattern.summary, contains('family walk could add relaxed time'));
+    expect(result.familySummary, contains('begins as Still Learning'));
+    expect(result.familySummary, contains('add it as a Moment'));
+    expect(result.familySummary, isNot(contains('cannot project')));
+    expect(result.familyThemes, contains('Confirm family availability'));
+    expect(result.shouldLeadWithDeterministicBenefit, isTrue);
     expect(report.snapshot.momentById(newMoment.id), isNull);
+  });
+
+  test('a useful Still Learning trial explains benefit before evidence', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stillLearning,
+      completedCount: 1,
+    );
+
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'complete-early-lunch',
+        type: TwinSimulationType.assumeNextCompleted,
+        targetMomentId: 'friday-lunch',
+        assumedDurationMinutes: 60,
+      ),
+    );
+    final pattern = result.patternForMoment('friday-lunch')!;
+
+    expect(pattern.currentStatus, RhythmStatus.stillLearning);
+    expect(pattern.projectedStatus, RhythmStatus.stillLearning);
+    expect(pattern.summary, contains('shared meal'));
+    expect(pattern.summary, contains('Completing and recording'));
+    expect(pattern.summary, isNot(contains('toward Projected Still Learning')));
+    expect(result.familySummary, contains('potential benefit'));
+    expect(result.familyThemes, contains('Benefit can be tested'));
+    expect(result.shouldLeadWithDeterministicBenefit, isTrue);
+  });
+
+  test('a missed early occurrence stays factual instead of persuasive', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stillLearning,
+      completedCount: 1,
+    );
+
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'miss-early-lunch',
+        type: TwinSimulationType.assumeNextMissed,
+        targetMomentId: 'friday-lunch',
+      ),
+    );
+    final pattern = result.patternForMoment('friday-lunch')!;
+
+    expect(pattern.summary, contains('add no completed evidence'));
+    expect(result.familySummary, pattern.summary);
+    expect(result.familyThemes, isNot(contains('Benefit can be tested')));
+    expect(result.shouldLeadWithDeterministicBenefit, isFalse);
+    expect(result.shouldUseDeterministicNarrative, isTrue);
+  });
+
+  test('a missed drifting occurrence cannot be replaced by AI copy', () {
+    final report = _report(now: now, status: RhythmStatus.drifting);
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'miss-drifting-lunch',
+        type: TwinSimulationType.assumeNextMissed,
+        targetMomentId: 'friday-lunch',
+      ),
+    );
+    final pattern = result.patternForMoment('friday-lunch')!;
+
+    expect(pattern.projectedStatus, RhythmStatus.drifting);
+    expect(pattern.direction, SimulationDirection.unchanged);
+    expect(result.shouldLeadWithDeterministicBenefit, isFalse);
+    expect(result.shouldUseDeterministicNarrative, isTrue);
   });
 
   test('a one-time simulation becomes a singular creation draft', () {
@@ -129,9 +285,15 @@ void main() {
     );
 
     final simulated = result.creatableMoment!;
+    final pattern = result.patternForMoment(simulated.id)!;
     final draft = SimulationMomentDraftService.build(result);
 
     expect(simulated.type, MomentType.recurring);
+    expect(pattern.isOneTimeProjection, isTrue);
+    expect(pattern.summary, contains('unhurried time away from routines'));
+    expect(result.familySummary, contains('one planned experience'));
+    expect(result.familySummary, isNot(contains('no real rhythm exists')));
+    expect(result.shouldUseDeterministicNarrative, isTrue);
     expect(draft.type, MomentType.singular);
     expect(draft.startAt, simulated.startAt);
     expect(draft.endAt, simulated.endAt);
@@ -172,6 +334,170 @@ void main() {
     expect(draft.isDayFlexible, isFalse);
   });
 
+  test('a useful idea with a recorded conflict recommends another time', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stable,
+      includeFridayConflict: true,
+    );
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'conflicting-picnic',
+        type: TwinSimulationType.createMoment,
+        newTitle: 'Family Picnic',
+        newCategory: MomentCategory.familyTime,
+        newIntervalDays: 7,
+        newStartMinutes: 18 * 60,
+        newWeekday: DateTime.friday,
+        participantIds: <String>['adult', 'child'],
+        scope: TwinSimulationScope.nextOccurrence,
+        assumedDurationMinutes: 60,
+      ),
+    );
+    final pattern = result.patternForMoment(result.creatableMoment!.id)!;
+
+    expect(pattern.projectedConflictCount, greaterThan(0));
+    expect(pattern.summary, startsWith('This time has'));
+    expect(pattern.cardSubtitle, 'New idea · choose another time');
+    expect(pattern.summary, contains('unhurried time away from routines'));
+    expect(result.familySummary, startsWith('This time has'));
+    expect(result.familySummary, contains('Choose a clear time'));
+    expect(result.familyThemes, contains('Schedule conflict · choose another time'));
+    expect(result.shouldLeadWithDeterministicBenefit, isFalse);
+    expect(result.shouldUseDeterministicNarrative, isTrue);
+  });
+
+  test('partial schedule coverage does not claim a conflict-free time', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stable,
+      includePartialClearSchedule: true,
+    );
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'partially-covered-picnic',
+        type: TwinSimulationType.createMoment,
+        newTitle: 'Family Picnic',
+        newCategory: MomentCategory.familyTime,
+        newIntervalDays: 7,
+        newStartMinutes: 18 * 60,
+        newWeekday: DateTime.friday,
+        participantIds: <String>['adult', 'child'],
+        scope: TwinSimulationScope.nextOccurrence,
+        assumedDurationMinutes: 60,
+      ),
+    );
+    final pattern = result.patternForMoment(result.creatableMoment!.id)!;
+
+    expect(pattern.projectedConflictCount, 0);
+    expect(pattern.projectedScheduleCoverageComplete, isFalse);
+    expect(result.familySummary, contains('Review the time with the family'));
+    expect(result.familySummary, isNot(contains('worth trying as a Moment')));
+    expect(result.familyThemes, contains('Confirm family availability'));
+  });
+
+  test('complete clear schedule coverage supports trying the Moment', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stable,
+      includeCompleteClearSchedule: true,
+    );
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'covered-picnic',
+        type: TwinSimulationType.createMoment,
+        newTitle: 'Family Picnic',
+        newCategory: MomentCategory.familyTime,
+        newIntervalDays: 7,
+        newStartMinutes: 18 * 60,
+        newWeekday: DateTime.friday,
+        participantIds: <String>['adult', 'child'],
+        scope: TwinSimulationScope.nextOccurrence,
+        assumedDurationMinutes: 60,
+      ),
+    );
+    final pattern = result.patternForMoment(result.creatableMoment!.id)!;
+
+    expect(pattern.projectedConflictCount, 0);
+    expect(pattern.projectedScheduleCoverageComplete, isTrue);
+    expect(result.familySummary, contains('worth trying as a Moment'));
+    expect(result.familyThemes, contains('Early potential'));
+  });
+
+  test('overnight busy time is detected from the previous day', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stable,
+      includeOvernightConflict: true,
+    );
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'late-family-talk',
+        type: TwinSimulationType.createMoment,
+        newTitle: 'Late Family Talk',
+        newCategory: MomentCategory.familyTime,
+        newIntervalDays: 7,
+        newStartMinutes: 30,
+        newWeekday: DateTime.tuesday,
+        participantIds: <String>['adult', 'child'],
+        scope: TwinSimulationScope.nextOccurrence,
+        assumedDurationMinutes: 60,
+      ),
+    );
+    final pattern = result.patternForMoment(result.creatableMoment!.id)!;
+
+    expect(pattern.projectedConflictCount, greaterThan(0));
+    expect(pattern.summary, contains('Choose a time without the recorded conflict'));
+  });
+
+  test('a one-person idea does not claim increased family time', () {
+    final report = _report(now: now, status: RhythmStatus.stable);
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'personal-reading',
+        type: TwinSimulationType.createMoment,
+        newTitle: 'Personal Reading',
+        newCategory: MomentCategory.familyTime,
+        newIntervalDays: 7,
+        newStartMinutes: 20 * 60,
+        newWeekday: DateTime.thursday,
+        participantIds: <String>['adult'],
+        scope: TwinSimulationScope.nextOccurrence,
+        assumedDurationMinutes: 30,
+      ),
+    );
+
+    expect(result.familySummary, contains('make the next step clearer'));
+    expect(result.familySummary, isNot(contains('more space to talk')));
+  });
+
+  test('a one-time tradition never claims it will repeat', () {
+    final report = _report(now: now, status: RhythmStatus.stable);
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'one-family-tradition',
+        type: TwinSimulationType.createMoment,
+        newTitle: 'Family Gathering',
+        newCategory: MomentCategory.tradition,
+        newIntervalDays: 7,
+        newStartMinutes: 17 * 60,
+        newWeekday: DateTime.saturday,
+        participantIds: <String>['adult', 'child'],
+        scope: TwinSimulationScope.nextOccurrence,
+        assumedDurationMinutes: 90,
+      ),
+    );
+
+    expect(result.familySummary, contains('Sharing this tradition once'));
+    expect(result.familySummary, isNot(contains('Repeating this tradition')));
+  });
+
   test('event-like simulations default to external attendance', () {
     final report = _report(now: now, status: RhythmStatus.stable);
     final result = service.simulate(
@@ -195,6 +521,10 @@ void main() {
 
     expect(draft.type, MomentType.singular);
     expect(draft.format, MomentFormat.externalEvent);
+    expect(
+      result.familySummary,
+      contains('recognize the person’s achievement'),
+    );
   });
 
   test('moving a conflicting time projects an easier schedule', () {
@@ -222,12 +552,78 @@ void main() {
     expect(pattern.projectedConflictCount, 0);
     expect(pattern.projectedStatus, RhythmStatus.recovering);
   });
+
+  test('fewer but remaining conflicts stay caution-first', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stillLearning,
+      completedCount: 1,
+      includePartiallyImprovedSchedule: true,
+    );
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'move-lunch-with-remaining-conflicts',
+        type: TwinSimulationType.changeTime,
+        targetMomentId: 'friday-lunch',
+        newStartMinutes: 20 * 60,
+        scope: TwinSimulationScope.futureOccurrences,
+      ),
+    );
+    final pattern = result.patternForMoment('friday-lunch')!;
+
+    expect(pattern.currentConflictCount, 4);
+    expect(pattern.projectedConflictCount, 2);
+    expect(pattern.direction, SimulationDirection.improving);
+    expect(pattern.summary, startsWith('Across the next 4 projected occurrences'));
+    expect(pattern.summary, contains('change from 4 to 2'));
+    expect(pattern.summary, isNot(contains('shared meal')));
+    expect(result.familyThemes, contains('Fewer conflicts · time still needs review'));
+    expect(result.shouldLeadWithDeterministicBenefit, isFalse);
+    expect(result.shouldUseDeterministicNarrative, isTrue);
+  });
+
+  test('cadence improvement keeps its benefit with an availability caveat', () {
+    final report = _report(
+      now: now,
+      status: RhythmStatus.stillLearning,
+      expectedIntervalDays: 14,
+    );
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'match-recorded-weekly-cadence',
+        type: TwinSimulationType.changeFrequency,
+        targetMomentId: 'friday-lunch',
+        newIntervalDays: 7,
+        scope: TwinSimulationScope.futureOccurrences,
+      ),
+    );
+    final pattern = result.patternForMoment('friday-lunch')!;
+
+    expect(pattern.direction, SimulationDirection.improving);
+    expect(pattern.projectedConflictCount, isNull);
+    expect(pattern.summary, contains('shared meal'));
+    expect(pattern.summary, contains('better matches the recorded cadence'));
+    expect(pattern.summary, contains('Confirm the time with your family'));
+    expect(result.familyThemes, contains('Benefit can be tested'));
+    expect(result.shouldLeadWithDeterministicBenefit, isTrue);
+    expect(result.shouldUseDeterministicNarrative, isTrue);
+  });
 }
 
 FamilyInsightReport _report({
   required DateTime now,
   required RhythmStatus status,
   bool includeFridayConflict = false,
+  bool includePartialClearSchedule = false,
+  bool includeCompleteClearSchedule = false,
+  bool includeOvernightConflict = false,
+  bool includeGrandmaFridayConflict = false,
+  bool includeGrandmaClearSchedule = false,
+  bool includePartiallyImprovedSchedule = false,
+  int completedCount = 3,
+  int expectedIntervalDays = 7,
 }) {
   final moment = FamilyMoment(
     id: 'friday-lunch',
@@ -239,7 +635,7 @@ FamilyInsightReport _report({
     expectedParticipantIds: const <String>['adult', 'child'],
     startAt: DateTime(2026, 9, 4, 18),
     endAt: DateTime(2026, 9, 4, 19),
-    expectedIntervalDays: 7,
+    expectedIntervalDays: expectedIntervalDays,
     preferredStartMinutes: 18 * 60,
     preferredEndMinutes: 19 * 60,
     preferredWeekday: DateTime.friday,
@@ -305,13 +701,13 @@ FamilyInsightReport _report({
       moment: moment,
       start: DateTime(2026, 8, 28, 18),
     ),
-  ];
+  ].take(completedCount).toList(growable: false);
 
   final rhythm = RhythmRecord(
     id: 'friday-lunch',
     familyId: 'family-1',
     momentId: 'friday-lunch',
-    expectedIntervalDays: 7,
+    expectedIntervalDays: expectedIntervalDays,
     lastOccurrenceAt: completed.last.effectiveStartAt,
     currentGapDays: 4,
     occurrenceCount: completed.length,
@@ -320,8 +716,8 @@ FamilyInsightReport _report({
     updatedAt: now,
   );
 
-  final availability = includeFridayConflict
-      ? <AvailabilityBlock>[
+  final availability = <AvailabilityBlock>[
+    if (includeFridayConflict)
           AvailabilityBlock(
             id: 'adult-work',
             familyId: 'family-1',
@@ -332,8 +728,97 @@ FamilyInsightReport _report({
             isRecurring: true,
             updatedAt: now,
           ),
-        ]
-      : const <AvailabilityBlock>[];
+    if (includePartiallyImprovedSchedule)
+      AvailabilityBlock(
+        id: 'adult-current-time-conflict',
+        familyId: 'family-1',
+        memberId: 'adult',
+        repeatDays: const <int>[DateTime.friday],
+        startMinutes: 17 * 60 + 30,
+        endMinutes: 19 * 60 + 30,
+        isRecurring: true,
+        updatedAt: now,
+      ),
+    if (includePartiallyImprovedSchedule)
+      AvailabilityBlock(
+        id: 'adult-first-projected-time-conflict',
+        familyId: 'family-1',
+        memberId: 'adult',
+        repeatDays: const <int>[],
+        scheduledDate: DateTime(2026, 9, 4),
+        startMinutes: 19 * 60 + 45,
+        endMinutes: 20 * 60 + 30,
+        isRecurring: false,
+        updatedAt: now,
+      ),
+    if (includePartiallyImprovedSchedule)
+      AvailabilityBlock(
+        id: 'adult-second-projected-time-conflict',
+        familyId: 'family-1',
+        memberId: 'adult',
+        repeatDays: const <int>[],
+        scheduledDate: DateTime(2026, 9, 11),
+        startMinutes: 19 * 60 + 45,
+        endMinutes: 20 * 60 + 30,
+        isRecurring: false,
+        updatedAt: now,
+      ),
+    if (includePartialClearSchedule || includeCompleteClearSchedule)
+      AvailabilityBlock(
+        id: 'adult-clear-schedule',
+        familyId: 'family-1',
+        memberId: 'adult',
+        repeatDays: const <int>[DateTime.monday],
+        startMinutes: 9 * 60,
+        endMinutes: 10 * 60,
+        isRecurring: true,
+        updatedAt: now,
+      ),
+    if (includeCompleteClearSchedule)
+      AvailabilityBlock(
+        id: 'child-clear-schedule',
+        familyId: 'family-1',
+        memberId: 'child',
+        repeatDays: const <int>[DateTime.monday],
+        startMinutes: 9 * 60,
+        endMinutes: 10 * 60,
+        isRecurring: true,
+        updatedAt: now,
+      ),
+    if (includeOvernightConflict)
+      AvailabilityBlock(
+        id: 'adult-overnight',
+        familyId: 'family-1',
+        memberId: 'adult',
+        repeatDays: const <int>[DateTime.monday],
+        startMinutes: 23 * 60,
+        endMinutes: 60,
+        isRecurring: true,
+        updatedAt: now,
+      ),
+    if (includeGrandmaFridayConflict)
+      AvailabilityBlock(
+        id: 'grandma-friday-conflict',
+        familyId: 'family-1',
+        memberId: 'grandma',
+        repeatDays: const <int>[DateTime.friday],
+        startMinutes: 17 * 60 + 30,
+        endMinutes: 19 * 60 + 30,
+        isRecurring: true,
+        updatedAt: now,
+      ),
+    if (includeGrandmaClearSchedule)
+      AvailabilityBlock(
+        id: 'grandma-clear-schedule',
+        familyId: 'family-1',
+        memberId: 'grandma',
+        repeatDays: const <int>[DateTime.monday],
+        startMinutes: 9 * 60,
+        endMinutes: 10 * 60,
+        isRecurring: true,
+        updatedAt: now,
+      ),
+  ];
 
   final snapshot = FamilyInsightSnapshot(
     familyId: 'family-1',
