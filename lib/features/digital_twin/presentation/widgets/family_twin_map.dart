@@ -83,6 +83,11 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
     final displayMomentCount = _allDisplayMoments()
         .where((moment) => moment.type == MomentType.recurring)
         .length;
+    final hasOneTimeProjection =
+        widget.simulation?.patternsByMomentId.values.any(
+          (pattern) => pattern.isAffected && pattern.isOneTimeProjection,
+        ) ??
+        false;
 
     return Container(
       decoration: BoxDecoration(
@@ -270,6 +275,11 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
                       color: CalendarPalette.slate,
                       label: 'Still Learning',
                     ),
+                    if (hasOneTimeProjection)
+                      const _LegendDot(
+                        color: CalendarPalette.milestone,
+                        label: 'Planned once',
+                      ),
                     if (widget.simulation != null)
                       const _LegendDashed(
                         color: CalendarPalette.milestone,
@@ -485,6 +495,7 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
       final rhythm = widget.report.snapshot.rhythmForMoment(moment.id);
       final instances = widget.report.snapshot.instancesForMoment(moment.id);
       final status = _displayStatus(moment);
+      final pattern = simulation?.patternForMoment(moment.id);
 
       momentNodes.add(
         _MomentNode(
@@ -500,7 +511,13 @@ class _FamilyTwinMapState extends State<FamilyTwinMap> {
             ),
             orderedMoments.length <= 4 ? 222.0 : 185.0 + row * 92.0,
           ),
-          visual: twinRhythmVisual(status),
+          visual: pattern?.isOneTimeProjection == true
+              ? const TwinStatusVisual(
+                  label: 'Planned once',
+                  color: CalendarPalette.milestone,
+                  background: CalendarPalette.milestoneSoft,
+                )
+              : twinRhythmVisual(status),
           isChanged: simulation?.changedMomentIds.contains(moment.id) ?? false,
           isHypothetical:
               simulation?.hypotheticalMomentIds.contains(moment.id) ?? false,

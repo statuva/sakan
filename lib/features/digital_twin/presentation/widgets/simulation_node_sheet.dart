@@ -155,7 +155,7 @@ class _SimulationMomentSheet extends StatelessWidget {
               children: [
                 Expanded(
                   child: _StatusBlock(
-                    title: pattern.isHypothetical ? 'CURRENT' : 'CURRENT',
+                    title: 'CURRENT',
                     value: pattern.isHypothetical
                         ? 'Not tracked'
                         : currentVisual.label,
@@ -171,8 +171,12 @@ class _SimulationMomentSheet extends StatelessWidget {
                 Expanded(
                   child: _StatusBlock(
                     title: 'PROJECTED',
-                    value: projectedVisual.label,
-                    color: projectedVisual.color,
+                    value: pattern.isOneTimeProjection
+                        ? 'Planned once'
+                        : projectedVisual.label,
+                    color: pattern.isOneTimeProjection
+                        ? CalendarPalette.milestone
+                        : projectedVisual.color,
                     alignEnd: true,
                   ),
                 ),

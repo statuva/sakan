@@ -116,10 +116,14 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
 
       if (!mounted) return;
 
+      final shouldRequestNarrative =
+          _familyContext?.canUseAi == true &&
+          !result.shouldUseDeterministicNarrative;
+
       setState(() {
         _simulationBaseReport = report;
         _activeSimulation = result;
-        _simulationNarrative = _familyContext?.canUseAi == true
+        _simulationNarrative = shouldRequestNarrative
             ? AppDependencies.twinSimulationNarrativeService.explain(result)
             : null;
       });
@@ -876,10 +880,14 @@ class _SimulationLearningCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _LearningHeader(
+          _LearningHeader(
             icon: Icons.science_outlined,
-            title: 'WHAT THIS SIMULATION SUGGESTS',
-            subtitle: 'Local projection · no data saved',
+            title: simulation.shouldLeadWithDeterministicBenefit
+                ? 'WHAT THIS COULD ADD'
+                : 'WHAT THIS SIMULATION SUGGESTS',
+            subtitle: simulation.shouldLeadWithDeterministicBenefit
+                ? 'Potential benefit · evidence still growing'
+                : 'Local projection · no data saved',
             color: CalendarPalette.milestone,
             background: CalendarPalette.milestoneSoft,
           ),
@@ -887,7 +895,9 @@ class _SimulationLearningCard extends StatelessWidget {
           FutureBuilder<SakanAiResult>(
             future: aiNarrative,
             builder: (context, snapshot) {
-              final narrative = snapshot.data;
+              final narrative = simulation.shouldUseDeterministicNarrative
+                  ? null
+                  : snapshot.data;
               final themes = narrative?.reasons.isNotEmpty == true
                   ? narrative!.reasons
                   : simulation.familyThemes;

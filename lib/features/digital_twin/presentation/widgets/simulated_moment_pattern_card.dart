@@ -71,9 +71,7 @@ class SimulatedMomentPatternCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          pattern.isHypothetical
-                              ? 'Hypothetical new Moment'
-                              : pattern.direction.label,
+                          pattern.cardSubtitle,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
                                 color: CalendarPalette.milestone,
@@ -135,8 +133,12 @@ class SimulatedMomentPatternCard extends StatelessWidget {
                     Expanded(
                       child: _StatusColumn(
                         eyebrow: 'PROJECTED',
-                        label: projectedVisual.label,
-                        color: projectedVisual.color,
+                        label: pattern.isOneTimeProjection
+                            ? 'Planned once'
+                            : projectedVisual.label,
+                        color: pattern.isOneTimeProjection
+                            ? CalendarPalette.milestone
+                            : projectedVisual.color,
                         alignEnd: true,
                       ),
                     ),
