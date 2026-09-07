@@ -33,6 +33,24 @@ void main() {
     expect(report.cancelledCount, 1);
     expect(report.totalDurationMinutes, isNull);
     expect(report.dailyActivity.last.occurrenceCount, 1);
+    expect(
+      report.dailyActivity.fold<int>(
+        0,
+        (total, day) => total + day.occurrenceCount,
+      ),
+      report.occurrenceCount,
+    );
+    expect(
+      report.dailyActivity.every(
+        (day) =>
+            day.occurrenceCount ==
+            day.completedCount +
+                day.missedCount +
+                day.pendingReviewCount +
+                day.cancelledCount,
+      ),
+      isTrue,
+    );
   });
 
   test('deduplicates instances and measures only expected participants', () {
