@@ -1,7 +1,11 @@
+import '../models/availability_block.dart';
 import '../models/family_insight_report.dart';
+import '../models/family_insight_snapshot.dart';
 import '../models/family_moment.dart';
 import '../models/member.dart';
 import '../models/model_enums.dart';
+import '../models/moment_instance.dart';
+import 'member_moment_recommendation_builder.dart';
 import 'member_recommendation_policy.dart';
 
 /// Final deterministic gate before a Home insight is shown to one member.
@@ -36,7 +40,12 @@ abstract final class PersonalizedFamilyFocusSelector {
         allowed.add(insight);
       } else {
         allowed.add(
-          _personalize(member: member, moment: moment, insight: insight),
+          _personalize(
+            member: member,
+            moment: moment,
+            insight: insight,
+            snapshot: report.snapshot,
+          ),
         );
       }
     }
@@ -63,9 +72,13 @@ abstract final class PersonalizedFamilyFocusSelector {
       return false;
     }
 
-    if (member.role == FamilyRole.child &&
+    final isMinor =
+        member.ageGroup == AgeGroup.child || member.ageGroup == AgeGroup.teen;
+
+    if (isMinor &&
         (insight.actionType == FamilyInsightActionType.reviewToday ||
             insight.actionType == FamilyInsightActionType.scheduleMoment ||
+            insight.actionType == FamilyInsightActionType.openSimulation ||
             insight.actionType == FamilyInsightActionType.manageMoments ||
             insight.actionType == FamilyInsightActionType.startMomentNow)) {
       return false;
@@ -97,29 +110,69 @@ abstract final class PersonalizedFamilyFocusSelector {
     required Member member,
     required FamilyMoment moment,
     required FamilyInsightItem insight,
+    required FamilyInsightSnapshot snapshot,
   }) {
     var headline = insight.headline;
     var summary = insight.summary;
     var actionType = insight.actionType;
     var actions = List<String>.from(insight.suggestedActions);
+    var recommendsSimulation = insight.recommendsSimulation;
 
     if (moment.isSubject(member.id)) {
-      // Keep the family fact visible, but strip self-preparation behavior.
       if (headline.startsWith('${member.displayName}\'s ')) {
         headline = 'Your ${headline.substring(member.displayName.length + 3)}';
       }
-      if (actionType == FamilyInsightActionType.addReminder) {
-        actionType = FamilyInsightActionType.none;
-        actions = const <String>[];
+    }
+
+    String? scheduleNote;
+    if (_usesPersonalTaskPlan(insight.kind)) {
+      final instance = insight.relatedInstanceId == null
+          ? null
+          : snapshot.instanceById(insight.relatedInstanceId!);
+      final hasScheduleConflict =
+          instance != null &&
+          _hasRelevantScheduleConflict(
+            snapshot: snapshot,
+            instance: instance,
+            member: member,
+          );
+      final recommendation = MemberMomentRecommendationBuilder.build(
+        member: member,
+        moment: moment,
+        hasScheduleConflict: hasScheduleConflict,
+        hasVerifiedFreeWindow: insight.recommendedActionUsesAvailability,
+        isDrifting: insight.kind == FamilyInsightKind.driftingRhythm,
+      );
+
+      summary = recommendation.summary;
+      actions = recommendation.tasks;
+      recommendsSimulation =
+          insight.recommendsSimulation || recommendation.recommendsSimulation;
+      scheduleNote = recommendation.scheduleNote;
+
+      if (actionType == FamilyInsightActionType.startMomentNow) {
+        actions = _startNowFirst(moment.title, actions);
+      } else if ((actionType == FamilyInsightActionType.openSimulation ||
+              (recommendation.recommendsSimulation &&
+                  insight.kind == FamilyInsightKind.driftingRhythm)) &&
+          actionType != FamilyInsightActionType.startMomentNow) {
+        actionType = FamilyInsightActionType.openSimulation;
+        actions = _simulationFirst(
+          actions,
+          isDrifting: insight.kind == FamilyInsightKind.driftingRhythm,
+        );
       }
-      summary =
-          '${insight.summary} This Moment is about you, so Sakan will not assign you preparation for yourself.';
     }
 
     final reason = MemberRecommendationPolicy.whyThisIsForMember(
       member: member,
       moment: moment,
     );
+    final reasons = <String>[
+      reason,
+      if (scheduleNote != null) scheduleNote,
+      ...insight.reasons,
+    ];
 
     return FamilyInsightItem(
       id: insight.id,
@@ -128,7 +181,7 @@ abstract final class PersonalizedFamilyFocusSelector {
       priority: insight.priority,
       headline: headline,
       summary: summary,
-      reasons: <String>[reason, ...insight.reasons],
+      reasons: _unique(reasons),
       suggestedActions: actions,
       confidence: insight.confidence,
       relatedMomentId: insight.relatedMomentId,
@@ -137,6 +190,121 @@ abstract final class PersonalizedFamilyFocusSelector {
       recommendedActionAt: insight.recommendedActionAt,
       recommendedActionUsesAvailability:
           insight.recommendedActionUsesAvailability,
+      recommendsSimulation: recommendsSimulation,
     );
+  }
+
+  static bool _usesPersonalTaskPlan(FamilyInsightKind kind) {
+    return kind == FamilyInsightKind.upcomingMilestone ||
+        kind == FamilyInsightKind.carePreparation ||
+        kind == FamilyInsightKind.upcomingMoment ||
+        kind == FamilyInsightKind.driftingRhythm;
+  }
+
+  static bool _hasRelevantScheduleConflict({
+    required FamilyInsightSnapshot snapshot,
+    required MomentInstance instance,
+    required Member member,
+  }) {
+    final start = instance.scheduledStartAt.toLocal();
+    final end =
+        (instance.scheduledEndAt ??
+                instance.scheduledStartAt.add(const Duration(minutes: 90)))
+            .toLocal();
+    final date = DateTime(start.year, start.month, start.day);
+    final endDate = DateTime(end.year, end.month, end.day);
+    final previousDate = date.subtract(const Duration(days: 1));
+    final relevantMemberIds = _isAdultOrAdmin(member)
+        ? instance.expectedParticipantIds.toSet()
+        : <String>{snapshot.currentUserId};
+    if (relevantMemberIds.isEmpty) {
+      relevantMemberIds.add(snapshot.currentUserId);
+    }
+
+    for (final block in snapshot.availability) {
+      if (relevantMemberIds.contains(block.memberId) &&
+          !block.isExpiredAt(snapshot.generatedAt) &&
+          (_availabilityOverlaps(
+                block: block,
+                blockDate: date,
+                start: start,
+                end: end,
+              ) ||
+              _availabilityOverlaps(
+                block: block,
+                blockDate: previousDate,
+                start: start,
+                end: end,
+              ) ||
+              (!_sameDate(date, endDate) &&
+                  _availabilityOverlaps(
+                    block: block,
+                    blockDate: endDate,
+                    start: start,
+                    end: end,
+                  )))) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  static bool _availabilityOverlaps({
+    required AvailabilityBlock block,
+    required DateTime blockDate,
+    required DateTime start,
+    required DateTime end,
+  }) {
+    if (!block.occursOn(blockDate)) return false;
+
+    final blockStart = blockDate.add(Duration(minutes: block.startMinutes));
+    var blockEnd = blockDate.add(Duration(minutes: block.endMinutes));
+    if (!blockEnd.isAfter(blockStart)) {
+      blockEnd = blockEnd.add(const Duration(days: 1));
+    }
+
+    return start.isBefore(blockEnd) && end.isAfter(blockStart);
+  }
+
+  static List<String> _unique(List<String> values) {
+    final seen = <String>{};
+    return values
+        .where((value) => seen.add(value.trim().toLowerCase()))
+        .toList(growable: false);
+  }
+
+  static bool _sameDate(DateTime first, DateTime second) {
+    return first.year == second.year &&
+        first.month == second.month &&
+        first.day == second.day;
+  }
+
+  static List<String> _simulationFirst(
+    List<String> actions, {
+    required bool isDrifting,
+  }) {
+    final simulationTask = isDrifting
+        ? 'Try a What-if simulation before choosing the next time.'
+        : 'Try a What-if simulation to compare a conflict-free time.';
+    return _unique(<String>[simulationTask, ...actions])
+        .take(3)
+        .toList(growable: false);
+  }
+
+  static List<String> _startNowFirst(String title, List<String> actions) {
+    return _unique(<String>[
+      'Start $title now while its planned time is open.',
+      ...actions,
+    ]).take(3).toList(growable: false);
+  }
+
+  static bool _isAdultOrAdmin(Member member) {
+    final hasAdultRole =
+        member.role == FamilyRole.admin || member.role == FamilyRole.adult;
+    final hasAdultAge =
+        member.ageGroup == AgeGroup.adult ||
+        member.ageGroup == AgeGroup.senior;
+    return hasAdultRole && hasAdultAge;
   }
 }

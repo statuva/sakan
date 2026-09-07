@@ -14,6 +14,7 @@ class FamilyInsightSection extends StatelessWidget {
     required this.insight,
     required this.aiNarrative,
     required this.onPerformAction,
+    required this.onOpenSimulation,
     super.key,
   });
 
@@ -21,6 +22,7 @@ class FamilyInsightSection extends StatelessWidget {
   final Future<SakanAiResult>? aiNarrative;
 
   final Future<void> Function(FamilyInsightItem insight) onPerformAction;
+  final VoidCallback onOpenSimulation;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +61,12 @@ class FamilyInsightSection extends StatelessWidget {
                       Navigator.of(dialogContext).pop();
                       unawaited(onPerformAction(insight));
                     },
+              onOpenSimulation: insight.recommendsSimulation
+                  ? () {
+                      Navigator.of(dialogContext).pop();
+                      onOpenSimulation();
+                    }
+                  : null,
             );
           },
         );

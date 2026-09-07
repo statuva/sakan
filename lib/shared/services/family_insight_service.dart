@@ -381,6 +381,7 @@ class FamilyInsightService {
     for (final instance in candidates) {
       final existingReminder = _reminderForOccurrence(snapshot, instance);
       final currentRole = snapshot.currentMember?.role;
+      final candidateMoment = snapshot.momentById(instance.momentId);
 
       final canStart =
           snapshot.currentUserCanManageSharedMoments &&
@@ -388,9 +389,9 @@ class FamilyInsightService {
               snapshot.currentUserIsExpected(instance));
 
       final canCreateReminder =
-          (currentRole == FamilyRole.admin ||
-              currentRole == FamilyRole.adult) &&
-          snapshot.currentUserIsExpected(instance);
+          snapshot.currentUserCanManageSharedMoments ||
+          snapshot.currentUserIsExpected(instance) ||
+          (candidateMoment?.isSubject(snapshot.currentUserId) ?? false);
 
       final decision = MomentActionEvaluator.evaluate(
         instance: instance,
@@ -414,13 +415,20 @@ class FamilyInsightService {
         case FamilyInsightActionType.addReminder:
         case FamilyInsightActionType.openReminders:
           addInsight(
-            _sameDayReminderInsight(instance: instance, decision: decision),
+            _sameDayReminderInsight(
+              snapshot: snapshot,
+              instance: instance,
+              decision: decision,
+            ),
           );
           break;
         case FamilyInsightActionType.reviewToday:
           addInsight(_reviewNeededInsight(instance, snapshot.generatedAt));
           break;
         default:
+          if (active == null && _shouldShowParticipantReady(snapshot, instance)) {
+            addInsight(_participantReadyInsight(snapshot, instance));
+          }
           break;
       }
     }
@@ -559,16 +567,31 @@ class FamilyInsightService {
   }
 
   static FamilyInsightItem _sameDayReminderInsight({
+    required FamilyInsightSnapshot snapshot,
     required MomentInstance instance,
     required MomentActionDecision decision,
   }) {
     final hasReminder =
         decision.actionType == FamilyInsightActionType.openReminders;
+    final reminderChoice = hasReminder
+        ? null
+        : _findPersonalReminderTime(snapshot, instance);
+    final canUseSimulation =
+        _currentMemberCanUseSimulation(snapshot) &&
+        _hasCurrentUserScheduleData(snapshot) &&
+        snapshot.momentById(instance.momentId)?.type == MomentType.recurring;
+    final actionType = hasReminder
+        ? FamilyInsightActionType.openReminders
+        : reminderChoice != null
+        ? FamilyInsightActionType.addReminder
+        : canUseSimulation
+        ? FamilyInsightActionType.openSimulation
+        : FamilyInsightActionType.none;
 
     return FamilyInsightItem(
       id: 'today:${instance.id}',
       kind: FamilyInsightKind.upcomingMoment,
-      actionType: decision.actionType,
+      actionType: actionType,
       priority: 10,
       headline: '${instance.titleSnapshot} is later today',
       summary: _instanceSummary(
@@ -594,7 +617,12 @@ class FamilyInsightService {
       relatedMomentId: instance.momentId,
       relatedInstanceId: instance.id,
       relatedReminderId: decision.relatedReminderId,
-      recommendedActionAt: decision.recommendedActionAt,
+      recommendedActionAt:
+          hasReminder ? decision.recommendedActionAt : reminderChoice?.dateTime,
+      recommendedActionUsesAvailability:
+          reminderChoice?.usesAvailability ?? false,
+      recommendsSimulation:
+          actionType == FamilyInsightActionType.openSimulation,
     );
   }
 
@@ -665,6 +693,17 @@ class FamilyInsightService {
     final reminderChoice = existing == null
         ? _findPersonalReminderTime(snapshot, instance)
         : null;
+    final canUseSimulation =
+        _currentMemberCanUseSimulation(snapshot) &&
+        _hasCurrentUserScheduleData(snapshot) &&
+        snapshot.momentById(instance.momentId)?.type == MomentType.recurring;
+    final actionType = existing != null
+        ? FamilyInsightActionType.openReminders
+        : reminderChoice != null
+        ? FamilyInsightActionType.addReminder
+        : canUseSimulation
+        ? FamilyInsightActionType.openSimulation
+        : FamilyInsightActionType.none;
 
     return FamilyInsightItem(
       id: 'prepare:${instance.id}',
@@ -674,10 +713,8 @@ class FamilyInsightService {
         MomentCategory.responsibility => FamilyInsightKind.carePreparation,
         _ => FamilyInsightKind.upcomingMoment,
       },
-      actionType: existing == null
-          ? FamilyInsightActionType.addReminder
-          : FamilyInsightActionType.openReminders,
-      priority: 30,
+      actionType: actionType,
+      priority: 20 + days.clamp(0, 14).toInt(),
       headline: _upcomingHeadline(instance.titleSnapshot, days),
       summary: _instanceSummary(instance.titleSnapshot, category),
       reasons: <String>[
@@ -689,6 +726,8 @@ class FamilyInsightService {
           'A personal reminder is already linked to this occurrence.',
         if (reminderChoice?.usesAvailability == true)
           'The suggested reminder time avoids your recorded busy periods.',
+        if (existing == null && reminderChoice == null)
+          'No conflict-free preparation time was found in your recorded schedule.',
       ],
       suggestedActions: <String>[
         _preparationAction(instance.titleSnapshot, category),
@@ -700,6 +739,8 @@ class FamilyInsightService {
       recommendedActionAt: existing?.dueAt ?? reminderChoice?.dateTime,
       recommendedActionUsesAvailability:
           reminderChoice?.usesAvailability ?? false,
+      recommendsSimulation:
+          actionType == FamilyInsightActionType.openSimulation,
     );
   }
 
@@ -717,6 +758,60 @@ class FamilyInsightService {
       finishedFallback ??= reminder;
     }
     return finishedFallback;
+  }
+
+  static bool _shouldShowParticipantReady(
+    FamilyInsightSnapshot snapshot,
+    MomentInstance instance,
+  ) {
+    final member = snapshot.currentMember;
+    if (member == null ||
+        (member.ageGroup != AgeGroup.child &&
+            member.ageGroup != AgeGroup.teen) ||
+        !snapshot.currentUserIsExpected(instance) ||
+        instance.isFinished) {
+      return false;
+    }
+
+    final now = snapshot.generatedAt.toLocal();
+    final start = instance.scheduledStartAt.toLocal();
+    final end = (instance.scheduledEndAt ??
+            instance.scheduledStartAt.add(const Duration(minutes: 90)))
+        .toLocal();
+    final isShared = instance.categorySnapshot == MomentCategory.tradition ||
+        instance.categorySnapshot == MomentCategory.familyTime;
+    return isShared && !now.isBefore(start) && !now.isAfter(end);
+  }
+
+  static FamilyInsightItem _participantReadyInsight(
+    FamilyInsightSnapshot snapshot,
+    MomentInstance instance,
+  ) {
+    final isTeen = snapshot.currentMember?.ageGroup == AgeGroup.teen;
+    return FamilyInsightItem(
+      id: 'ready:${instance.id}:${snapshot.currentUserId}',
+      kind: FamilyInsightKind.sharedMomentOpportunity,
+      actionType: FamilyInsightActionType.none,
+      priority: 5,
+      headline: '${instance.titleSnapshot} is ready to begin',
+      summary: 'An adult starts the shared Moment; your part is to be ready to join.',
+      reasons: const <String>[
+        'The Moment is inside its planned start window.',
+        'You are an expected participant.',
+      ],
+      suggestedActions: <String>[
+        isTeen
+            ? 'Be ready to join ${instance.titleSnapshot} when an adult starts it.'
+            : 'Stay with an adult and be ready for ${instance.titleSnapshot}.',
+        isTeen
+            ? 'Bring the part or item you prepared.'
+            : 'Bring one small item you prepared with an adult.',
+      ],
+      confidence: ConfidenceLevel.high,
+      relatedMomentId: instance.momentId,
+      relatedInstanceId: instance.id,
+      recommendedActionAt: instance.scheduledStartAt,
+    );
   }
 
   static FamilyInsightItem _driftingRhythmInsight(
@@ -781,7 +876,9 @@ class FamilyInsightService {
       recommendedActionAt: actionAt,
       recommendedActionUsesAvailability:
           actionType == FamilyInsightActionType.scheduleMoment &&
-          bestSharedWindow != null,
+          bestSharedWindow != null &&
+          bestSharedWindow.everyoneAvailable &&
+          bestSharedWindow.hasFullScheduleCoverage,
     );
   }
 
@@ -815,6 +912,13 @@ class FamilyInsightService {
     final event = instance.scheduledStartAt.toLocal();
     final eventDate = _dateOnly(event);
     final today = _dateOnly(reference);
+    final personalBlocks = snapshot.availability
+        .where(
+          (block) =>
+              block.memberId == snapshot.currentUserId &&
+              !block.isExpiredAt(snapshot.generatedAt),
+        )
+        .toList();
 
     if (eventDate == today) {
       var candidate = event.subtract(const Duration(minutes: 30));
@@ -824,22 +928,43 @@ class FamilyInsightService {
         candidate = minimum;
       }
 
-      return candidate.isAfter(event)
-          ? null
-          : _ActionTimeChoice(dateTime: candidate, usesAvailability: false);
+      if (candidate.add(const Duration(minutes: 30)).isAfter(event)) {
+        return null;
+      }
+
+      if (!_overlapsPersonalBlocks(
+        candidate: candidate,
+        durationMinutes: 30,
+        blocks: personalBlocks,
+      )) {
+        return _ActionTimeChoice(
+          dateTime: candidate,
+          usesAvailability: personalBlocks.isNotEmpty,
+        );
+      }
+
+      var search = minimum;
+      while (search.add(const Duration(minutes: 30)).isBefore(event) ||
+          search.add(const Duration(minutes: 30)).isAtSameMomentAs(event)) {
+        if (!_overlapsPersonalBlocks(
+          candidate: search,
+          durationMinutes: 30,
+          blocks: personalBlocks,
+        )) {
+          return _ActionTimeChoice(
+            dateTime: search,
+            usesAvailability: personalBlocks.isNotEmpty,
+          );
+        }
+        search = search.add(const Duration(minutes: 15));
+      }
+
+      return null;
     }
 
     if (!eventDate.isAfter(today)) {
       return null;
     }
-
-    final personalBlocks = snapshot.availability
-        .where(
-          (block) =>
-              block.memberId == snapshot.currentUserId &&
-              !block.isExpiredAt(snapshot.generatedAt),
-        )
-        .toList();
 
     final lastPossibleDate = eventDate.subtract(const Duration(days: 1));
 
@@ -868,15 +993,11 @@ class FamilyInsightService {
           continue;
         }
 
-        final endMinutes = startMinutes + 60;
-
-        final overlaps = personalBlocks.any((block) {
-          return block.occursOn(candidateDate) &&
-              startMinutes < block.endMinutes &&
-              endMinutes > block.startMinutes;
-        });
-
-        if (!overlaps) {
+        if (!_overlapsPersonalBlocks(
+          candidate: candidate,
+          durationMinutes: 60,
+          blocks: personalBlocks,
+        )) {
           return _ActionTimeChoice(
             dateTime: candidate,
             usesAvailability: personalBlocks.isNotEmpty,
@@ -891,7 +1012,83 @@ class FamilyInsightService {
       return null;
     }
 
-    return _ActionTimeChoice(dateTime: fallback, usesAvailability: false);
+    if (personalBlocks.isNotEmpty &&
+        _overlapsPersonalBlocks(
+          candidate: fallback,
+          durationMinutes: 60,
+          blocks: personalBlocks,
+        )) {
+      return null;
+    }
+
+    return _ActionTimeChoice(
+      dateTime: fallback,
+      usesAvailability: personalBlocks.isNotEmpty,
+    );
+  }
+
+  static bool _overlapsPersonalBlocks({
+    required DateTime candidate,
+    required int durationMinutes,
+    required List<AvailabilityBlock> blocks,
+  }) {
+    final windowStart = candidate.toLocal();
+    final windowEnd = windowStart.add(Duration(minutes: durationMinutes));
+    final date = _dateOnly(windowStart);
+    final previousDate = date.subtract(const Duration(days: 1));
+
+    return blocks.any((block) {
+      return _blockOverlapsWindow(
+            block: block,
+            blockDate: date,
+            windowStart: windowStart,
+            windowEnd: windowEnd,
+          ) ||
+          _blockOverlapsWindow(
+            block: block,
+            blockDate: previousDate,
+            windowStart: windowStart,
+            windowEnd: windowEnd,
+          );
+    });
+  }
+
+  static bool _blockOverlapsWindow({
+    required AvailabilityBlock block,
+    required DateTime blockDate,
+    required DateTime windowStart,
+    required DateTime windowEnd,
+  }) {
+    if (!block.occursOn(blockDate)) return false;
+
+    final busyStart = blockDate.add(Duration(minutes: block.startMinutes));
+    var busyEnd = blockDate.add(Duration(minutes: block.endMinutes));
+    if (!busyEnd.isAfter(busyStart)) {
+      busyEnd = busyEnd.add(const Duration(days: 1));
+    }
+
+    return windowStart.isBefore(busyEnd) && windowEnd.isAfter(busyStart);
+  }
+
+  static bool _hasCurrentUserScheduleData(FamilyInsightSnapshot snapshot) {
+    return snapshot.availability.any(
+      (block) =>
+          block.memberId == snapshot.currentUserId &&
+          !block.isExpiredAt(snapshot.generatedAt),
+    );
+  }
+
+  static bool _currentMemberCanUseSimulation(
+    FamilyInsightSnapshot snapshot,
+  ) {
+    final member = snapshot.currentMember;
+    if (member == null) return false;
+    final hasAdultRole =
+        member.role == FamilyRole.admin || member.role == FamilyRole.adult;
+    final hasAdultAge =
+        member.ageGroup == AgeGroup.adult ||
+        member.ageGroup == AgeGroup.senior;
+    return hasAdultRole && hasAdultAge;
   }
 
   static FamilyOverallState _overallState(FamilyInsightSnapshot snapshot) {

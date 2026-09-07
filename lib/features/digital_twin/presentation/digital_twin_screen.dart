@@ -16,10 +16,12 @@ import '../../../shared/widgets/branding/sakan_brand.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
 import '../../calendar/presentation/widgets/calendar_palette.dart';
+import '../../moments/presentation/moment_form_screen.dart';
 import '../domain/digital_twin_interpretation.dart';
 import '../domain/twin_simulation_result.dart';
 import '../services/digital_twin_interpretation_service.dart';
 import '../services/digital_twin_simulation_service.dart';
+import '../services/simulation_moment_draft_service.dart';
 import 'digital_twin_visuals.dart';
 import 'widgets/family_twin_map.dart';
 import 'widgets/family_twin_node_sheet.dart';
@@ -52,6 +54,7 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
 
   bool _isLoading = true;
   bool _isRunningSimulation = false;
+  bool _isOpeningMomentDraft = false;
   String? _errorMessage;
 
   @override
@@ -147,6 +150,62 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
       _simulationBaseReport = null;
       _simulationNarrative = null;
     });
+  }
+
+  Future<void> _reviewAndCreateMoment(
+    DigitalTwinSimulationResult simulation,
+  ) async {
+    if (_isOpeningMomentDraft) {
+      return;
+    }
+
+    final familyContext = _familyContext;
+    if (familyContext == null || !familyContext.canUseAi) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Only an active adult or family admin can create a Moment from a simulation.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isOpeningMomentDraft = true;
+    });
+
+    try {
+      final draft = SimulationMomentDraftService.build(simulation);
+      final saved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => MomentFormScreen(
+            draftMoment: draft,
+            requireConflictFreeTime: true,
+          ),
+        ),
+      );
+
+      if (!mounted || saved != true) {
+        return;
+      }
+
+      _exitSimulation();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${draft.title} was added to the Calendar.')),
+      );
+    } on StateError catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message.toString())));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isOpeningMomentDraft = false;
+        });
+      }
+    }
   }
 
   @override
@@ -280,7 +339,12 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
         AppSpacing.lg,
         AppSpacing.md,
         AppSpacing.lg,
-        simulation == null ? 118 : 196,
+        simulation == null
+            ? 118
+            : simulation.scenario.createsMoment &&
+                  _familyContext?.canUseAi == true
+            ? 244
+            : 196,
       ),
       children: [
         Text(
@@ -503,7 +567,27 @@ class _DigitalTwinScreenState extends State<DigitalTwinScreen> {
                 right: 0,
                 bottom: 90,
                 child: Center(
-                  child: SimulationExitButton(onPressed: _exitSimulation),
+                  child: SimulationExitButton(
+                    onPressed: _exitSimulation,
+                    onCreate:
+                        simulation.scenario.createsMoment &&
+                            _familyContext?.canUseAi == true
+                        ? () => unawaited(
+                            _reviewAndCreateMoment(simulation),
+                          )
+                        : null,
+                    hasRecordedConflict:
+                        simulation.creatableMoment == null
+                        ? false
+                        : (simulation
+                                      .patternForMoment(
+                                        simulation.creatableMoment!.id,
+                                      )
+                                      ?.projectedConflictCount ??
+                                  0) >
+                              0,
+                    isCreating: _isOpeningMomentDraft,
+                  ),
                 ),
               ),
           ],

@@ -13,8 +13,8 @@ import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/moment_instance.dart';
 import '../../../shared/ai/ai_family_insight_service.dart';
-import '../../../shared/ai/ai_models.dart';
 import '../../../shared/services/family_insight_surface_selector.dart';
+import '../../../shared/services/personalized_family_focus_selector.dart';
 import '../../../shared/utils/care_action_id.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
@@ -568,7 +568,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
 
         case FamilyInsightActionType.addReminder:
-          await _createInsightReminder(insight: insight, report: report);
+          await _createInsightReminder(insight: insight);
           return;
 
         case FamilyInsightActionType.scheduleMoment:
@@ -587,6 +587,12 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (_) => ScheduleMomentOccurrenceScreen(moment: moment),
             ),
           );
+          return;
+
+        case FamilyInsightActionType.openSimulation:
+          if (mounted) {
+            context.goNamed('digitalTwin');
+          }
           return;
 
         case FamilyInsightActionType.manageMoments:
@@ -649,56 +655,67 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _createInsightReminder({
     required FamilyInsightItem insight,
-    required FamilyInsightReport report,
   }) async {
     if (insight.relatedReminderId != null) {
       await _openMyReminders();
       return;
     }
 
-    final nowLocal = DateTime.now();
-    final recommended = insight.recommendedActionAt?.toLocal();
-    final dueAt = recommended != null && recommended.isAfter(nowLocal)
-        ? recommended
-        : nowLocal.add(const Duration(minutes: 30));
+    final freshReport = await AppDependencies.familyInsightService.loadReport();
+    FamilyInsightItem? freshInsight;
+    for (final candidate in PersonalizedFamilyFocusSelector.selectAll(
+      freshReport,
+    )) {
+      if (candidate.id == insight.id) {
+        freshInsight = candidate;
+        break;
+      }
+    }
 
-    final relatedInstance = insight.relatedInstanceId == null
-        ? null
-        : report.snapshot.instanceById(insight.relatedInstanceId!);
+    if (!mounted) return;
 
-    SakanAiResult? aiCopy;
-    try {
-      aiCopy = await AppDependencies.aiFamilyInsightService.enrich(
-        insight: insight,
-        familyId: _familyContext!.familyId,
-        memberId: _familyContext!.userId,
-        surface: FamilyInsightSurface.home,
+    final currentInsight = freshInsight;
+    final recommended = currentInsight?.recommendedActionAt?.toUtc();
+    if (currentInsight == null ||
+        currentInsight.actionType != FamilyInsightActionType.addReminder ||
+        recommended == null ||
+        !recommended.isAfter(DateTime.now().toUtc())) {
+      _showMessage(
+        'The timing changed, so this reminder is no longer safe to schedule.',
       );
-    } catch (_) {
-      aiCopy = null;
+      return;
+    }
+
+    final relatedInstance = currentInsight.relatedInstanceId == null
+        ? null
+        : freshReport.snapshot.instanceById(currentInsight.relatedInstanceId!);
+    if (relatedInstance != null &&
+        recommended
+            .add(const Duration(minutes: 30))
+            .isAfter(relatedInstance.scheduledStartAt.toUtc())) {
+      _showMessage(
+        'There is no longer enough time before this Moment for that reminder.',
+      );
+      return;
     }
 
     final action = CareAction(
       id: CareActionId.forInsight(
         familyId: _familyContext!.familyId,
         memberId: _familyContext!.userId,
-        momentId: insight.relatedMomentId,
-        instanceId: insight.relatedInstanceId,
+        momentId: currentInsight.relatedMomentId,
+        instanceId: currentInsight.relatedInstanceId,
         purpose: 'prepare',
       ),
       familyId: _familyContext!.familyId,
-      momentId: insight.relatedMomentId,
-      instanceId: insight.relatedInstanceId,
-      title:
-          aiCopy?.reminderTitle ??
-          (insight.suggestedActions.isEmpty
-              ? 'Prepare for ${relatedInstance?.titleSnapshot ?? insight.headline}'
-              : insight.suggestedActions.first),
-      reason:
-          aiCopy?.reminderReason ??
-          insight.summary,
+      momentId: currentInsight.relatedMomentId,
+      instanceId: currentInsight.relatedInstanceId,
+      title: currentInsight.suggestedActions.isEmpty
+          ? 'Prepare for ${relatedInstance?.titleSnapshot ?? currentInsight.headline}'
+          : currentInsight.suggestedActions.first,
+      reason: currentInsight.summary,
       assignedMemberId: _familyContext!.userId,
-      dueAt: dueAt.toUtc(),
+      dueAt: recommended,
       status: CareActionStatus.pending,
       source: CareActionSource.calendar,
       evidenceType: EvidenceType.scheduledOnly,

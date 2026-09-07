@@ -104,40 +104,38 @@ class FamilyInsightNoticeCard extends StatelessWidget {
           FutureBuilder<SakanAiResult>(
             future: aiNarrative,
             builder: (context, snapshot) {
-              final reasons = snapshot.data?.reasons.isNotEmpty == true
-                  ? snapshot.data!.reasons
-                  : insight.reasons;
-              if (reasons.isEmpty) return const SizedBox.shrink();
+              final tasks = _mergedTasks(snapshot.data);
+              if (tasks.isEmpty) return const SizedBox.shrink();
+
               return Padding(
                 padding: const EdgeInsets.only(top: AppSpacing.md),
-                child: Wrap(
-                  spacing: AppSpacing.xs,
-                  runSpacing: AppSpacing.xs,
-                  children: reasons
-                      .take(1)
-                      .map((reason) => _FactChip(label: reason, color: accent))
-                      .toList(growable: false),
+                child: Column(
+                  children: List<Widget>.generate(
+                    tasks.length,
+                    (index) => Padding(
+                      padding: EdgeInsets.only(
+                        bottom: index == tasks.length - 1 ? 0 : AppSpacing.xs,
+                      ),
+                      child: _RecommendationTaskRow(
+                        text: tasks[index],
+                        isPrimary: index == 0,
+                        accent: accent,
+                        fitsSchedule:
+                            index == 0 &&
+                            insight.recommendedActionUsesAvailability,
+                      ),
+                    ),
+                  ),
                 ),
               );
             },
           ),
-          if (insight.primaryActionLabel != null) ...[
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'NEXT ACTION · ${insight.primaryActionLabel}',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: accent,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.25,
-              ),
-            ),
-          ],
           const SizedBox(height: AppSpacing.lg),
           SizedBox(
             width: double.infinity,
             child: FilledButton(
               onPressed: onOpen,
-              child: const Text('View Recommendation'),
+              child: const Text('View Plan'),
             ),
           ),
         ],
@@ -183,31 +181,91 @@ class FamilyInsightNoticeCard extends StatelessWidget {
       FamilyInsightKind.upcomingMoment => CalendarPalette.forest,
     };
   }
+
+  List<String> _mergedTasks(SakanAiResult? _) {
+    final baseline = insight.suggestedActions;
+    return baseline.take(3).toList(growable: false);
+  }
 }
 
-class _FactChip extends StatelessWidget {
-  const _FactChip({required this.label, required this.color});
+class _RecommendationTaskRow extends StatelessWidget {
+  const _RecommendationTaskRow({
+    required this.text,
+    required this.isPrimary,
+    required this.accent,
+    required this.fitsSchedule,
+  });
 
-  final String label;
-  final Color color;
+  final String text;
+  final bool isPrimary;
+  final Color accent;
+  final bool fitsSchedule;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(maxWidth: 250),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withAlpha(18),
-        borderRadius: BorderRadius.circular(999),
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: isPrimary ? AppSpacing.md : AppSpacing.sm,
       ),
-      child: Text(
-        label,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
+      decoration: BoxDecoration(
+        color: isPrimary
+            ? accent.withAlpha(22)
+            : CalendarPalette.surfaceSoft,
+        borderRadius: BorderRadius.circular(isPrimary ? 16 : 13),
+        border: isPrimary ? Border.all(color: accent.withAlpha(45)) : null,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isPrimary
+                ? Icons.arrow_forward_rounded
+                : Icons.circle_outlined,
+            size: isPrimary ? 19 : 15,
+            color: accent,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isPrimary ? 'DO FIRST' : 'ALSO',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.35,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  text,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: CalendarPalette.ink,
+                    height: 1.35,
+                    fontWeight: isPrimary
+                        ? FontWeight.w600
+                        : FontWeight.w500,
+                  ),
+                ),
+                if (fitsSchedule) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    'Fits your recorded schedule',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: accent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

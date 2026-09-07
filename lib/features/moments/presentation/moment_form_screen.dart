@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../app/app_dependencies.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../shared/models/availability_block.dart';
 import '../../../shared/models/current_family_context.dart';
 import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/member.dart';
@@ -14,11 +15,19 @@ import '../../../shared/widgets/cards/app_card.dart';
 import '../../../shared/widgets/controls/app_pill_segmented_control.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
 import '../../../shared/widgets/feedback/app_loading_state.dart';
+import '../services/moment_session_timing_service.dart';
 
 class MomentFormScreen extends StatefulWidget {
-  const MomentFormScreen({this.initialMoment, super.key});
+  const MomentFormScreen({
+    this.initialMoment,
+    this.draftMoment,
+    this.requireConflictFreeTime = false,
+    super.key,
+  }) : assert(initialMoment == null || draftMoment == null);
 
   final FamilyMoment? initialMoment;
+  final FamilyMoment? draftMoment;
+  final bool requireConflictFreeTime;
 
   @override
   State<MomentFormScreen> createState() => _MomentFormScreenState();
@@ -32,6 +41,7 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
   CurrentFamilyContext? _familyContext;
   List<Member> _members = <Member>[];
+  List<AvailabilityBlock> _availability = <AvailabilityBlock>[];
 
   final Set<String> _selectedParticipantIds = <String>{};
 
@@ -61,9 +71,11 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+  String? _newMomentId;
   String? _errorMessage;
 
   bool get _isEditing => widget.initialMoment != null;
+  bool get _isSimulationDraft => widget.draftMoment != null;
 
   @override
   void initState() {
@@ -92,27 +104,44 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
         throw StateError('Only an adult or family admin can manage Moments.');
       }
 
-      final members = await AppDependencies.currentFamilyService
-          .watchFamilyMembers(familyContext.familyId)
-          .first;
+      if (_isSimulationDraft && !familyContext.canUseAi) {
+        throw StateError(
+          'Only an active adult or family admin can create a Moment from a simulation.',
+        );
+      }
 
-      final initialMoment = widget.initialMoment;
+      _newMomentId ??=
+          'moment_${familyContext.userId}_'
+          '${DateTime.now().microsecondsSinceEpoch}';
 
-      if (initialMoment != null) {
-        final startLocal = initialMoment.startAt.toLocal();
-        final startMinutes = initialMoment.resolvedPreferredStartMinutes;
-        final endMinutes = initialMoment.resolvedPreferredEndMinutes;
+      final formData = await Future.wait<Object>([
+        AppDependencies.currentFamilyService
+            .watchFamilyMembers(familyContext.familyId)
+            .first,
+        AppDependencies.scheduleRepository
+            .watchFamilyAvailability(familyId: familyContext.familyId)
+            .first,
+      ]);
+      final members = formData[0] as List<Member>;
+      final availability = formData[1] as List<AvailabilityBlock>;
 
-        _titleController.text = initialMoment.title;
-        _locationController.text = initialMoment.location ?? '';
-        _notesController.text = initialMoment.notes ?? '';
+      final seedMoment = widget.initialMoment ?? widget.draftMoment;
 
-        _type = initialMoment.type;
-        _category = initialMoment.category;
-        _format = initialMoment.format;
+      if (seedMoment != null) {
+        final startLocal = seedMoment.startAt.toLocal();
+        final startMinutes = seedMoment.resolvedPreferredStartMinutes;
+        final endMinutes = seedMoment.resolvedPreferredEndMinutes;
 
-        _importanceLevel = initialMoment.importanceLevel;
-        _intervalDays = initialMoment.expectedIntervalDays ?? 7;
+        _titleController.text = seedMoment.title;
+        _locationController.text = seedMoment.location ?? '';
+        _notesController.text = seedMoment.notes ?? '';
+
+        _type = seedMoment.type;
+        _category = seedMoment.category;
+        _format = seedMoment.format;
+
+        _importanceLevel = seedMoment.importanceLevel;
+        _intervalDays = seedMoment.expectedIntervalDays ?? 7;
 
         _oneTimeDate = DateUtils.dateOnly(startLocal);
         _startTime = _timeFromMinutes(startMinutes);
@@ -122,21 +151,28 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
           _endTime = _timeFromMinutes(endMinutes);
         }
 
-        _isDayFlexible = initialMoment.isDayFlexible;
-        _isArchived = initialMoment.isArchived;
+        _isDayFlexible = seedMoment.isDayFlexible;
+        _isArchived = seedMoment.isArchived;
         _preferredWeekday =
-            initialMoment.preferredWeekday ?? startLocal.weekday;
+            seedMoment.preferredWeekday ?? startLocal.weekday;
         _preferredDayOfMonth =
-            initialMoment.preferredDayOfMonth ?? startLocal.day;
-        _preferredMonth = initialMoment.preferredMonth ?? startLocal.month;
+            seedMoment.preferredDayOfMonth ?? startLocal.day;
+        _preferredMonth = seedMoment.preferredMonth ?? startLocal.month;
 
         _selectedParticipantIds
           ..clear()
-          ..addAll(initialMoment.expectedParticipantIds);
+          ..addAll(seedMoment.expectedParticipantIds);
 
         _subjectMemberIds
           ..clear()
-          ..addAll(initialMoment.subjectMemberIds);
+          ..addAll(seedMoment.subjectMemberIds);
+
+        final activeMemberIds = members
+            .where((member) => member.isActive)
+            .map((member) => member.id)
+            .toSet();
+        _selectedParticipantIds.retainWhere(activeMemberIds.contains);
+        _subjectMemberIds.retainWhere(activeMemberIds.contains);
       } else {
         final tomorrow = DateTime.now().add(const Duration(days: 1));
         _oneTimeDate = DateUtils.dateOnly(tomorrow);
@@ -158,6 +194,7 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
       setState(() {
         _familyContext = familyContext;
         _members = members;
+        _availability = availability;
         _isLoading = false;
       });
     } catch (error) {
@@ -213,6 +250,153 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
     });
   }
 
+  ({
+    DateTime start,
+    DateTime? end,
+    bool flexible,
+    int startMinutes,
+    int? endMinutes,
+  })
+  _resolveTiming({DateTime? reference}) {
+    final now = reference ?? DateTime.now();
+    final interval = _type == MomentType.recurring ? _intervalDays : 0;
+    final flexible =
+        _type == MomentType.recurring &&
+        (_intervalDays == 7 ||
+            _intervalDays == 14 ||
+            _intervalDays == 30 ||
+            _intervalDays == 90) &&
+        _isDayFlexible;
+    final startMinutes = _minutesFromTime(_startTime);
+    final endMinutes = _hasEndTime ? _minutesFromTime(_endTime) : null;
+    final exactStart = MomentScheduleResolver.firstExactStart(
+      type: _type,
+      reference: now,
+      startMinutes: startMinutes,
+      oneTimeDate: _type == MomentType.singular ? _oneTimeDate : null,
+      intervalDays: interval,
+      isDayFlexible: flexible,
+      preferredWeekday: _preferredWeekday,
+      preferredDayOfMonth: _preferredDayOfMonth,
+      preferredMonth: _preferredMonth,
+    );
+    final start =
+        exactStart ??
+        MomentScheduleResolver.anchorForFlexible(
+          reference: now,
+          startMinutes: startMinutes,
+        );
+    final end = MomentScheduleResolver.endForStart(
+      start: start,
+      endMinutes: endMinutes,
+    );
+
+    return (
+      start: start,
+      end: end,
+      flexible: flexible,
+      startMinutes: startMinutes,
+      endMinutes: endMinutes,
+    );
+  }
+
+  MomentSessionTimingNote? _currentTimingNote() {
+    if (!widget.requireConflictFreeTime || _selectedParticipantIds.isEmpty) {
+      return null;
+    }
+
+    final timing = _resolveTiming();
+    final end = timing.end;
+    if (end == null) {
+      return null;
+    }
+
+    return MomentSessionTimingService.build(
+      expectedParticipantIds: _selectedParticipantIds.toList(),
+      availability: _availability,
+      start: timing.start,
+      end: end,
+    );
+  }
+
+  Set<String> _conflictsForWindow({
+    required List<String> participantIds,
+    required List<AvailabilityBlock> availability,
+    required DateTime start,
+    required DateTime end,
+  }) {
+    final firstNote = MomentSessionTimingService.build(
+      expectedParticipantIds: participantIds,
+      availability: availability,
+      start: start,
+      end: end,
+    );
+    final conflicts = <String>{...?firstNote?.conflictingMemberIds};
+    final localStart = start.toLocal();
+    final localEnd = end.toLocal();
+    final crossesMidnight = localStart.year != localEnd.year ||
+        localStart.month != localEnd.month ||
+        localStart.day != localEnd.day;
+
+    if (crossesMidnight) {
+      final midnight = DateTime(
+        localEnd.year,
+        localEnd.month,
+        localEnd.day,
+      );
+      final nextDayNote = MomentSessionTimingService.build(
+        expectedParticipantIds: participantIds,
+        availability: availability,
+        start: midnight,
+        end: localEnd,
+      );
+      conflicts.addAll(
+        nextDayNote?.conflictingMemberIds ?? const <String>{},
+      );
+    }
+
+    return conflicts;
+  }
+
+  ({Set<String> memberIds, DateTime? start}) _firstProjectedConflict({
+    required FamilyMoment moment,
+    required List<AvailabilityBlock> availability,
+    required DateTime reference,
+  }) {
+    final end = moment.endAt;
+    if (end == null) {
+      return (memberIds: const <String>{}, start: null);
+    }
+
+    final duration = end.difference(moment.startAt);
+    final checks = moment.type == MomentType.recurring ? 4 : 1;
+    var start = moment.startAt.toLocal();
+
+    for (var index = 0; index < checks; index++) {
+      final conflicts = _conflictsForWindow(
+        participantIds: moment.expectedParticipantIds,
+        availability: availability,
+        start: start,
+        end: start.add(duration),
+      );
+      if (conflicts.isNotEmpty) {
+        return (memberIds: conflicts, start: start);
+      }
+
+      final next = MomentScheduleResolver.nextExactStart(
+        moment: moment,
+        after: start,
+        now: reference,
+      );
+      if (next == null) {
+        break;
+      }
+      start = next;
+    }
+
+    return (memberIds: const <String>{}, start: null);
+  }
+
   Future<void> _saveMoment({bool? archivedOverride}) async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -229,47 +413,32 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
       return;
     }
 
-    final interval = _type == MomentType.recurring ? _intervalDays : 0;
-    final flexible =
-        _type == MomentType.recurring &&
-        (_intervalDays == 7 ||
-            _intervalDays == 14 ||
-            _intervalDays == 30 ||
-            _intervalDays == 90) &&
-        _isDayFlexible;
-
-    final startMinutes = _minutesFromTime(_startTime);
-    final endMinutes = _hasEndTime ? _minutesFromTime(_endTime) : null;
-
-    final exactStart = MomentScheduleResolver.firstExactStart(
-      type: _type,
-      reference: DateTime.now(),
-      startMinutes: startMinutes,
-      oneTimeDate: _type == MomentType.singular ? _oneTimeDate : null,
-      intervalDays: interval,
-      isDayFlexible: flexible,
-      preferredWeekday: _preferredWeekday,
-      preferredDayOfMonth: _preferredDayOfMonth,
-      preferredMonth: _preferredMonth,
-    );
-
-    final startLocal =
-        exactStart ??
-        MomentScheduleResolver.anchorForFlexible(
-          reference: DateTime.now(),
-          startMinutes: startMinutes,
-        );
-
-    final endLocal = MomentScheduleResolver.endForStart(
-      start: startLocal,
-      endMinutes: endMinutes,
-    );
+    final timing = _resolveTiming();
+    final flexible = timing.flexible;
+    final startMinutes = timing.startMinutes;
+    final endMinutes = timing.endMinutes;
+    final startLocal = timing.start;
+    final endLocal = timing.end;
 
     if (_type == MomentType.singular &&
         startLocal.isBefore(
           DateTime.now().subtract(const Duration(minutes: 1)),
         )) {
       _showMessage('Choose a future date and time for a one-time Moment.');
+      return;
+    }
+
+    if (widget.requireConflictFreeTime && flexible) {
+      _showMessage(
+        'Choose a specific day so Sakan can check the approved time.',
+      );
+      return;
+    }
+
+    if (widget.requireConflictFreeTime && endLocal == null) {
+      _showMessage(
+        'Add an end time so Sakan can check for busy-time conflicts.',
+      );
       return;
     }
 
@@ -283,10 +452,42 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
       final now = DateTime.now().toUtc();
       final archived = archivedOverride ?? _isArchived;
 
+      if (_isSimulationDraft) {
+        final latestContext = await AppDependencies.currentFamilyService.load();
+        if (latestContext.familyId != familyContext.familyId ||
+            latestContext.userId != familyContext.userId ||
+            !latestContext.canUseAi) {
+          throw StateError(
+            'Your family access changed. Reopen the simulation before creating this Moment.',
+          );
+        }
+
+        final latestMembers = await AppDependencies.currentFamilyService
+            .watchFamilyMembers(familyContext.familyId)
+            .first;
+        final activeMemberIds = latestMembers
+            .where((member) => member.isActive)
+            .map((member) => member.id)
+            .toSet();
+        final invalidParticipantIds = _selectedParticipantIds
+            .where((id) => !activeMemberIds.contains(id))
+            .toList(growable: false);
+        final invalidSubjectIds = _subjectMemberIds
+            .where((id) => !activeMemberIds.contains(id))
+            .toList(growable: false);
+
+        if (invalidParticipantIds.isNotEmpty || invalidSubjectIds.isNotEmpty) {
+          throw StateError(
+            'A selected family member is no longer active. Review the participants and try again.',
+          );
+        }
+
+        _members = latestMembers;
+      }
+
       final momentId =
           initialMoment?.id ??
-          'moment_${familyContext.userId}_'
-              '${DateTime.now().microsecondsSinceEpoch}';
+          _newMomentId!;
 
       final moment = FamilyMoment(
         id: momentId,
@@ -338,6 +539,37 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
         createdAt: initialMoment?.createdAt ?? now,
         updatedAt: now,
       );
+
+      if (widget.requireConflictFreeTime) {
+        final latestAvailability = await AppDependencies.scheduleRepository
+            .watchFamilyAvailability(familyId: familyContext.familyId)
+            .first;
+        _availability = latestAvailability;
+
+        final conflict = _firstProjectedConflict(
+          moment: moment,
+          availability: latestAvailability,
+          reference: DateTime.now(),
+        );
+
+        if (conflict.memberIds.isNotEmpty) {
+          final names = _members
+              .where((member) => conflict.memberIds.contains(member.id))
+              .map((member) => member.displayName)
+              .toList()
+            ..sort();
+          final date = conflict.start == null
+              ? ''
+              : ' on ${DateFormat('EEE, d MMM').format(conflict.start!)}';
+          final people = names.isEmpty
+              ? 'a selected participant'
+              : names.join(', ');
+          throw StateError(
+            'Choose another time. This plan overlaps $people’s recorded '
+            'busy time$date.',
+          );
+        }
+      }
 
       await AppDependencies.calendarRepository.saveMoment(moment);
 
@@ -525,7 +757,13 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
     if (_familyContext == null) {
       return Scaffold(
         appBar: AppBar(
-          title: Text(_isEditing ? 'Edit Family Moment' : 'Add Family Moment'),
+          title: Text(
+            _isEditing
+                ? 'Edit Family Moment'
+                : _isSimulationDraft
+                ? 'Create This Moment'
+                : 'Add Family Moment',
+          ),
         ),
         body: SafeArea(
           child: AppErrorState(
@@ -538,7 +776,13 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Edit Family Moment' : 'Add Family Moment'),
+        title: Text(
+          _isEditing
+              ? 'Edit Family Moment'
+              : _isSimulationDraft
+              ? 'Create This Moment'
+              : 'Add Family Moment',
+        ),
         actions: [
           if (_isEditing)
             IconButton(
@@ -556,6 +800,20 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (_isSimulationDraft) ...[
+                  const AppCard(
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.science_outlined),
+                      title: Text('From your simulation'),
+                      subtitle: Text(
+                        'Review every detail. Nothing is created until you '
+                        'approve a time with no recorded busy-time conflicts.',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
                 TextFormField(
                   controller: _titleController,
                   textCapitalization: TextCapitalization.words,
@@ -701,6 +959,10 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                 ],
                 const SizedBox(height: AppSpacing.lg),
                 _buildTimingCard(context),
+                if (_isSimulationDraft) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  _buildSimulationTimingCheck(context),
+                ],
                 const SizedBox(height: AppSpacing.lg),
                 Text(
                   'Expected Participants',
@@ -806,7 +1068,11 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
                 ],
                 const SizedBox(height: AppSpacing.xxl),
                 AppPrimaryButton(
-                  label: _isEditing ? 'Save Changes' : 'Save Moment',
+                  label: _isEditing
+                      ? 'Save Changes'
+                      : _isSimulationDraft
+                      ? 'Approve & Create Moment'
+                      : 'Save Moment',
                   isLoading: _isSaving,
                   onPressed: _isSaving ? null : _saveMoment,
                 ),
@@ -830,6 +1096,73 @@ class _MomentFormScreenState extends State<MomentFormScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSimulationTimingCheck(BuildContext context) {
+    final timing = _resolveTiming();
+    final note = _currentTimingNote();
+    final conflicts = timing.end == null
+        ? const <String>{}
+        : _conflictsForWindow(
+            participantIds: _selectedParticipantIds.toList(),
+            availability: _availability,
+            start: timing.start,
+            end: timing.end!,
+          );
+    final conflictingNames = _members
+        .where((member) => conflicts.contains(member.id))
+        .map((member) => member.displayName)
+        .toList()
+      ..sort();
+    final missingScheduleCount =
+        _selectedParticipantIds.length - (note?.membersWithScheduleData ?? 0);
+
+    late final IconData icon;
+    late final String title;
+    late final String body;
+
+    if (timing.flexible) {
+      icon = Icons.event_busy_outlined;
+      title = 'Choose a specific day';
+      body = 'An exact day and end time are needed before this simulated '
+          'Moment can be checked and created.';
+    } else if (timing.end == null) {
+      icon = Icons.more_time_rounded;
+      title = 'Add an end time';
+      body = 'Sakan needs the full time range to compare it with recorded '
+          'busy periods.';
+    } else if (conflicts.isNotEmpty) {
+      icon = Icons.schedule_rounded;
+      title = 'Choose another time';
+      body = 'This time overlaps recorded busy time for '
+          '${conflictingNames.join(', ')}.';
+    } else if (note == null) {
+      icon = Icons.help_outline_rounded;
+      title = 'Schedule coverage is incomplete';
+      body = 'No selected participant has recorded schedule data. The adult '
+          'can still approve the time, but Sakan cannot verify availability.';
+    } else if (missingScheduleCount > 0) {
+      icon = Icons.event_available_outlined;
+      title = 'No recorded conflicts found';
+      body = 'The time is clear in the available schedules. '
+          '$missingScheduleCount selected '
+          '${missingScheduleCount == 1 ? 'participant has' : 'participants have'} '
+          'no recorded schedule coverage.';
+    } else {
+      icon = Icons.event_available_rounded;
+      title = 'No recorded busy-time conflicts';
+      body = 'The approved time is clear in every selected participant’s '
+          'recorded schedule.';
+    }
+
+    return AppCard(
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(body),
       ),
     );
   }

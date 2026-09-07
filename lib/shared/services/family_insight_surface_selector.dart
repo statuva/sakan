@@ -30,47 +30,44 @@ abstract final class FamilyInsightSurfaceSelector {
     return calendarFrom(insights, homeInsightId: homeInsight?.id);
   }
 
-  /// Calendar favors concrete planning and never duplicates Home's card.
+  /// Calendar expands the most urgent concrete plan. Home may show the same
+  /// plan's first task while Calendar exposes its supporting tasks.
   static FamilyInsightItem? calendarFrom(
     Iterable<FamilyInsightItem> insights, {
     String? homeInsightId,
   }) {
-    final candidates = insights
-        .where((insight) => insight.id != homeInsightId)
-        .toList(growable: false);
-
-    FamilyInsightItem? firstWhere(
-      bool Function(FamilyInsightItem insight) test,
-    ) {
-      for (final insight in candidates) {
-        if (test(insight)) return insight;
-      }
-      return null;
-    }
+    final candidates = insights.toList(growable: false);
 
     bool isUpcoming(FamilyInsightItem insight) {
       return insight.kind == FamilyInsightKind.upcomingMilestone ||
           insight.kind == FamilyInsightKind.carePreparation ||
-          insight.kind == FamilyInsightKind.upcomingMoment;
+          insight.kind == FamilyInsightKind.upcomingMoment ||
+          insight.kind == FamilyInsightKind.sharedMomentOpportunity;
     }
 
-    return firstWhere(
-          (insight) =>
-              isUpcoming(insight) &&
-              insight.actionType == FamilyInsightActionType.addReminder,
-        ) ??
-        firstWhere(
-          (insight) =>
-              isUpcoming(insight) &&
-              insight.actionType == FamilyInsightActionType.openReminders,
-        ) ??
-        firstWhere(
-          (insight) =>
-              insight.actionType == FamilyInsightActionType.scheduleMoment,
-        ) ??
-        firstWhere(
-          (insight) => insight.kind == FamilyInsightKind.overdueReminder,
-        ) ??
-        firstWhere(isUpcoming);
+    final planning = candidates.where((insight) {
+      return isUpcoming(insight) ||
+          insight.kind == FamilyInsightKind.overdueReminder ||
+          insight.actionType == FamilyInsightActionType.scheduleMoment ||
+          insight.actionType == FamilyInsightActionType.openSimulation;
+    }).toList(growable: false)
+      ..sort((left, right) {
+        final priority = left.priority.compareTo(right.priority);
+        if (priority != 0) return priority;
+
+        final leftTime = left.recommendedActionAt ?? DateTime(9999);
+        final rightTime = right.recommendedActionAt ?? DateTime(9999);
+        final timing = leftTime.compareTo(rightTime);
+        if (timing != 0) return timing;
+
+        if (homeInsightId != null) {
+          if (left.id == homeInsightId && right.id != homeInsightId) return -1;
+          if (right.id == homeInsightId && left.id != homeInsightId) return 1;
+        }
+
+        return left.id.compareTo(right.id);
+      });
+
+    return planning.isEmpty ? null : planning.first;
   }
 }

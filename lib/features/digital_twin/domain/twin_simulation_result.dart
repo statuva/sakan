@@ -113,6 +113,18 @@ class DigitalTwinSimulationResult {
     return null;
   }
 
+  /// The local-only new Moment that may be reviewed for creation.
+  ///
+  /// Existing-Moment simulations deliberately return null so they cannot
+  /// accidentally create a duplicate definition.
+  FamilyMoment? get creatableMoment {
+    if (!scenario.createsMoment || hypotheticalMomentIds.length != 1) {
+      return null;
+    }
+
+    return momentById(hypotheticalMomentIds.single);
+  }
+
   bool isChangedMoment(String momentId) {
     return changedMomentIds.contains(momentId);
   }
