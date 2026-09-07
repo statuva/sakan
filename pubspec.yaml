@@ -82,6 +82,7 @@ flutter:
   assets:
     - assets/images/sakan_wordmark.png
     - assets/images/sakan_ai_star.png
+    - assets/images/sakan_assistant_icon.png
     - assets/images/sakan_tree.png
     - assets/images/sakan_birds.png
     - assets/images/sakan_intro_family.png

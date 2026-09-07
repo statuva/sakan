@@ -73,3 +73,31 @@ class SakanAiStar extends StatelessWidget {
     );
   }
 }
+
+class SakanAssistantIcon extends StatelessWidget {
+  const SakanAssistantIcon({this.size = 68, super.key});
+
+  static const String assetPath = 'assets/images/sakan_assistant_icon.png';
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: Image.asset(
+        assetPath,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+        excludeFromSemantics: true,
+        errorBuilder: (_, _, _) {
+          return Icon(
+            Icons.auto_awesome_rounded,
+            size: size * 0.64,
+            color: AppColors.accent,
+          );
+        },
+      ),
+    );
+  }
+}
