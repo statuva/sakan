@@ -49,21 +49,75 @@ class FirebaseCareActionRepository implements CareActionRepository {
   }
 
   /// Creates an AI/recommendation reminder once and returns the stored value.
-  /// A retry never resurrects or overwrites a reminder the member completed.
+  /// A retry returns the stored reminder instead of intentionally replacing it.
   Future<CareAction> createCareActionIfAbsent(CareAction action) async {
     _validateAction(action);
     final reference = _actions(action.familyId).doc(action.id);
 
-    return _firestore.runTransaction((transaction) async {
-      final snapshot = await transaction.get(reference);
-      final existing = snapshot.data();
-      if (snapshot.exists && existing != null) {
-        return CareAction.fromMap(snapshot.id, existing);
+    try {
+      return await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(reference);
+        final existing = snapshot.data();
+        if (snapshot.exists && existing != null) {
+          return CareAction.fromMap(snapshot.id, existing);
+        }
+
+        transaction.set(reference, action.toMap());
+        return action;
+      });
+    } on FirebaseException catch (error) {
+      if (error.code != 'permission-denied') {
+        rethrow;
       }
 
-      transaction.set(reference, action.toMap());
+      // A child or teen may create and read a reminder assigned to them, but
+      // cannot read a missing family Care Action document. That makes the
+      // transaction's first get fail before the permitted create is reached.
+      // Use an ownership-filtered query, which satisfies the existing read
+      // rule, then create the same deterministic document directly.
+      return _createAfterAssignedLookup(action);
+    }
+  }
+
+  Future<CareAction> _createAfterAssignedLookup(CareAction action) async {
+    final existing = await _findAssignedActionById(action);
+    if (existing != null) {
+      return existing;
+    }
+
+    final reference = _actions(action.familyId).doc(action.id);
+
+    try {
+      await reference.set(action.toMap());
       return action;
-    });
+    } on FirebaseException catch (error) {
+      if (error.code != 'permission-denied') {
+        rethrow;
+      }
+
+      // If another device created the deterministic reminder after the query,
+      // return that stored value instead of replacing or duplicating it.
+      final racedExisting = await _findAssignedActionById(action);
+      if (racedExisting != null) {
+        return racedExisting;
+      }
+
+      rethrow;
+    }
+  }
+
+  Future<CareAction?> _findAssignedActionById(CareAction action) async {
+    final snapshot = await _actions(action.familyId)
+        .where('assignedMemberId', isEqualTo: action.assignedMemberId)
+        .get();
+
+    for (final document in snapshot.docs) {
+      if (document.id == action.id) {
+        return CareAction.fromMap(document.id, document.data());
+      }
+    }
+
+    return null;
   }
 
   @override
