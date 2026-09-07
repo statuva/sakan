@@ -11,12 +11,14 @@ class FamilyInsightDialog extends StatelessWidget {
     required this.insight,
     required this.aiNarrative,
     required this.onPrimaryAction,
+    this.onOpenSimulation,
     super.key,
   });
 
   final FamilyInsightItem insight;
   final SakanAiResult? aiNarrative;
   final VoidCallback? onPrimaryAction;
+  final VoidCallback? onOpenSimulation;
 
   @override
   Widget build(BuildContext context) {
@@ -26,9 +28,7 @@ class FamilyInsightDialog extends StatelessWidget {
     final reasons = aiNarrative?.reasons.isNotEmpty == true
         ? aiNarrative!.reasons
         : insight.reasons;
-    final suggestedActions = aiNarrative?.suggestedActions.isNotEmpty == true
-        ? aiNarrative!.suggestedActions
-        : insight.suggestedActions;
+    final suggestedActions = _mergedTasks();
 
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
@@ -114,14 +114,15 @@ class FamilyInsightDialog extends StatelessWidget {
               if (suggestedActions.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.lg),
                 Text(
-                  'One next step',
+                  'Your plan',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                ...suggestedActions.take(1).map(
-                  (action) => _DialogItem(
-                    icon: Icons.arrow_forward_rounded,
-                    text: action,
+                ...List<Widget>.generate(
+                  suggestedActions.length,
+                  (index) => _PlanTask(
+                    text: suggestedActions[index],
+                    isPrimary: index == 0,
                   ),
                 ),
               ],
@@ -185,6 +186,17 @@ class FamilyInsightDialog extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.xl),
+              if (insight.recommendsSimulation &&
+                  insight.actionType !=
+                      FamilyInsightActionType.openSimulation &&
+                  onOpenSimulation != null) ...[
+                OutlinedButton.icon(
+                  onPressed: onOpenSimulation,
+                  icon: const Icon(Icons.auto_awesome_outlined),
+                  label: const Text('Try Simulation'),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+              ],
               Row(
                 children: [
                   Expanded(
@@ -222,6 +234,7 @@ class FamilyInsightDialog extends StatelessWidget {
       FamilyInsightActionType.reviewToday => 'Review reference time',
       FamilyInsightActionType.openReminders => 'Reminder due time',
       FamilyInsightActionType.manageMoments => 'Suggested timing',
+      FamilyInsightActionType.openSimulation => 'Time to compare',
       FamilyInsightActionType.none => 'Suggested timing',
     };
   }
@@ -236,8 +249,78 @@ class FamilyInsightDialog extends StatelessWidget {
       FamilyInsightActionType.scheduleMoment => Icons.event_available_outlined,
       FamilyInsightActionType.manageMoments =>
         Icons.auto_awesome_motion_outlined,
+      FamilyInsightActionType.openSimulation =>
+        Icons.auto_awesome_outlined,
       FamilyInsightActionType.none => Icons.auto_awesome_outlined,
     };
+  }
+
+  List<String> _mergedTasks() {
+    final baseline = insight.suggestedActions;
+    final seen = <String>{};
+    return baseline
+        .where((task) => seen.add(task.trim().toLowerCase()))
+        .take(3)
+        .toList(growable: false);
+  }
+}
+
+class _PlanTask extends StatelessWidget {
+  const _PlanTask({required this.text, required this.isPrimary});
+
+  final String text;
+  final bool isPrimary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: isPrimary
+            ? CalendarPalette.forestSoft
+            : CalendarPalette.surfaceSoft,
+        borderRadius: BorderRadius.circular(16),
+        border: isPrimary
+            ? Border.all(color: CalendarPalette.forest.withAlpha(45))
+            : null,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isPrimary ? Icons.arrow_forward_rounded : Icons.circle_outlined,
+            size: isPrimary ? 19 : 15,
+            color: CalendarPalette.forestDark,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isPrimary ? 'DO FIRST' : 'ALSO',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: CalendarPalette.forestDark,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.35,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  text,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: CalendarPalette.ink,
+                    fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 class _DialogItem extends StatelessWidget {

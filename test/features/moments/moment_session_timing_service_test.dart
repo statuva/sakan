@@ -85,4 +85,93 @@ void main() {
     expect(note!.conflictingMemberIds, <String>{'a'});
     expect(note.membersWithScheduleData, 2);
   });
+
+  test('allows exact busy-time boundaries', () {
+    final start = DateTime(2026, 9, 4, 18);
+    final note = MomentSessionTimingService.build(
+      expectedParticipantIds: const <String>['a'],
+      availability: <AvailabilityBlock>[
+        busyBlock(
+          memberId: 'a',
+          weekday: start.weekday,
+          startMinutes: 19 * 60,
+          endMinutes: 20 * 60,
+        ),
+      ],
+      start: start,
+      end: start.add(const Duration(hours: 1)),
+    );
+
+    expect(note, isNotNull);
+    expect(note!.conflictingMemberIds, isEmpty);
+  });
+
+  test('one-time busy periods apply only on their exact date', () {
+    final scheduledDate = DateTime(2026, 9, 5);
+    final block = AvailabilityBlock(
+      id: 'one-time-a',
+      familyId: 'family-1',
+      memberId: 'a',
+      repeatDays: const <int>[],
+      scheduledDate: scheduledDate,
+      startMinutes: 18 * 60,
+      endMinutes: 19 * 60,
+      isRecurring: false,
+      updatedAt: DateTime.utc(2026, 9, 1),
+    );
+
+    final matchingDate = MomentSessionTimingService.build(
+      expectedParticipantIds: const <String>['a'],
+      availability: <AvailabilityBlock>[block],
+      start: DateTime(2026, 9, 5, 18, 30),
+      end: DateTime(2026, 9, 5, 19, 30),
+    );
+    final otherDate = MomentSessionTimingService.build(
+      expectedParticipantIds: const <String>['a'],
+      availability: <AvailabilityBlock>[block],
+      start: DateTime(2026, 9, 6, 18, 30),
+      end: DateTime(2026, 9, 6, 19, 30),
+    );
+
+    expect(matchingDate!.conflictingMemberIds, <String>{'a'});
+    expect(otherDate!.conflictingMemberIds, isEmpty);
+  });
+
+  test('an overnight busy period conflicts after midnight', () {
+    final start = DateTime(2026, 9, 6, 0, 30);
+    final note = MomentSessionTimingService.build(
+      expectedParticipantIds: const <String>['a'],
+      availability: <AvailabilityBlock>[
+        busyBlock(
+          memberId: 'a',
+          weekday: DateTime.saturday,
+          startMinutes: 22 * 60,
+          endMinutes: 2 * 60,
+        ),
+      ],
+      start: start,
+      end: start.add(const Duration(hours: 1)),
+    );
+
+    expect(note!.conflictingMemberIds, <String>{'a'});
+  });
+
+  test('a next-day busy period conflicts with a cross-midnight session', () {
+    final start = DateTime(2026, 9, 5, 23, 30);
+    final note = MomentSessionTimingService.build(
+      expectedParticipantIds: const <String>['a'],
+      availability: <AvailabilityBlock>[
+        busyBlock(
+          memberId: 'a',
+          weekday: DateTime.sunday,
+          startMinutes: 0,
+          endMinutes: 60,
+        ),
+      ],
+      start: start,
+      end: start.add(const Duration(hours: 1)),
+    );
+
+    expect(note!.conflictingMemberIds, <String>{'a'});
+  });
 }

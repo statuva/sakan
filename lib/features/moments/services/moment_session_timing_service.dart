@@ -41,18 +41,27 @@ abstract final class MomentSessionTimingService {
 
     final conflicts = <String>{};
 
-    for (final block in relevantBlocks) {
-      if (!block.occursOn(start)) {
-        continue;
-      }
+    final localStart = start.toLocal();
+    final localEnd = end.toLocal();
+    final startDate = _dateOnly(localStart);
+    final endDate = _dateOnly(localEnd);
+    final dates = <DateTime>[
+      startDate.subtract(const Duration(days: 1)),
+      startDate,
+      if (!_sameDate(startDate, endDate)) endDate,
+    ];
 
-      if (_overlaps(
-        start: start,
-        end: end,
-        busyStartMinutes: block.startMinutes,
-        busyEndMinutes: block.endMinutes,
-      )) {
-        conflicts.add(block.memberId);
+    for (final block in relevantBlocks) {
+      for (final blockDate in dates) {
+        if (_blockOverlaps(
+          block: block,
+          blockDate: blockDate,
+          start: localStart,
+          end: localEnd,
+        )) {
+          conflicts.add(block.memberId);
+          break;
+        }
       }
     }
 
@@ -81,30 +90,25 @@ abstract final class MomentSessionTimingService {
     );
   }
 
-  static bool _overlaps({
+  static bool _blockOverlaps({
+    required AvailabilityBlock block,
+    required DateTime blockDate,
     required DateTime start,
     required DateTime end,
-    required int busyStartMinutes,
-    required int busyEndMinutes,
   }) {
-    final localStart = start.toLocal();
-    final localEnd = end.toLocal();
+    if (!block.occursOn(blockDate)) return false;
 
-    final sessionStart = localStart.hour * 60 + localStart.minute;
-    var sessionEnd = localEnd.hour * 60 + localEnd.minute;
-
-    if (!_sameDate(localStart, localEnd) || sessionEnd <= sessionStart) {
-      sessionEnd += 24 * 60;
+    final busyStart = blockDate.add(Duration(minutes: block.startMinutes));
+    var busyEnd = blockDate.add(Duration(minutes: block.endMinutes));
+    if (!busyEnd.isAfter(busyStart)) {
+      busyEnd = busyEnd.add(const Duration(days: 1));
     }
 
-    final busyStart = busyStartMinutes.clamp(0, 1439).toInt();
-    var busyEnd = busyEndMinutes.clamp(0, 1439).toInt();
+    return start.isBefore(busyEnd) && end.isAfter(busyStart);
+  }
 
-    if (busyEnd <= busyStart) {
-      busyEnd += 24 * 60;
-    }
-
-    return busyStart < sessionEnd && busyEnd > sessionStart;
+  static DateTime _dateOnly(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
   }
 
   static bool _sameDate(DateTime first, DateTime second) {

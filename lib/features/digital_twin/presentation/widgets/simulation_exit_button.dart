@@ -3,12 +3,78 @@ import 'package:flutter/material.dart';
 import '../../../calendar/presentation/widgets/calendar_palette.dart';
 
 class SimulationExitButton extends StatelessWidget {
-  const SimulationExitButton({required this.onPressed, super.key});
+  const SimulationExitButton({
+    required this.onPressed,
+    this.onCreate,
+    this.hasRecordedConflict = false,
+    this.isCreating = false,
+    super.key,
+  });
 
   final VoidCallback onPressed;
+  final VoidCallback? onCreate;
+  final bool hasRecordedConflict;
+  final bool isCreating;
 
   @override
   Widget build(BuildContext context) {
+    if (onCreate != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Material(
+          color: CalendarPalette.surface,
+          elevation: 7,
+          shadowColor: Colors.black.withAlpha(45),
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: CalendarPalette.border),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: isCreating ? null : onCreate,
+                    icon: isCreating
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            hasRecordedConflict
+                                ? Icons.schedule_rounded
+                                : Icons.add_task_rounded,
+                          ),
+                    label: Text(
+                      isCreating
+                          ? 'Opening…'
+                          : hasRecordedConflict
+                          ? 'Choose a clear time'
+                          : 'Review & create Moment',
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: CalendarPalette.ink,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: isCreating ? null : onPressed,
+                  icon: const Icon(Icons.close_rounded),
+                  label: const Text('Exit simulation'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Semantics(
       button: true,
       label: 'Exit simulation',

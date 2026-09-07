@@ -39,7 +39,9 @@ class HomeWhatMattersCard extends StatelessWidget {
               : 'Open Calendar'
         : item.primaryActionLabel ??
               (item.actionType == FamilyInsightActionType.none
-                  ? 'Open Calendar'
+                  ? item.suggestedActions.isEmpty
+                        ? 'Open Calendar'
+                        : null
                   : null);
 
     return Container(
@@ -114,6 +116,64 @@ class HomeWhatMattersCard extends StatelessWidget {
               );
             },
           ),
+          if (item != null && item.suggestedActions.isNotEmpty)
+            FutureBuilder<SakanAiResult>(
+              future: aiNarrative,
+              builder: (context, _) {
+                final primaryTask = item.suggestedActions.first;
+
+                return Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.md),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: visual.background.withAlpha(170),
+                      borderRadius: BorderRadius.circular(AppRadius.medium),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 18,
+                          color: visual.foreground,
+                        ),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'MAIN TASK',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: visual.foreground,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.35,
+                                    ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                primaryTask,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: AppColors.textPrimary,
+                                      height: 1.35,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
           if (item != null)
             FutureBuilder<SakanAiResult>(
               future: aiNarrative,

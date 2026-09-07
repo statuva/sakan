@@ -21,6 +21,7 @@ enum FamilyInsightActionType {
   addReminder,
   startMomentNow,
   scheduleMoment,
+  openSimulation,
   manageMoments,
   none,
 }
@@ -49,6 +50,7 @@ class FamilyInsightItem {
     this.relatedReminderId,
     this.recommendedActionAt,
     this.recommendedActionUsesAvailability = false,
+    this.recommendsSimulation = false,
   }) : reasons = List<String>.unmodifiable(reasons),
        suggestedActions = List<String>.unmodifiable(suggestedActions);
 
@@ -72,6 +74,12 @@ class FamilyInsightItem {
   final DateTime? recommendedActionAt;
   final bool recommendedActionUsesAvailability;
 
+  /// Whether Calendar should expose a secondary route to What-if simulation.
+  ///
+  /// For a drifting rhythm, [actionType] is normally [openSimulation] and this
+  /// remains true so the recommendation plan can explain why.
+  final bool recommendsSimulation;
+
   /// Compatibility getter for older Calendar code.
   DateTime? get recommendedReminderAt => recommendedActionAt;
 
@@ -83,12 +91,13 @@ class FamilyInsightItem {
   String? get primaryActionLabel {
     return switch (actionType) {
       FamilyInsightActionType.joinActiveMoment => 'Join Moment',
-      FamilyInsightActionType.reviewToday => 'Review Today',
-      FamilyInsightActionType.openReminders => 'Open My Reminders',
-      FamilyInsightActionType.addReminder => 'Add Reminder',
-      FamilyInsightActionType.startMomentNow => 'Start This Now',
-      FamilyInsightActionType.scheduleMoment => 'Schedule Moment',
-      FamilyInsightActionType.manageMoments => 'Manage Moments',
+      FamilyInsightActionType.reviewToday => 'Review Outcome',
+      FamilyInsightActionType.openReminders => 'Open This Task',
+      FamilyInsightActionType.addReminder => 'Remind Me',
+      FamilyInsightActionType.startMomentNow => 'Start Moment',
+      FamilyInsightActionType.scheduleMoment => 'Choose a Time',
+      FamilyInsightActionType.openSimulation => 'Try Simulation',
+      FamilyInsightActionType.manageMoments => 'Open Moments',
       FamilyInsightActionType.none => null,
     };
   }
@@ -253,6 +262,7 @@ class FamilyInsightReport {
                   ?.toIso8601String(),
               'recommendedActionUsesAvailability':
                   insight.recommendedActionUsesAvailability,
+              'recommendsSimulation': insight.recommendsSimulation,
             },
       'relatedMoment': relatedMoment == null
           ? null

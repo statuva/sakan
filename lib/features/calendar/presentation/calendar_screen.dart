@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sakan/shared/services/recurring_occurrence_service.dart';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -12,8 +13,8 @@ import '../../../shared/models/family_moment.dart';
 import '../../../shared/models/model_enums.dart';
 import '../../../shared/models/moment_instance.dart';
 import '../../../shared/ai/ai_family_insight_service.dart';
-import '../../../shared/ai/ai_models.dart';
 import '../../../shared/services/family_insight_surface_selector.dart';
+import '../../../shared/services/personalized_family_focus_selector.dart';
 import '../../../shared/services/calendar_occurrence_label.dart';
 import '../../../shared/utils/care_action_id.dart';
 import '../../../shared/widgets/feedback/app_error_state.dart';
@@ -436,6 +437,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     insight: insight,
                     report: report,
                   );
+                },
+                onOpenSimulation: () {
+                  context.goNamed('digitalTwin');
                 },
               ),
 
@@ -868,6 +872,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
         );
         return;
 
+      case FamilyInsightActionType.openSimulation:
+        if (mounted) {
+          context.goNamed('digitalTwin');
+        }
+        return;
+
       case FamilyInsightActionType.manageMoments:
         await _openMomentsPage();
         return;
@@ -887,15 +897,60 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return;
     }
 
-    final recommendedTime = insight.recommendedActionAt;
+    late final FamilyInsightReport freshReport;
+    try {
+      freshReport = await AppDependencies.familyInsightService.loadReport();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not refresh the recommendation. Try again.'),
+        ),
+      );
+      return;
+    }
+    FamilyInsightItem? freshInsight;
+    for (final candidate in PersonalizedFamilyFocusSelector.selectAll(
+      freshReport,
+    )) {
+      if (candidate.id == insight.id) {
+        freshInsight = candidate;
+        break;
+      }
+    }
 
-    if (recommendedTime == null) {
+    if (!mounted) return;
+
+    final currentInsight = freshInsight;
+    final recommendedTime = currentInsight?.recommendedActionAt?.toUtc();
+    if (currentInsight == null ||
+        currentInsight.actionType != FamilyInsightActionType.addReminder ||
+        recommendedTime == null ||
+        !recommendedTime.isAfter(DateTime.now().toUtc())) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'No reminder time is available for this recommendation.',
+            'The timing changed, so this reminder is no longer safe to schedule.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final relatedInstance = currentInsight.relatedInstanceId == null
+        ? null
+        : freshReport.snapshot.instanceById(currentInsight.relatedInstanceId!);
+    if (relatedInstance != null &&
+        recommendedTime
+            .add(const Duration(minutes: 30))
+            .isAfter(relatedInstance.scheduledStartAt.toUtc())) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'There is no longer enough time before this Moment for that reminder.',
           ),
         ),
       );
@@ -905,48 +960,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final familyContext = _familyContext!;
     final now = DateTime.now().toUtc();
 
-    final dueAt = recommendedTime.isAfter(DateTime.now())
-        ? recommendedTime
-        : DateTime.now().add(const Duration(minutes: 30));
-
     setState(() {
       _isSavingInsightReminder = true;
     });
 
     try {
-      SakanAiResult? aiCopy;
-      try {
-        aiCopy = await AppDependencies.aiFamilyInsightService.enrich(
-          insight: insight,
-          familyId: familyContext.familyId,
-          memberId: familyContext.userId,
-          surface: FamilyInsightSurface.calendar,
-        );
-      } catch (_) {
-        aiCopy = null;
-      }
-
       final action = CareAction(
         id: CareActionId.forInsight(
           familyId: familyContext.familyId,
           memberId: familyContext.userId,
-          momentId: insight.relatedMomentId,
-          instanceId: insight.relatedInstanceId,
+          momentId: currentInsight.relatedMomentId,
+          instanceId: currentInsight.relatedInstanceId,
           purpose: 'prepare',
         ),
         familyId: familyContext.familyId,
-        momentId: insight.relatedMomentId,
-        instanceId: insight.relatedInstanceId,
-        title:
-            aiCopy?.reminderTitle ??
-            (insight.suggestedActions.isEmpty
-                ? insight.headline
-                : insight.suggestedActions.first),
-        reason:
-            aiCopy?.reminderReason ??
-            insight.summary,
+        momentId: currentInsight.relatedMomentId,
+        instanceId: currentInsight.relatedInstanceId,
+        title: currentInsight.suggestedActions.isEmpty
+            ? currentInsight.headline
+            : currentInsight.suggestedActions.first,
+        reason: currentInsight.summary,
         assignedMemberId: familyContext.userId,
-        dueAt: dueAt.toUtc(),
+        dueAt: recommendedTime,
         status: CareActionStatus.pending,
         source: CareActionSource.calendar,
         evidenceType: EvidenceType.scheduledOnly,

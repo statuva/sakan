@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sakan/features/digital_twin/domain/twin_simulation_result.dart';
 import 'package:sakan/features/digital_twin/domain/twin_simulation_scenario.dart';
 import 'package:sakan/features/digital_twin/services/digital_twin_simulation_service.dart';
+import 'package:sakan/features/digital_twin/services/simulation_moment_draft_service.dart';
 import 'package:sakan/shared/models/availability_block.dart';
 import 'package:sakan/shared/models/family_insight_report.dart';
 import 'package:sakan/shared/models/family_insight_snapshot.dart';
@@ -107,6 +108,93 @@ void main() {
     expect(pattern.isHypothetical, isTrue);
     expect(pattern.projectedStatus, RhythmStatus.stillLearning);
     expect(report.snapshot.momentById(newMoment.id), isNull);
+  });
+
+  test('a one-time simulation becomes a singular creation draft', () {
+    final report = _report(now: now, status: RhythmStatus.stable);
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'picnic-this-weekend',
+        type: TwinSimulationType.createMoment,
+        newTitle: 'Family Picnic',
+        newCategory: MomentCategory.familyTime,
+        newIntervalDays: 7,
+        newStartMinutes: 16 * 60,
+        newWeekday: DateTime.saturday,
+        participantIds: <String>['adult', 'child'],
+        scope: TwinSimulationScope.nextOccurrence,
+        assumedDurationMinutes: 90,
+      ),
+    );
+
+    final simulated = result.creatableMoment!;
+    final draft = SimulationMomentDraftService.build(result);
+
+    expect(simulated.type, MomentType.recurring);
+    expect(draft.type, MomentType.singular);
+    expect(draft.startAt, simulated.startAt);
+    expect(draft.endAt, simulated.endAt);
+    expect(draft.expectedIntervalDays, isNull);
+    expect(draft.preferredStartMinutes, isNull);
+    expect(draft.preferredEndMinutes, isNull);
+    expect(draft.preferredWeekday, isNull);
+    expect(draft.preferredDayOfMonth, isNull);
+    expect(draft.preferredMonth, isNull);
+    expect(draft.isDayFlexible, isFalse);
+  });
+
+  test('a repeating simulation keeps an exact recurring creation draft', () {
+    final report = _report(now: now, status: RhythmStatus.stable);
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'weekly-walk',
+        type: TwinSimulationType.createMoment,
+        newTitle: 'Family Walk',
+        newCategory: MomentCategory.familyTime,
+        newIntervalDays: 7,
+        newStartMinutes: 18 * 60,
+        newWeekday: DateTime.friday,
+        participantIds: <String>['adult', 'child'],
+        scope: TwinSimulationScope.futureOccurrences,
+        assumedDurationMinutes: 60,
+      ),
+    );
+
+    final draft = SimulationMomentDraftService.build(result);
+
+    expect(draft.type, MomentType.recurring);
+    expect(draft.expectedIntervalDays, 7);
+    expect(draft.preferredStartMinutes, 18 * 60);
+    expect(draft.preferredEndMinutes, 19 * 60);
+    expect(draft.preferredWeekday, DateTime.friday);
+    expect(draft.isDayFlexible, isFalse);
+  });
+
+  test('event-like simulations default to external attendance', () {
+    final report = _report(now: now, status: RhythmStatus.stable);
+    final result = service.simulate(
+      baseReport: report,
+      scenario: const TwinSimulationScenario(
+        id: 'graduation',
+        type: TwinSimulationType.createMoment,
+        newTitle: 'Graduation',
+        newCategory: MomentCategory.milestone,
+        newIntervalDays: 365,
+        newStartMinutes: 17 * 60,
+        newDayOfMonth: 10,
+        newMonth: DateTime.june,
+        participantIds: <String>['adult', 'child'],
+        scope: TwinSimulationScope.nextOccurrence,
+        assumedDurationMinutes: 120,
+      ),
+    );
+
+    final draft = SimulationMomentDraftService.build(result);
+
+    expect(draft.type, MomentType.singular);
+    expect(draft.format, MomentFormat.externalEvent);
   });
 
   test('moving a conflicting time projects an easier schedule', () {

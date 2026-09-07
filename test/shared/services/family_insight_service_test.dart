@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:sakan/shared/models/care_action.dart';
+import 'package:sakan/shared/models/availability_block.dart';
 import 'package:sakan/shared/models/family_insight_report.dart';
 import 'package:sakan/shared/models/family_insight_snapshot.dart';
 import 'package:sakan/shared/models/family_moment.dart';
@@ -105,6 +106,37 @@ void main() {
       report.primaryInsight?.actionType,
       FamilyInsightActionType.startMomentNow,
     );
+  });
+
+  test('expected teen gets a safe ready task during the start window', () {
+    final start = DateTime.utc(2026, 8, 31, 15);
+    final moment = _moment(
+      id: 'family-movie',
+      title: 'Family Movie',
+      category: MomentCategory.familyTime,
+      startAt: start,
+    );
+    final occurrence = _instance(
+      id: 'family-movie-31',
+      moment: moment,
+      status: MomentInstanceStatus.scheduled,
+      scheduledStartAt: start,
+      scheduledEndAt: start.add(const Duration(hours: 1)),
+    );
+
+    final report = FamilyInsightService.analyzeSnapshot(
+      _snapshot(
+        now: start.add(const Duration(minutes: 10)),
+        moments: <FamilyMoment>[moment],
+        instances: <MomentInstance>[occurrence],
+        currentUserId: 'child-1',
+        currentUserRole: FamilyRole.child,
+        currentUserAgeGroup: AgeGroup.teen,
+      ),
+    );
+
+    expect(report.primaryInsight?.actionType, FamilyInsightActionType.none);
+    expect(report.primaryInsight?.suggestedActions.first, contains('Be ready'));
   });
 
   test('daily lunch after its end recommends Review Today', () {
@@ -218,6 +250,110 @@ void main() {
     );
   });
 
+  test('expected teen receives a personal preparation reminder', () {
+    final moment = _moment(
+      id: 'teen-graduation',
+      title: 'Graduation',
+      category: MomentCategory.milestone,
+      startAt: now.add(const Duration(days: 5)),
+      type: MomentType.singular,
+    );
+    final occurrence = _instance(
+      id: 'teen-graduation-instance',
+      moment: moment,
+      status: MomentInstanceStatus.scheduled,
+      scheduledStartAt: now.add(const Duration(days: 5)),
+    );
+
+    final report = FamilyInsightService.analyzeSnapshot(
+      _snapshot(
+        now: now,
+        moments: <FamilyMoment>[moment],
+        instances: <MomentInstance>[occurrence],
+        currentUserId: 'child-1',
+        currentUserRole: FamilyRole.child,
+        currentUserAgeGroup: AgeGroup.teen,
+      ),
+    );
+
+    expect(
+      report.primaryInsight?.actionType,
+      FamilyInsightActionType.addReminder,
+    );
+    expect(report.primaryInsight?.recommendedActionAt, isNotNull);
+  });
+
+  test('fully busy schedule offers Simulation instead of invalid reminder', () {
+    final startAt = now.add(const Duration(days: 5));
+    final moment = _moment(
+      id: 'busy-graduation',
+      title: 'Graduation',
+      category: MomentCategory.milestone,
+      startAt: startAt,
+    );
+    final occurrence = _instance(
+      id: 'busy-graduation-instance',
+      moment: moment,
+      status: MomentInstanceStatus.scheduled,
+      scheduledStartAt: startAt,
+    );
+    final busy = AvailabilityBlock(
+      id: 'busy-all-day',
+      familyId: 'family-1',
+      memberId: 'adult-1',
+      repeatDays: const <int>[1, 2, 3, 4, 5, 6, 7],
+      startMinutes: 0,
+      endMinutes: 24 * 60,
+      isRecurring: true,
+      updatedAt: now,
+    );
+
+    final report = FamilyInsightService.analyzeSnapshot(
+      _snapshot(
+        now: now,
+        moments: <FamilyMoment>[moment],
+        instances: <MomentInstance>[occurrence],
+        availability: <AvailabilityBlock>[busy],
+      ),
+    );
+
+    expect(
+      report.primaryInsight?.actionType,
+      FamilyInsightActionType.openSimulation,
+    );
+    expect(report.primaryInsight?.recommendedActionAt, isNull);
+  });
+
+  test('does not add a 30 minute reminder when less time remains', () {
+    final startAt = now.add(const Duration(minutes: 20));
+    final moment = _moment(
+      id: 'soon-lunch',
+      title: 'Family Lunch',
+      category: MomentCategory.familyTime,
+      startAt: startAt,
+    );
+    final occurrence = _instance(
+      id: 'soon-lunch-instance',
+      moment: moment,
+      status: MomentInstanceStatus.scheduled,
+      scheduledStartAt: startAt,
+    );
+
+    final report = FamilyInsightService.analyzeSnapshot(
+      _snapshot(
+        now: now,
+        moments: <FamilyMoment>[moment],
+        instances: <MomentInstance>[occurrence],
+      ),
+    );
+
+    expect(
+      report.primaryInsight?.actionType,
+      isNot(FamilyInsightActionType.addReminder),
+    );
+    expect(report.primaryInsight?.recommendedActionAt, isNull);
+  });
+
   test('flexible drifting rhythm recommends scheduling an occurrence', () {
     final moment = _moment(
       id: 'outing',
@@ -263,25 +399,29 @@ FamilyInsightSnapshot _snapshot({
   required List<MomentInstance> instances,
   List<RhythmRecord> rhythms = const <RhythmRecord>[],
   List<CareAction> reminders = const <CareAction>[],
+  List<AvailabilityBlock> availability = const <AvailabilityBlock>[],
+  String currentUserId = 'adult-1',
+  FamilyRole currentUserRole = FamilyRole.adult,
+  AgeGroup currentUserAgeGroup = AgeGroup.adult,
 }) {
   return FamilyInsightSnapshot(
     familyId: 'family-1',
-    currentUserId: 'adult-1',
+    currentUserId: currentUserId,
     generatedAt: now,
     members: <Member>[
       Member(
-        id: 'adult-1',
+        id: currentUserId,
         familyId: 'family-1',
         displayName: 'Adult',
-        role: FamilyRole.adult,
-        ageGroup: AgeGroup.adult,
+        role: currentUserRole,
+        ageGroup: currentUserAgeGroup,
         interests: const <String>[],
         preferredDays: const <int>[],
         isActive: true,
         joinedAt: now,
         updatedAt: now,
       ),
-      Member(
+      if (currentUserId != 'child-1') Member(
         id: 'child-1',
         familyId: 'family-1',
         displayName: 'Child',
@@ -297,7 +437,7 @@ FamilyInsightSnapshot _snapshot({
     moments: moments,
     instances: instances,
     rhythms: rhythms,
-    availability: const [],
+    availability: availability,
     reminders: reminders,
     memories: const [],
   );

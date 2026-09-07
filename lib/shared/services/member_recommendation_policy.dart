@@ -30,9 +30,16 @@ abstract final class MemberRecommendationPolicy {
     required Member member,
     required FamilyMoment moment,
   }) {
-    if (moment.isSubject(member.id)) return false;
-    if (!moment.expects(member.id)) return false;
-    return member.role == FamilyRole.admin || member.role == FamilyRole.adult;
+    if (!member.isActive || moment.isArchived) return false;
+
+    // Adults may coordinate a family Moment even when they are not listed as
+    // participants. Teens and children only receive a personal, self-assigned
+    // preparation task for a Moment that includes or concerns them.
+    if (_canCoordinate(member)) {
+      return true;
+    }
+
+    return moment.expects(member.id) || moment.isSubject(member.id);
   }
 
   static String whyThisIsForMember({
@@ -45,9 +52,18 @@ abstract final class MemberRecommendationPolicy {
     if (moment.expects(member.id)) {
       return 'You are expected to take part.';
     }
-    if (member.role == FamilyRole.admin || member.role == FamilyRole.adult) {
+    if (_canCoordinate(member)) {
       return 'You can help manage this family Moment.';
     }
     return 'This Moment is visible to your family.';
+  }
+
+  static bool _canCoordinate(Member member) {
+    final hasAdultRole =
+        member.role == FamilyRole.admin || member.role == FamilyRole.adult;
+    final hasAdultAge =
+        member.ageGroup == AgeGroup.adult ||
+        member.ageGroup == AgeGroup.senior;
+    return hasAdultRole && hasAdultAge;
   }
 }
