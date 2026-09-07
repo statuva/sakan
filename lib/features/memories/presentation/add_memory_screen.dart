@@ -449,6 +449,7 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
               if (!_selectionIsLocked && _completedInstances.isNotEmpty)
                 DropdownButtonFormField<String>(
                   initialValue: selectedInstance?.id,
+                  isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: 'Completed occurrence',
                     prefixIcon: Icon(Icons.check_circle_outline),
@@ -460,6 +461,8 @@ class _AddMemoryScreenState extends State<AddMemoryScreen> {
                           child: Text(
                             '${instance.titleSnapshot} · '
                             '${DateFormat('d MMM y').format(instance.effectiveStartAt.toLocal())}',
+                            maxLines: 1,
+                            softWrap: false,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),

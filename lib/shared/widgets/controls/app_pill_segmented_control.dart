@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_colors.dart';
+
 class AppPillSegment<T> {
   const AppPillSegment({required this.value, required this.label});
 
@@ -34,12 +36,11 @@ class AppPillSegmentedControl<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    final resolvedBackground =
-        backgroundColor ?? colors.surfaceContainerHighest.withAlpha(120);
+    final resolvedBackground = backgroundColor ?? AppColors.linen;
 
-    final resolvedSelected = selectedColor ?? colors.primaryContainer;
+    final resolvedSelected = selectedColor ?? AppColors.hubSand;
 
-    final resolvedSelectedText = selectedTextColor ?? colors.onPrimaryContainer;
+    final resolvedSelectedText = selectedTextColor ?? AppColors.textPrimary;
 
     final resolvedUnselectedText =
         unselectedTextColor ?? colors.onSurfaceVariant;
