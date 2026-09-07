@@ -139,6 +139,7 @@ class _DayBar extends StatelessWidget {
                   child: day.occurrenceCount == 0
                       ? const ColoredBox(color: AppColors.linen)
                       : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             if (day.completedCount > 0)
                               Expanded(
