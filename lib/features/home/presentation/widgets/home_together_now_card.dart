@@ -103,7 +103,7 @@ class HomeTogetherNowCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
           Text(
             activeInstance == null
-                ? 'Nearby presence is not connected yet. '
+                ? 
                       'Live Moment check-ins will appear here.'
                 : checkedInCount == 0
                 ? '${activeInstance!.titleSnapshot} is live. '
