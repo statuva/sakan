@@ -1,47 +1,96 @@
-# AI Usage Log
+# AI Usage
 
-This log records how AI tools supported Sakan's development. AI outputs were treated as drafts, critiques, or implementation options. The development team selected the scope, integrated accepted changes, reviewed behavior, and performed testing.
+This document explains where artificial intelligence is used in Sakan's product and how AI tools supported the development process. In both cases, AI is treated as an assistive layer: recorded family data and human decisions remain authoritative.
 
-| Date | Tool | Purpose | Human Review |
-|---|---|---|---|
-| 2026-08-05 – 2026-08-09 | External AI Critique Tool and ChatGPT | Reviewed the initial family-technology concept; challenged the use of attendance duration as a relationship score; helped reframe the product around measurable family Moments, recurring rhythms, observable participation, privacy boundaries, and an initial development plan. | The team rejected unsupported emotional or psychological assumptions, selected only measurable concepts, and converted the accepted direction into the project specification and architecture notes. |
-| 2026-08-10 – 2026-08-14 | ChatGPT | Assisted with the Flutter foundation: design tokens, reusable components, primary navigation, domain models, repository contracts, demo-data interfaces, Firebase architecture, and Firestore collection planning. | The team adapted the proposed structure to the Flutter project, implemented it incrementally, reviewed imports and naming, and checked changes through formatting, analyzer runs, and repository commits. |
-| 2026-08-15 – 2026-08-17 | ChatGPT | Assisted with authentication, family creation, invitation-based joining, family relationships, role-aware access, the four-step Family Setup flow, and initial rhythm-baseline creation. | The team integrated the flows with Firebase Authentication and Firestore, corrected join/setup synchronization issues, and tested the behavior with separate family accounts before merging. |
-| 2026-08-17 – 2026-08-20 | ChatGPT and External AI UI Prototyping Tool | Assisted with Profile and settings persistence, weekly schedule design, Calendar/Moments layout exploration, UAE-oriented rhythm setup, Firestore data flow, and the first conservative codebase cleanup and Q&A documentation. | The team selected the final UI direction rather than accepting every prototype, removed demo values, verified profile/settings persistence, reviewed the cleanup diff, retained only safe structural changes, and tested on web and Android. |
-| 2026-08-21 – 2026-08-22 | ChatGPT | Assisted with one-time versus repeating schedule entries, multi-day weekly routines, Memory creation and viewing, All Memories, personal reminders, and the relationship between Calendar suggestions and Care Actions. | The team integrated the changes into existing repositories and screens, checked Firestore persistence, verified add/edit/delete/complete flows, and adjusted UI problems found during manual testing. |
-| 2026-08-23 – 2026-08-24 | ChatGPT | Assisted with local Android notification scheduling, timezone handling, permission behavior, notification cancellation/rescheduling, Android SDK 36 configuration, Gradle/JDK troubleshooting, and diagnosis of disk-space and JVM-memory failures. | The team edited Android configuration locally, installed the required SDK, corrected Gradle properties, reduced build memory pressure, freed disk space, rebuilt on a physical Android phone, and kept reminder data independent from notification permission. |
-| 2026-08-24 – 2026-08-27 | ChatGPT | Assisted with the deterministic Family Insight snapshot/report/service, insight priority rules, privacy-minimized future AI payload, Moment Instance and participant models, Firestore Security Rules, live family sessions, elapsed timer logic, manual self check-in, cross-device updates, and session summaries. | The team chose the final separation between personal Care Actions and shared Moments, integrated the models and repositories, deployed/reviewed rules, and manually verified live start, check-in, leave/rejoin, end, summary, and simultaneous-session prevention. |
-| 2026-08-28 | ChatGPT | Assisted with Today Review, happened/missed/rescheduled outcomes, unplanned Moment logging, rhythm recalculation from actual instances, one-next-occurrence generation, and instance-linked Memories. | The team integrated the feature through a dedicated branch and pull request, reviewed the Firestore effects, preserved completed history, and tested the review and recurrence scenarios before merge. |
-| 2026-08-29 | ChatGPT with GitHub access and External AI UI Prototyping Tool | Reviewed the current repository and implementation trail; assisted with instance-based Calendar integration, action-specific Family Insights, Digital Twin map/pattern layout, simplification of the Moment Library, dedicated Moments navigation, and a read-only Moment Details flow. | The team merged the instance-based Calendar and Digital Twin work, compared the prototypes against the product responsibilities, removed duplicated concepts from screen designs, and kept the Moments redesign in a focused branch pending analyzer and device verification. |
-| 2026-08-29 | ChatGPT | Explained OpenAI API billing, credit usage, privacy, key security, and the protected-backend architecture for a future AI interpretation layer. No API key was shared and no runtime OpenAI request was added to Sakan. | The team decided to postpone external AI calls until the deterministic data loop and major screens are stable. The final plan keeps Sakan responsible for facts and uses AI only for bounded wording and interpretation. |
+## AI Inside the Application
 
-## Runtime AI Status
+Sakan combines deterministic application logic with a protected generative-AI service.
 
-As of 29 August 2026:
+The deterministic layer calculates facts such as:
 
-```text
-External generative-AI requests made by the Sakan application: 0
-Deterministic Family Insight engine: implemented
-AI-ready privacy-minimized report: implemented
-Protected external AI backend: not yet connected
-API key committed to GitHub: no
-```
+- scheduled, completed, missed, cancelled, or unresolved occurrences;
+- recorded participants and duration;
+- member availability and schedule conflicts;
+- recurring rhythm state and confidence;
+- recommendation urgency and valid user actions;
+- whether a reminder or preparation task already exists.
 
-## Human Review Statement
+The AI layer receives a privacy-minimized summary of relevant facts and produces concise, useful language. It is used for:
 
-AI tools supported product critique, architecture discussion, UI prototyping, file-level implementation drafts, debugging, testing plans, documentation, and technical explanation.
+| Product area | AI contribution |
+|---|---|
+| **Ask Sakan** | Answers grounded family questions, identifies one relevant pattern, explains why it matters, and suggests one specific next step. |
+| **Home** | Expresses the highest-priority current action briefly and clearly. |
+| **Calendar** | Helps present event-specific and role-appropriate preparation recommendations. |
+| **Digital Twin** | Summarizes the family's overall recorded rhythm without repeating every per-Moment pattern. |
+| **Simulation** | Explains the practical benefit of a proposed activity and helps present a schedule-aware option before the user chooses whether to create it. |
+| **Memories** | Reflects on the family value visible in a completed Memory instead of simply rewording its note. |
+| **Weekly report** | Interprets the week's recorded evidence while keeping incomplete data and low confidence explicit. |
+
+Recommendations may lead to actions such as starting a Moment, reviewing an occurrence, adding a reminder, preparing a message or gift, coordinating a participant, or trying a simulation. The exact recommendation depends on the Moment, urgency, schedule, history, and the signed-in member's role and age group.
+
+## Runtime Safeguards
+
+- Runtime requests pass through authenticated Firebase Cloud Functions.
+- AI credentials are kept on the server and are not included in the Flutter application.
+- Inputs are validated and minimized before being sent to the model.
+- Access is checked against family membership, role, age group, active status, and privacy consent where required.
+- Rate and usage controls protect the shared service.
+- Responses are constrained to the supplied family evidence.
+- Deterministic fallbacks support core insight surfaces when the AI service is unavailable.
+- Users approve actions before Sakan creates or changes Moments and reminders.
+
+The AI is not permitted to determine or invent:
+
+- whether a Moment happened;
+- who participated;
+- actual duration;
+- schedule availability;
+- rhythm state or confidence;
+- private family information not included in the request;
+- a completed action that the user did not confirm.
+
+## Development Support
+
+During development, AI tools were used as supporting resources in the following areas:
+
+| Area | How AI supported the team | Team responsibility |
+|---|---|---|
+| **Concept review** | Challenged early assumptions and helped distinguish measurable family activity from unsupported emotional scoring. | The team chose the final problem, scope, ethical boundaries, and product direction. |
+| **Architecture discussion** | Helped compare data structures, Firebase approaches, privacy boundaries, and deterministic-versus-generative responsibilities. | The team selected the architecture, configured Firebase, and validated application behavior. |
+| **Interface exploration** | Helped explore layouts, information hierarchy, wording, visual identity, and accessibility considerations. | The team chose the final designs and tested them on target devices. |
+| **Troubleshooting** | Helped investigate authentication, permissions, Firestore, notifications, Android builds, layout overflow, and integration errors. | The team reproduced issues, applied selected fixes, and confirmed outcomes in the application. |
+| **AI behavior design** | Helped refine prompts, shorten responses, define role-aware recommendations, and strengthen privacy and grounding rules. | The team decided the expected behavior and evaluated responses using controlled family data. |
+| **Testing and documentation** | Helped organize test cases, review edge cases, and improve technical and submission documentation. | The team performed the tests and verified that documentation matched the implemented product. |
+
+AI suggestions were not accepted automatically. The team reviewed proposed changes, checked repository differences, tested multi-account behavior, and rejected outputs that were inaccurate, repetitive, visually unsuitable, or inconsistent with Sakan's principles.
+
+## Human Accountability
 
 The development team remained responsible for:
 
-- defining the final product scope;
-- deciding which suggestions to accept or reject;
-- adapting drafts to the existing Flutter project;
-- reviewing Firebase Authentication and Firestore behavior;
-- reviewing and deploying Security Rules;
-- resolving analyzer, runtime, Android, and layout problems;
-- testing on Edge and physical Android devices;
-- testing multi-account and role-aware behavior;
-- reviewing pull-request diffs and commit history;
-- validating that public documentation matches the actual implementation.
+- defining Sakan's purpose and feature priorities;
+- deciding which suggestions to accept, revise, or reject;
+- managing the repository and pull-request workflow;
+- configuring Firebase services and protected backend access;
+- reviewing authentication, permissions, privacy, and Security Rules;
+- testing admin, adult, teen, and child experiences;
+- validating schedule, Moment, Memory, rhythm, and recommendation data;
+- testing on physical mobile devices;
+- confirming that runtime AI responses remain grounded and useful;
+- ensuring that public documentation accurately represents the application.
 
-AI-generated or AI-assisted suggestions were not treated as evidence that a feature worked. A feature was considered accepted only after human integration and testing.
+## Current Status
+
+As of 7 September 2026:
+
+```text
+Protected runtime AI backend: connected
+Deterministic family insight and fallback layer: connected
+Ask Sakan: connected
+AI-supported Home, Calendar, Digital Twin, Simulation, Memory, and report experiences: connected
+API key committed to the client or repository: no
+User approval required before application actions: yes
+```
+
+Sakan's core principle is unchanged: **the application establishes the facts, AI helps explain them, and the family decides what to do.**

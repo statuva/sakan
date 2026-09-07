@@ -1,93 +1,89 @@
 # Sakan
 
-**A software-first family rhythm assistant that helps families define meaningful Moments, plan them, confirm what actually happened, preserve Memories, and understand which recurring family rhythms are stable or drifting.**
+**A family rhythm assistant that turns shared intentions into meaningful, repeatable family Moments.**
 
-Sakan is designed around one connected loop:
-
-```text
-Define → Plan → Gather → Confirm → Learn → Remember → Act → Repeat
-```
-
-The application does not treat a calendar entry as proof that family time happened. It separates a reusable **Family Moment** from each real **Moment Instance**, records participation through member check-ins or review, updates the corresponding rhythm, and then surfaces a grounded next step.
-
-## Why Sakan
-
-Families often want to maintain traditions and prepare for important events, but their schedules change and meaningful routines can quietly disappear. Standard calendars can show what was planned, but they do not normally answer:
-
-- Which family Moments matter most?
-- When does the family have a shared opening?
-- Did a planned Moment actually happen?
-- Who confirmed participation?
-- Is a recurring Moment stable, drifting, recovering, or still being learned?
-- What is the most useful next action?
-
-Sakan combines planning, participation evidence, rhythm tracking, Memories, personal reminders, and a Family Digital Twin to answer those questions without claiming to measure emotions or relationship quality.
-
-## Product Areas
-
-| Area | Purpose |
-|---|---|
-| **Home** | A personalized summary of what matters to the signed-in member. This screen is currently in progress. |
-| **Digital Twin** | A visual and factual view of member-to-Moment connections and each recurring Moment's recorded rhythm. |
-| **Moments** | The family's reusable Moment library: definitions, categories, importance, participants, timing, and evidence configuration. |
-| **Calendar** | Concrete Moment occurrences in Month, Week, and Agenda views, plus planning and time-sensitive actions. |
-| **Profile** | Personal information, schedules, reminders, preferences, notification settings, privacy, and authorized family settings. |
-
-## Core Domain Model
-
-### Family Moment
-
-A reusable definition of something that matters to the family.
-
-Examples:
-
-- Friday Lunch
-- Movie Night
-- Weekend Breakfast
-- Grandparents Visit
-- Ali's Graduation
-
-A Family Moment stores its category, importance, expected participants, timing, recurrence configuration, description, and evidence method.
-
-### Moment Instance
-
-One planned or actual occurrence of a Family Moment.
-
-Example:
+Sakan helps a family plan time together, act on upcoming needs, confirm what actually happened, preserve Memories, and learn which recurring rhythms are stable or need attention.
 
 ```text
-Family Moment:
-Movie Night — every 14 days
-
-Moment Instances:
-14 August — Completed
-28 August — Missed
-11 September — Scheduled
+Plan → Prepare → Gather → Confirm → Remember → Learn → Act
 ```
 
-A Moment Instance stores its planned and actual times, status, duration, confirmed participants, evidence signals, and confirmation level.
+Unlike a standard calendar, Sakan does not assume that a scheduled event happened. It connects plans with real outcomes, participation, Memories, recurring patterns, and practical next steps.
 
-### Moment Participant
+## The Problem
 
-One member's participation record for one Moment Instance.
+Families may share a home while still struggling to protect meaningful time together. Important occasions are forgotten, routines slowly disappear, responsibilities fall onto one person, and a calendar rarely explains what the family should do next.
 
-Possible states include:
+Sakan addresses this by answering four questions:
 
-```text
-Invited
-Nearby
-Checked In
-Left
-Declined
-```
+- What matters to this family now?
+- When can the family realistically do it?
+- What happened, and who participated?
+- What is the most useful next action for each person?
 
-Members may update only their own participation record.
+Sakan reports recorded family activity. It does not claim to diagnose emotions, relationships, or wellbeing.
 
-### Rhythm Record
+## What Makes Sakan Different
 
-The calculated state of one recurring Family Moment.
+Most family organizers stop at shared schedules and task lists. Sakan connects the full family loop:
 
-Possible states:
+- **Moments** define activities, responsibilities, traditions, and milestones that matter.
+- **Moment Instances** record each scheduled or completed occurrence separately.
+- **Schedules** help avoid members' busy times without revealing private schedule labels.
+- **Role-aware recommendations** give parents, teens, and children suitable actions for the same event.
+- **Memories** preserve meaningful completed occurrences.
+- **Rhythms** show whether recurring Moments are stable, drifting, recovering, strengthening, or still being learned.
+- **The Family Digital Twin** turns recorded activity into an understandable map of the family's routines.
+- **Sakan AI** explains grounded evidence and offers one clear next step instead of returning generic advice.
+
+## Main Features
+
+### Personalized Home
+
+Home shows the signed-in member the single most relevant action right now. This may be an upcoming preparation, an overdue review, a live Moment, or another time-sensitive family need. The card stays short and leads directly to an action.
+
+### Family Moments
+
+A Family Moment is a reusable definition of something that matters to the family, such as Friday Lunch, Movie Night, a grandparents visit, a responsibility, or a graduation.
+
+Moments can be recurring or one-time and include:
+
+- category and importance;
+- expected participants;
+- preferred timing and recurrence;
+- shared-session or review-based evidence;
+- schedule-aware planning information.
+
+Each occurrence becomes a separate Moment Instance, so one missed week does not erase the history of the whole tradition.
+
+### Calendar and Recommendations
+
+Month, Week, and Agenda views show concrete Moment occurrences. Sakan can surface:
+
+- one urgent primary action;
+- a small number of secondary preparation tasks;
+- actions tailored to the member's role and age group;
+- options such as starting a Moment, reviewing an outcome, adding a reminder, preparing for an event, or trying a simulation.
+
+Recommendations consider the Moment type, date, recorded history, member role, existing reminders, and relevant schedule information. For example, a parent may coordinate a graduation plan, a teen may prepare a personal message, and a child may help with a simple age-appropriate task.
+
+### Live Family Sessions and Review
+
+Families can start a shared Moment, check in from separate accounts, and end it with a recorded duration and participant list. When a live session is unnecessary, Today Review records whether an occurrence happened, was missed, was cancelled, or was rescheduled.
+
+### Personal Reminders
+
+Members can keep private reminders and approve relevant Sakan recommendations as personal tasks. Reminder completion is personal and does not alter the shared Moment record.
+
+### Memories
+
+A Memory belongs to a specific completed occurrence. Families can save a note and supported media so recurring traditions build a real history over time. Sakan's reflection focuses on the value visible in the Memory rather than merely paraphrasing the note.
+
+### Family Digital Twin
+
+The Digital Twin visualizes members, Moments, and recurring rhythms using recorded evidence. It provides a concise family-level interpretation while each Moment retains its own pattern details.
+
+Rhythm states include:
 
 ```text
 Still Learning
@@ -97,201 +93,67 @@ Recovering
 Strengthening
 ```
 
-Rhythms are derived from recorded Moment Instances, not from unsupported emotional or psychological assumptions.
+### What-If Simulation
 
-### Care Action
+Simulation lets a family explore an idea even when it is not already an existing Moment. Sakan considers participants and schedule constraints, explains the likely practical benefit, and proposes a suitable time. The user can then create the Moment at the approved time or leave without changing family data.
 
-A personal preparation task or reminder.
+### Weekly Family Report
 
-Examples:
+The report summarizes the completed week using recorded outcomes, participation, time, and recurring-pattern evidence. It distinguishes facts from interpretation and avoids presenting incomplete tracking as a definite conclusion.
 
-- Buy a graduation gift
-- Call Grandma
-- Confirm transportation
-- Prepare a family message
+### Ask Sakan
 
-Care Actions are separate from shared family sessions.
+Ask Sakan is the conversational assistant for grounded family questions. It can use relevant Moments, schedules, rhythm history, Memories, and current actions to provide:
 
-### Family Memory
+- one noticeable pattern;
+- a short explanation of the evidence;
+- one specific next step;
+- an alternative recommendation when requested.
 
-A note and optional media record connected to a completed Moment Instance. Memories preserve what the family wants to remember without being required as proof for every session.
+Responses are intentionally concise and should not invent family events or claim facts that are absent from the family's records.
 
-## Current User Flow
+## How Sakan AI Works
 
-```text
-Create or join a family
-        ↓
-Complete Family Setup
-        ↓
-Define recurring and one-time Family Moments
-        ↓
-Create or generate a scheduled Moment Instance
-        ↓
-View it in Calendar
-        ↓
-Start the Moment or confirm it through Today Review
-        ↓
-Members check in to the live session
-        ↓
-End the session and save its actual duration and participants
-        ↓
-Update the corresponding Rhythm Record
-        ↓
-Create the next recurring occurrence when needed
-        ↓
-Optionally preserve a Memory
-        ↓
-Family Insights and Digital Twin reflect the new evidence
-```
-
-## Current Implementation Status
-
-### Implemented and integrated
-
-- Flutter application foundation and Material 3 theme.
-- Firebase Authentication with email/password and password reset.
-- Family creation, invitation codes, and join-by-code.
-- Admin, adult, and child roles.
-- Four-step Family Setup and initial rhythm baseline.
-- Personal profile and family settings persistence.
-- Weekly multi-day schedules and one-time unavailable periods.
-- Family-level availability derived without exposing private schedule labels.
-- Reusable Family Moments and concrete Moment Instances.
-- Month, Week, and Agenda Calendar modes.
-- Live Family Moment sessions.
-- Real-time manual member check-ins.
-- Elapsed session timer based on the stored start time.
-- End-session summary with duration, participants, evidence, and confidence.
-- Today Review for happened, missed, rescheduled, and unplanned Moments.
-- Rhythm recalculation from completed and missed instances.
-- Next-occurrence generation for recurring Moments.
-- Instance-linked Memories and an All Memories view.
-- Personal reminders and Calendar-sourced Care Actions.
-- Local Android notification scheduling integration.
-- Deterministic Family Insights.
-- Instance-based Calendar integration.
-- Interactive Digital Twin map and per-Moment rhythm views.
-
-### Current refinement
-
-- Dedicated Moments bottom-navigation tab.
-- Simplified Moment cards showing only name, category, and importance.
-- Read-only Moment Details screen with a separate Edit action.
-- Simplification of the Digital Twin map and per-Moment interpretation layout.
-- Final notification regression testing on physical Android devices.
-- Final role and permission regression across admin, adult, and child accounts.
-
-### Not connected yet
-
-- Personalized Home screen.
-- Protected external generative-AI backend.
-- AI-written Digital Twin interpretations and family-level synthesis.
-- Reliable remote push invitations when the receiving app is closed.
-- Optional Bluetooth proximity evidence.
-- Complete cloud photo-upload workflow.
-- Functional "What if?" simulation.
-
-## Family Insights and AI
-
-Family Insights currently work **without an external language model**.
-
-Sakan deterministically calculates facts such as:
-
-- A milestone is five days away.
-- A reminder is overdue.
-- A recurring Moment is drifting.
-- A scheduled occurrence needs Today Review.
-- A live Moment can be joined.
-- A recorded shared window has fewer schedule conflicts.
-- A preparation reminder already exists.
-
-The future AI layer will receive a privacy-minimized, structured report and improve the wording or organization of an interpretation. It will not be allowed to decide factual state.
+Sakan uses a hybrid approach:
 
 ```text
-Sakan calculates facts
+Verified family records
         ↓
-AI explains those facts
+Deterministic facts and priorities
         ↓
-The user reviews the result
+Privacy-minimized AI context
         ↓
-The user chooses whether to act
+Short explanation or recommendation
+        ↓
+User approval before any change
 ```
 
-The AI must not invent:
+The application calculates factual state—such as occurrence status, participants, duration, availability, rhythm state, and urgency. Generative AI explains that evidence and helps shape useful recommendations. Deterministic fallbacks keep essential insights available when an AI response is unavailable.
 
-- Whether a Moment happened
-- Who participated
-- Actual duration
-- Availability
-- Rhythm state
-- Evidence strength
-- Required action type
+AI requests are sent through protected Firebase Cloud Functions. API credentials are not stored in the Flutter application.
 
-As of 29 August 2026, the application does not send runtime requests to an external generative-AI service. The deterministic Family Insight result remains the working fallback.
+## Privacy and Roles
 
-## Privacy and Access Control
-
-Sakan follows these principles:
-
-- A family member can update only their own check-in record.
-- Child accounts do not receive family-administration controls.
-- Private schedule labels are not exposed through family availability.
-- The Digital Twin reports recorded behavior, not emotional health.
-- AI input should exclude emails, invitation codes, private notes, raw identifiers, and private schedule labels.
-- No API key should be stored in Flutter source code, assets, GitHub, or the compiled application.
-- Manual check-in remains the primary participation method.
-- Bluetooth, if added, will be optional proximity evidence rather than automatic proof.
-
-## Architecture
-
-```text
-Presentation
-    ↓
-Repository and service contracts
-    ↓
-Firebase implementations
-    ↓
-Firebase Authentication and Cloud Firestore
-```
-
-Shared repositories and services are registered in:
-
-```text
-lib/app/app_dependencies.dart
-```
-
-Primary routes and the shell navigation are defined in:
-
-```text
-lib/routes/app_router.dart
-lib/app/app_shell.dart
-```
-
-Important services include:
-
-```text
-CurrentFamilyService
-FamilyInsightService
-MomentOutcomeService
-RhythmUpdateService
-ReminderNotificationService
-```
+- Family administration is restricted to authorized roles.
+- Recommendations are adapted for admins, adults, teens, and children.
+- Members update only their own participation where appropriate.
+- Private schedule labels are not exposed as family availability details.
+- AI context excludes invitation codes, raw identifiers, and unnecessary personal data.
+- The Digital Twin describes recorded behavior rather than emotional health.
+- Sakan does not automatically create a Moment or task without user confirmation.
 
 ## Technology
 
 - Flutter and Dart
 - Material 3
-- `go_router`
-- Firebase Core
 - Firebase Authentication
 - Cloud Firestore
+- Firebase Cloud Functions
 - Firebase Storage foundation
+- Protected OpenAI integration
+- `go_router`
 - `table_calendar`
-- `intl`
-- `flutter_local_notifications`
-- `timezone`
-- `flutter_timezone`
-- `image_picker`
+- local Android notifications and timezone support
 
 ## Project Structure
 
@@ -300,6 +162,7 @@ lib/
 ├── app/
 ├── core/
 ├── features/
+│   ├── assistant/
 │   ├── authentication/
 │   ├── calendar/
 │   ├── care/
@@ -310,57 +173,36 @@ lib/
 │   ├── memories/
 │   ├── moments/
 │   ├── profile/
-│   └── rhythm/
+│   ├── rhythm/
+│   └── weekly_report/
 ├── routes/
 └── shared/
-    ├── models/
-    ├── repositories/
-    ├── services/
-    ├── utils/
-    └── widgets/
+
+functions/src/
+├── auth.ts
+├── context.ts
+├── index.ts
+├── openai.ts
+├── prompts.ts
+├── rate_limit.ts
+└── validation.ts
 ```
 
 ## Run Locally
 
-### Requirements
+Requirements:
 
-- Flutter SDK compatible with the checked-in lockfile
-- Android Studio Android SDK for Android builds
-- JDK used by the Flutter Android toolchain
-- A configured Firebase project
-- `google-services.json` for Android
-- Sufficient free disk space for Gradle and Android build output
-
-### Install dependencies
+- a Flutter SDK compatible with the lockfile;
+- Android Studio and the Android SDK for Android builds;
+- a configured Firebase project;
+- the platform Firebase configuration files;
+- authorized backend configuration for runtime AI features.
 
 ```powershell
 flutter pub get
-```
-
-### Analyze and test
-
-```powershell
 flutter analyze
 flutter test
-```
-
-### Run on Edge
-
-```powershell
-flutter run -d edge
-```
-
-### Run on a connected Android device
-
-```powershell
-flutter devices
 flutter run -d <device-id>
-```
-
-### Deploy Firestore Security Rules
-
-```powershell
-firebase deploy --only firestore:rules --project=<firebase-project-id>
 ```
 
 ## Documentation
@@ -374,14 +216,11 @@ firebase deploy --only firestore:rules --project=<firebase-project-id>
 
 ## Known Limitations
 
-- Home is not yet the final personalized dashboard.
-- External AI is not yet connected.
-- Digital Twin interpretations are currently deterministic or in UI refinement.
-- Local notification behavior still requires final regression across Android versions and manufacturers.
-- Remote family invitations are not guaranteed while the app is fully closed.
-- Bluetooth proximity is not part of the current MVP.
-- Photo storage is not yet a complete user flow.
-- Automated test coverage is still smaller than the manual test coverage.
+- Remote push invitations are not guaranteed while the receiving application is fully closed.
+- Bluetooth proximity evidence is not part of the current MVP.
+- Photo storage remains a limited workflow.
+- AI output depends on backend and model availability; factual fallbacks remain available.
+- Final regression testing is still required across different Android versions and screen sizes.
 
 ## Team
 
@@ -389,6 +228,6 @@ firebase deploy --only firestore:rules --project=<firebase-project-id>
 - Yasmine Yousof
 - Hala Mohammed
 
-## AI-Assisted Development
+## Responsible AI Use
 
-AI tools were used for architecture discussion, UI prototyping, implementation drafts, debugging, documentation, and technical explanation. All accepted changes were selected, integrated, reviewed, and tested by the team. See [`docs/ai_usage_log.md`](docs/ai_usage_log.md) for the dated record.
+AI tools supported research, product critique, interface exploration, debugging, testing guidance, prompt refinement, and documentation. The team made the product decisions, reviewed every accepted change, configured the services, validated the data behavior, and tested the application. See [`docs/ai_usage_log.md`](docs/ai_usage_log.md) for details.
