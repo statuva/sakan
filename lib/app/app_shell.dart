@@ -62,12 +62,17 @@ class _AppShellState extends State<AppShell> {
         future: _familyContext,
         builder: (context, snapshot) {
           if (snapshot.data?.canUseAi != true) return const SizedBox.shrink();
-          return FloatingActionButton.extended(
+          return IconButton(
+            tooltip: 'Ask Sakan',
             onPressed: () {
               context.pushNamed('askSakan');
             },
-            icon: const Icon(Icons.auto_awesome_rounded),
-            label: const Text('Ask Sakan'),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(
+              width: 72,
+              height: 72,
+            ),
+            icon: const SakanAssistantIcon(size: 68),
           );
         },
       ),
